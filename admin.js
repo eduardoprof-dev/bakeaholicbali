@@ -52,7 +52,9 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || `Request failed: ${response.status}`);
+    const error = new Error(payload.error || `Request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
 
   return response.json();
@@ -63,7 +65,7 @@ async function ensureAdminSession() {
     await request("/api/admin/session");
     return;
   } catch (error) {
-    if (!String(error.message || "").includes("401")) {
+    if (error.status !== 401) {
       throw error;
     }
   }
