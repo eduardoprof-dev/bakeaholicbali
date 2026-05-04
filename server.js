@@ -67,6 +67,12 @@ const DEMO_VOUCHERS = [
 ];
 
 function loadCatalog() {
+  if (!fs.existsSync(catalogPath)) {
+    ensureParentDir(catalogPath);
+    const bundledRaw = fs.readFileSync(bundledCatalogPath, "utf8");
+    fs.writeFileSync(catalogPath, bundledRaw, "utf8");
+  }
+
   const sourcePath = fs.existsSync(catalogPath) ? catalogPath : bundledCatalogPath;
   const raw = fs.readFileSync(sourcePath, "utf8");
   return JSON.parse(raw);
