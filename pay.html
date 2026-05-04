@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pay and Order</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="mobile-shell pay-shell">
+      <header class="pay-logo-header">
+        <a href="/index.html">
+          <img class="brand-logo pay-brand-logo" src="/assets/bakeaholic-logo.jpg" alt="Bakeaholic Bali" />
+        </a>
+      </header>
+      <main id="paymentApp"></main>
+    </div>
+
+    <div class="modal-scrim" id="modalScrim" hidden></div>
+
+    <section class="modal-card confirm-modal" id="cancelModal" hidden>
+      <div class="modal-head centered">
+        <h2>Cancel Order</h2>
+      </div>
+      <p class="modal-copy center-copy">
+        Are you sure you want to cancel this order? This action cannot be undone.
+      </p>
+      <div class="confirm-actions">
+        <button class="secondary-button" id="keepOrderButton" type="button">Keep Order</button>
+        <button class="danger-button" id="confirmCancelButton" type="button">Yes, Cancel Order</button>
+      </div>
+    </section>
+
+    <script src="pay.js"></script>
+  </body>
+</html>

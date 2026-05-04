@@ -1,0 +1,6 @@
+.env
+data/customers.json
+data/orders-live.json
+data/orders-test.json
+node_modules
+.DS_Store

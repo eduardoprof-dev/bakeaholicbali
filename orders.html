@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your Orders</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="mobile-shell account-page-shell">
+      <header class="app-header">
+        <div class="brand-row">
+          <div class="brand-center">
+            <a id="homeLink" href="/index.html">
+              <img class="brand-logo" src="/assets/bakeaholic-logo.jpg" alt="Bakeaholic Bali" />
+            </a>
+          </div>
+          <div class="brand-actions" aria-label="Account and cart">
+            <a class="header-icon-link" id="cartLink" href="/cart.html" aria-label="Open cart">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6.5 6.5h14l-1.6 8.2H8L6.5 6.5Z" />
+                <path d="M3.5 4h2.1l.9 2.5" />
+                <circle cx="9" cy="19" r="1.4" />
+                <circle cx="18" cy="19" r="1.4" />
+              </svg>
+            </a>
+            <button class="profile-pill" id="accountBadge" type="button" aria-label="Account"></button>
+            <section class="account-menu" id="accountMenu" hidden>
+              <button class="account-summary" id="accountSummaryButton" type="button">
+                <strong id="accountMenuName">Customer</strong>
+                <span id="accountMenuPhone"></span>
+                <span id="accountMenuEmail"></span>
+              </button>
+              <div class="account-menu-list">
+                <a class="account-menu-row account-menu-link" id="accountOrderHistoryLink" href="/orders.html">
+                  <span class="account-menu-icon" aria-hidden="true">▣</span>
+                  <strong>Order History</strong>
+                  <span class="account-menu-arrow">›</span>
+                </a>
+                <a class="account-menu-row account-menu-link" id="accountAddressesLink" href="/addresses.html">
+                  <span class="account-menu-icon" aria-hidden="true">⌖</span>
+                  <strong>Your Addresses</strong>
+                  <span class="account-menu-arrow">›</span>
+                </a>
+                <button class="account-menu-row" id="accountLogoutButton" type="button">
+                  <span class="account-menu-icon" aria-hidden="true">↪</span>
+                  <strong>Log Out</strong>
+                  <span class="account-menu-arrow">›</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </header>
+      <main class="account-page" id="ordersApp"></main>
+    </div>
+
+    <script src="account-common.js"></script>
+    <script src="orders.js"></script>
+  </body>
+</html>

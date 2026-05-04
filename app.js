@@ -1,0 +1,994 @@
+const formatRupiah = new Intl.NumberFormat("id-ID", {
+  style: "currency",
+  currency: "IDR",
+  maximumFractionDigits: 0
+});
+
+const params = new URLSearchParams(window.location.search);
+const appMode = params.get("mode") === "test" ? "test" : "live";
+const modeQuery = appMode === "test" ? "?mode=test" : "";
+const assetVersion = "20260422-bliss-lifestyle-photos";
+const draftKey = `bakeaholic-checkout-draft-${appMode}`;
+const latestOrderKey = `bakeaholic-latest-order-${appMode}`;
+
+const state = {
+  appMode,
+  store: null,
+  promo: null,
+  categories: [],
+  items: [],
+  cart: null,
+  draft: loadDraft()
+};
+
+const storeEyebrow = document.getElementById("storeEyebrow");
+const modeBanner = document.getElementById("modeBanner");
+const modeBannerBody = document.getElementById("modeBannerBody");
+const resetTestButton = document.getElementById("resetTestButton");
+const addressButton = document.getElementById("addressButton");
+const addressTitle = document.getElementById("addressTitle");
+const addressText = document.getElementById("addressText");
+const deliveryFeeLine = document.getElementById("deliveryFeeLine");
+const searchBar = document.querySelector(".search-bar");
+const searchInput = document.getElementById("searchInput");
+const categoryChips = document.getElementById("categoryChips");
+const catalog = document.getElementById("catalog");
+const promoKicker = document.getElementById("promoKicker");
+const promoAddButton = document.getElementById("promoAddButton");
+const promoHeroImage = document.getElementById("promoHeroImage");
+const promoHeroTitle = document.getElementById("promoHeroTitle");
+const promoHeroPrice = document.getElementById("promoHeroPrice");
+const stickyCartButton = document.getElementById("stickyCartButton");
+const stickyCartLabel = document.getElementById("stickyCartLabel");
+const stickyCartHint = document.getElementById("stickyCartHint");
+const stickyCartTotal = document.getElementById("stickyCartTotal");
+const cartLink = document.getElementById("cartLink");
+const loginButton = document.getElementById("loginButton");
+const accountMenu = document.getElementById("accountMenu");
+const accountMenuName = document.getElementById("accountMenuName");
+const accountMenuPhone = document.getElementById("accountMenuPhone");
+const accountMenuEmail = document.getElementById("accountMenuEmail");
+const accountSummaryButton = document.getElementById("accountSummaryButton");
+const accountOrderHistoryButton = document.getElementById("accountOrderHistoryButton");
+const accountAddressesButton = document.getElementById("accountAddressesButton");
+const accountLogoutButton = document.getElementById("accountLogoutButton");
+const orderBanner = document.getElementById("orderBanner");
+const orderBannerTitle = document.getElementById("orderBannerTitle");
+const orderBannerBody = document.getElementById("orderBannerBody");
+const orderBannerLink = document.getElementById("orderBannerLink");
+const footerWhatsappLink = document.getElementById("footerWhatsappLink");
+const footerInstagramLink = document.getElementById("footerInstagramLink");
+const footerTermsLink = document.getElementById("footerTermsLink");
+const footerPrivacyLink = document.getElementById("footerPrivacyLink");
+const modalScrim = document.getElementById("modalScrim");
+const whatsappModal = document.getElementById("whatsappModal");
+const otpModal = document.getElementById("otpModal");
+const profileModal = document.getElementById("profileModal");
+const detailsModal = document.getElementById("detailsModal");
+const locationModal = document.getElementById("locationModal");
+const productModal = document.getElementById("productModal");
+const closeWhatsappModal = document.getElementById("closeWhatsappModal");
+const closeOtpModal = document.getElementById("closeOtpModal");
+const closeProfileModal = document.getElementById("closeProfileModal");
+const closeDetailsModal = document.getElementById("closeDetailsModal");
+const closeProductModal = document.getElementById("closeProductModal");
+const saveWhatsappButton = document.getElementById("saveWhatsappButton");
+const verifyOtpButton = document.getElementById("verifyOtpButton");
+const saveProfileButton = document.getElementById("saveProfileButton");
+const resendOtpButton = document.getElementById("resendOtpButton");
+const changePhoneButton = document.getElementById("changePhoneButton");
+const copyOtpButton = document.getElementById("copyOtpButton");
+const saveDetailsButton = document.getElementById("saveDetailsButton");
+const whatsappPrompt = document.getElementById("whatsappPrompt");
+const whatsappMessage = document.getElementById("whatsappMessage");
+const whatsappInput = document.getElementById("whatsappInput");
+const otpPrompt = document.getElementById("otpPrompt");
+const otpInput = document.getElementById("otpInput");
+const otpMessage = document.getElementById("otpMessage");
+const otpTimerText = document.getElementById("otpTimerText");
+const testOtpCard = document.getElementById("testOtpCard");
+const testOtpCode = document.getElementById("testOtpCode");
+const profileFirstNameInput = document.getElementById("profileFirstNameInput");
+const profileLastNameInput = document.getElementById("profileLastNameInput");
+const profileEmailInput = document.getElementById("profileEmailInput");
+const profileModalTitle = document.getElementById("profileModalTitle");
+const profileModalCopy = document.getElementById("profileModalCopy");
+const profileMessage = document.getElementById("profileMessage");
+const customerNameInput = document.getElementById("customerNameInput");
+const customerPhoneInput = document.getElementById("customerPhoneInput");
+const customerAddressInput = document.getElementById("customerAddressInput");
+const addressFieldLabel = document.getElementById("addressFieldLabel");
+const productModalImage = document.getElementById("productModalImage");
+const productModalCategory = document.getElementById("productModalCategory");
+const productModalTitle = document.getElementById("productModalTitle");
+const productModalBadge = document.getElementById("productModalBadge");
+const productModalDescription = document.getElementById("productModalDescription");
+const productModalFacts = document.getElementById("productModalFacts");
+const productModalPrice = document.getElementById("productModalPrice");
+const productModalAddButton = document.getElementById("productModalAddButton");
+
+let locationPicker;
+let activeCategoryId = "";
+let scrollSpyFrame = 0;
+let headerChromeFrame = 0;
+let headerIsCondensed = false;
+let selectedProductId = "";
+let pendingOtpPhone = "";
+let otpResendAvailableAt = 0;
+let otpTimerId = 0;
+
+const HEADER_CONDENSE_AT = 220;
+const HEADER_EXPAND_AT = 72;
+
+const whatsappIcon = `
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12.1 4.4a7.4 7.4 0 0 0-6.3 11.3l-.8 3.1 3.2-.8a7.4 7.4 0 1 0 3.9-13.6Z" />
+    <path d="M8.8 8.5c.2-.4.4-.4.7-.4h.5c.2 0 .4.1.5.4l.7 1.6c.1.2.1.4 0 .6l-.4.5c-.1.1-.2.3-.1.5.4.8 1.1 1.5 2 1.9.2.1.4.1.5-.1l.7-.8c.1-.2.4-.2.6-.1l1.7.8c.3.1.4.3.4.5 0 .5-.3 1.1-.7 1.4-.5.4-1.2.5-2.2.2-1.7-.5-3.1-1.5-4.3-3-1.2-1.4-1.7-2.6-1.6-3.3 0-.5.2-.9.4-1.2Z" />
+  </svg>
+`;
+
+const instagramIcon = `
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="5" y="5" width="14" height="14" rx="4" />
+    <circle cx="12" cy="12" r="3.1" />
+    <circle cx="16.3" cy="7.8" r=".8" />
+  </svg>
+`;
+
+function loadDraft() {
+  const fallback = {
+    fulfillmentType: "delivery",
+    paymentMethodId: "qris",
+    voucherCode: "",
+    deliveryNotes: "",
+    orderNotes: "",
+    destination: {
+      lat: null,
+      lng: null,
+      label: "",
+      formattedAddress: "",
+      locationNotes: "",
+      routeDistanceKm: null,
+      deliveryFee: 0
+    },
+    customer: {
+      name: "",
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      address: "",
+      phoneVerifiedAt: ""
+    }
+  };
+
+  try {
+    const stored = JSON.parse(localStorage.getItem(draftKey) || "null");
+    return {
+      ...fallback,
+      ...stored,
+      destination: {
+        ...fallback.destination,
+        ...(stored?.destination || {})
+      },
+      customer: {
+        ...fallback.customer,
+        ...(stored?.customer || {})
+      }
+    };
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function persistDraft() {
+  state.draft.fulfillmentType = "delivery";
+  localStorage.setItem(draftKey, JSON.stringify(state.draft));
+}
+
+function setMessage(element, text, tone = "error") {
+  if (!element) return;
+  element.textContent = text || "";
+  element.dataset.tone = tone;
+  element.hidden = !text;
+}
+
+function normalizeWhatsAppPhone(input) {
+  const digits = String(input || "").replace(/[^\d]/g, "");
+  if (!digits) {
+    return "";
+  }
+  return digits.startsWith("62") ? digits : `62${digits.replace(/^0+/, "")}`;
+}
+
+function formatWhatsAppPhone(input) {
+  const phone = normalizeWhatsAppPhone(input);
+  return phone ? `+${phone}` : "";
+}
+
+function customerFullName(customer = state.draft.customer) {
+  return [customer.firstName, customer.lastName].filter(Boolean).join(" ").trim() || customer.name || "";
+}
+
+function hasRegistrationProfile() {
+  return Boolean(
+    state.draft.customer.firstName?.trim()
+      && state.draft.customer.lastName?.trim()
+      && state.draft.customer.email?.trim()
+  );
+}
+
+function applyCustomerProfile(profile) {
+  if (!profile) return;
+  state.draft.customer.firstName = profile.firstName || "";
+  state.draft.customer.lastName = profile.lastName || "";
+  state.draft.customer.email = profile.email || "";
+  state.draft.customer.name = profile.name || customerFullName();
+}
+
+function request(path, options = {}) {
+  return fetch(path, {
+    headers: {
+      "Content-Type": "application/json",
+      "X-App-Mode": appMode
+    },
+    ...options
+  }).then(async (response) => {
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `Request failed: ${response.status}`);
+    }
+    return response.json();
+  });
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function versionedAsset(path) {
+  if (!path || !path.startsWith("/assets/")) {
+    return path;
+  }
+
+  return `${path}${path.includes("?") ? "&" : "?"}v=${assetVersion}`;
+}
+
+function syncFulfillmentUi() {
+  state.draft.fulfillmentType = "delivery";
+
+  if (!state.store) return;
+
+  addressFieldLabel.textContent = "Address";
+  addressTitle.textContent = state.store.addressLabel;
+  addressText.textContent =
+    state.draft.destination.formattedAddress || "Add your address and customer details before checkout.";
+
+  const feeAmount = state.cart?.deliveryFee || state.draft.destination.deliveryFee || 0;
+  if (state.cart?.quoteSource === "biteship") {
+    const courierLabel = state.cart.shipping?.courierName || "courier";
+    deliveryFeeLine.textContent = `Live ${courierLabel} quote: ${formatRupiah.format(feeAmount)}`;
+    return;
+  }
+
+  deliveryFeeLine.textContent = `Estimated delivery fee: ${formatRupiah.format(feeAmount)}`;
+}
+
+function renderOrderBanner() {
+  const latestOrderId = localStorage.getItem(latestOrderKey);
+  if (!latestOrderId) {
+    orderBanner.hidden = true;
+    return;
+  }
+
+  orderBanner.hidden = false;
+  orderBannerTitle.textContent = `Continue order ${latestOrderId}`;
+  orderBannerBody.textContent =
+    "You already created an order. Open its payment page to finish, check, or cancel it.";
+  orderBannerLink.hidden = false;
+  orderBannerLink.href = `/pay.html${modeQuery ? `${modeQuery}&order=${latestOrderId}` : `?order=${latestOrderId}`}`;
+}
+
+function syncFooterLinks() {
+  const whatsappNumber = String(state.store?.orderWhatsapp || "").replace(/[^\d]/g, "");
+  if (footerWhatsappLink) {
+    footerWhatsappLink.href = whatsappNumber
+      ? `https://wa.me/${whatsappNumber}`
+      : "#";
+    const whatsappLabel = whatsappNumber
+      ? `+${whatsappNumber.replace(/^62/, "62 ")} (24 hours)`
+      : "WhatsApp";
+    footerWhatsappLink.innerHTML = `
+      <span class="footer-icon">${whatsappIcon}</span>
+      <span class="footer-link-label">${escapeHtml(whatsappLabel)}</span>
+    `;
+  }
+
+  if (footerInstagramLink) {
+    footerInstagramLink.href = state.store?.instagramUrl || "https://www.instagram.com/";
+    footerInstagramLink.innerHTML = `
+      <span class="footer-icon">${instagramIcon}</span>
+    `;
+    footerInstagramLink.setAttribute("aria-label", "Bakeaholic Bali Instagram");
+    footerInstagramLink.title = "Bakeaholic Bali Instagram";
+  }
+
+  if (footerTermsLink) {
+    footerTermsLink.href = state.store?.termsUrl || "#terms";
+  }
+
+  if (footerPrivacyLink) {
+    footerPrivacyLink.href = state.store?.privacyUrl || "#privacy";
+  }
+}
+
+function filteredItemsForCategory(categoryId) {
+  const query = searchInput.value.trim().toLowerCase();
+  return state.items.filter((item) => {
+    if (item.category !== categoryId) return false;
+    if (!query) return true;
+    return `${item.name} ${item.description}`.toLowerCase().includes(query);
+  });
+}
+
+function getCategoryLabel(categoryId) {
+  return state.categories.find((category) => category.id === categoryId)?.label || "Bakeaholic Bali";
+}
+
+function renderChips() {
+  categoryChips.innerHTML = state.categories
+    .map(
+      (category) =>
+        `<button class="chip" type="button" data-category-id="${escapeHtml(category.id)}">${escapeHtml(category.label)}</button>`
+    )
+    .join("");
+
+  categoryChips.querySelectorAll("[data-category-id]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const target = document.getElementById(chip.dataset.categoryId);
+      if (target) {
+        const headerHeight = document.querySelector(".app-header")?.offsetHeight || 0;
+        const targetTop = target.getBoundingClientRect().top + window.scrollY - headerHeight - 12;
+        window.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+      }
+      setActiveCategory(chip.dataset.categoryId, true);
+    });
+  });
+
+  setActiveCategory(activeCategoryId || state.categories[0]?.id || "", false);
+}
+
+function setActiveCategory(categoryId, shouldCenter = true) {
+  if (!categoryId) {
+    return;
+  }
+
+  const changed = activeCategoryId !== categoryId;
+  activeCategoryId = categoryId;
+  categoryChips.querySelectorAll("[data-category-id]").forEach((chip) => {
+    const isActive = chip.dataset.categoryId === categoryId;
+    chip.classList.toggle("active", isActive);
+    if (isActive && shouldCenter && changed) {
+      const centerLeft = chip.offsetLeft - (categoryChips.clientWidth - chip.clientWidth) / 2;
+      categoryChips.scrollTo({
+        left: Math.max(0, centerLeft),
+        behavior: "smooth"
+      });
+    }
+  });
+}
+
+function updateActiveCategoryFromScroll() {
+  scrollSpyFrame = 0;
+  const sections = [...document.querySelectorAll(".catalog-section")];
+  if (!sections.length) return;
+
+  const headerBottom = document.querySelector(".app-header")?.getBoundingClientRect().bottom || 0;
+  const activationLine = Math.max(120, headerBottom + 16);
+  let currentSection = sections[0];
+  sections.forEach((section) => {
+    if (section.getBoundingClientRect().top <= activationLine) {
+      currentSection = section;
+    }
+  });
+
+  setActiveCategory(currentSection.id);
+}
+
+function scheduleScrollSpy() {
+  if (scrollSpyFrame) return;
+  scrollSpyFrame = requestAnimationFrame(updateActiveCategoryFromScroll);
+}
+
+function updateHeaderChrome() {
+  headerChromeFrame = 0;
+  const header = document.querySelector(".app-header");
+  if (!header) return;
+  const scrollY = window.scrollY;
+  if (!headerIsCondensed && scrollY >= HEADER_CONDENSE_AT) {
+    headerIsCondensed = true;
+  } else if (headerIsCondensed && scrollY <= HEADER_EXPAND_AT) {
+    headerIsCondensed = false;
+  }
+
+  header.classList.toggle("header-condensed", headerIsCondensed);
+  if (!headerIsCondensed) {
+    searchBar?.classList.remove("search-expanded");
+  }
+}
+
+function scheduleHeaderChrome() {
+  if (headerChromeFrame) return;
+  headerChromeFrame = requestAnimationFrame(updateHeaderChrome);
+}
+
+function renderCatalog() {
+  catalog.innerHTML = state.categories
+    .map((category) => {
+      const items = filteredItemsForCategory(category.id);
+      if (!items.length) return "";
+
+      return `
+        <section class="catalog-section" id="${escapeHtml(category.id)}">
+          <div class="section-title-wrap">
+            <h2>${escapeHtml(category.label)}</h2>
+            <p>${escapeHtml(category.description)}</p>
+          </div>
+          <div class="product-stack">
+            ${items
+              .map(
+                (item) => `
+                  <article class="product-card" role="button" tabindex="0" data-product-id="${escapeHtml(item.id)}" aria-label="View ${escapeHtml(item.name)} details">
+                    <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" />
+                    <div class="product-copy">
+                      <div class="product-topline">
+                        <h3>${escapeHtml(item.name)}</h3>
+                        ${item.badge ? `<span class="product-badge">${escapeHtml(item.badge)}</span>` : ""}
+                      </div>
+                      <p>${escapeHtml(item.description)}</p>
+                      <div class="product-meta">
+                        <span>★ ${item.rating}</span>
+                        <span>${item.reviews} reviews</span>
+                        <span>${escapeHtml(item.shelfLife)}</span>
+                      </div>
+                      <div class="product-bottom">
+                        <strong>${formatRupiah.format(item.price)}</strong>
+                        <button class="mini-add-button" type="button" data-item-id="${escapeHtml(item.id)}" aria-label="Add ${escapeHtml(item.name)} to cart" ${item.stock <= 0 ? "disabled" : ""}>
+                          ${item.stock <= 0 ? "Sold out" : "+"}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                `
+              )
+              .join("")}
+          </div>
+        </section>
+      `;
+    })
+    .join("");
+
+  if (!catalog.innerHTML.trim()) {
+    catalog.innerHTML = `
+      <section class="empty-card">
+        <strong>No matching products found.</strong>
+        <p>Try a broader keyword or switch categories.</p>
+      </section>
+    `;
+  }
+
+  catalog.querySelectorAll("[data-item-id]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      addToCart(button.dataset.itemId);
+    });
+  });
+
+  catalog.querySelectorAll("[data-product-id]").forEach((card) => {
+    card.addEventListener("click", () => openProductModal(card.dataset.productId));
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openProductModal(card.dataset.productId);
+      }
+    });
+  });
+}
+
+function currentPromoItem() {
+  return state.items.find((item) => item.id === state.promo?.itemId) || null;
+}
+
+function openProductModal(itemId) {
+  const item = state.items.find((candidate) => candidate.id === itemId);
+  if (!item) return;
+
+  selectedProductId = item.id;
+  productModalImage.src = versionedAsset(item.imagePath);
+  productModalImage.alt = item.name;
+  productModalImage.className = "product-modal-image";
+  productModalCategory.textContent = getCategoryLabel(item.category);
+  productModalTitle.textContent = item.name;
+  productModalBadge.textContent = item.badge || "";
+  productModalBadge.hidden = !item.badge;
+  productModalDescription.textContent = item.description;
+  productModalPrice.textContent = formatRupiah.format(item.price);
+  productModalAddButton.disabled = item.stock <= 0;
+  productModalAddButton.textContent = item.stock <= 0 ? "Sold out" : `Add to Cart ${formatRupiah.format(item.price)}`;
+  productModalFacts.innerHTML = [
+    `★ ${item.rating}`,
+    `${item.reviews} reviews`,
+    item.shelfLife,
+    item.minOrder ? `Min. ${item.minOrder}` : ""
+  ]
+    .filter(Boolean)
+    .map((fact) => `<span>${escapeHtml(fact)}</span>`)
+    .join("");
+
+  openModal(productModal);
+}
+
+function renderCartSummary() {
+  const itemCount = state.cart?.itemCount || 0;
+  stickyCartLabel.textContent = `${itemCount} item${itemCount === 1 ? "" : "s"}`;
+  stickyCartHint.textContent = itemCount
+    ? "Delivery order ready for review"
+    : "Add something delicious";
+  stickyCartTotal.textContent = formatRupiah.format(state.cart?.total || 0);
+  cartLink.href = `/cart.html${modeQuery}`;
+}
+
+function openModal(modal) {
+  modal.hidden = false;
+  modalScrim.hidden = false;
+}
+
+function closeModal(modal) {
+  modal.hidden = true;
+  if (
+    whatsappModal.hidden
+      && otpModal.hidden
+      && profileModal.hidden
+      && detailsModal.hidden
+      && locationModal.hidden
+      && productModal.hidden
+  ) {
+    modalScrim.hidden = true;
+  }
+}
+
+function updateOtpTimer() {
+  const remainingSeconds = Math.max(0, Math.ceil((otpResendAvailableAt - Date.now()) / 1000));
+  resendOtpButton.disabled = remainingSeconds > 0;
+  otpTimerText.textContent = remainingSeconds > 0
+    ? `Please wait ${remainingSeconds} seconds before requesting a new code.`
+    : "Didn't receive the code? You can request a new one.";
+  if (remainingSeconds <= 0 && otpTimerId) {
+    window.clearInterval(otpTimerId);
+    otpTimerId = 0;
+  }
+}
+
+function startOtpTimer(seconds) {
+  otpResendAvailableAt = Date.now() + Number(seconds || 0) * 1000;
+  updateOtpTimer();
+  if (otpTimerId) {
+    window.clearInterval(otpTimerId);
+  }
+  otpTimerId = window.setInterval(updateOtpTimer, 1000);
+}
+
+function showOtpModal(registration) {
+  pendingOtpPhone = registration.phone;
+  otpInput.value = "";
+  otpPrompt.textContent = `We have sent a verification code to +${registration.phone}`;
+  testOtpCard.hidden = !registration.testCode;
+  testOtpCode.textContent = registration.testCode || "";
+  setMessage(otpMessage, registration.message || "", registration.testCode ? "success" : "info");
+  startOtpTimer(registration.resendInSeconds || 30);
+  closeModal(whatsappModal);
+  openModal(otpModal);
+  otpInput.focus();
+}
+
+async function requestOtp() {
+  const phone = normalizeWhatsAppPhone(whatsappInput.value);
+  if (!phone) {
+    setMessage(whatsappMessage, "Please enter your WhatsApp number");
+    return;
+  }
+
+  saveWhatsappButton.disabled = true;
+  saveWhatsappButton.textContent = "Sending code...";
+  setMessage(whatsappMessage, "");
+  try {
+    const payload = await request("/api/register/start", {
+      method: "POST",
+      body: JSON.stringify({ phone })
+    });
+    showOtpModal(payload.registration);
+  } catch (error) {
+    setMessage(whatsappMessage, error.message);
+  } finally {
+    saveWhatsappButton.disabled = false;
+    saveWhatsappButton.textContent = "Continue";
+  }
+}
+
+async function verifyOtp() {
+  const code = otpInput.value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    setMessage(otpMessage, "Please enter the 6 digit verification code");
+    return;
+  }
+
+  verifyOtpButton.disabled = true;
+  verifyOtpButton.textContent = "Verifying...";
+  setMessage(otpMessage, "");
+  try {
+    const payload = await request("/api/register/verify", {
+      method: "POST",
+      body: JSON.stringify({ phone: pendingOtpPhone, code })
+    });
+    state.draft.customer.phone = `+${payload.registration.phone}`;
+    state.draft.customer.phoneVerifiedAt = payload.registration.verifiedAt;
+    applyCustomerProfile(payload.registration.profile);
+    persistDraft();
+    hydrateDetailsForm();
+    setMessage(otpMessage, "WhatsApp number verified.", "success");
+    closeModal(otpModal);
+    if (!hasRegistrationProfile()) {
+      openProfileModal();
+    }
+  } catch (error) {
+    setMessage(otpMessage, error.message);
+  } finally {
+    verifyOtpButton.disabled = false;
+    verifyOtpButton.textContent = "Verify";
+  }
+}
+
+function hydrateDetailsForm() {
+  state.draft.customer.name = customerFullName();
+  customerNameInput.value = state.draft.customer.name;
+  customerPhoneInput.value = state.draft.customer.phone;
+  customerAddressInput.value = state.draft.destination.formattedAddress || state.draft.customer.address;
+  customerAddressInput.placeholder = "Street, district, landmark";
+}
+
+function hydrateProfileForm() {
+  profileFirstNameInput.value = state.draft.customer.firstName || "";
+  profileLastNameInput.value = state.draft.customer.lastName || "";
+  profileEmailInput.value = state.draft.customer.email || "";
+}
+
+function openProfileModal(mode = "registration") {
+  const isAccountView = mode === "account";
+  profileModalTitle.textContent = isAccountView ? "Your details" : "Complete your registration";
+  profileModalCopy.textContent = isAccountView
+    ? "These details are saved to your verified WhatsApp number for faster checkout."
+    : "We'll remember these details in this browser for faster checkout next time.";
+  saveProfileButton.textContent = isAccountView ? "Save details" : "Save and continue";
+  hydrateProfileForm();
+  setMessage(profileMessage, "");
+  openModal(profileModal);
+  profileFirstNameInput.focus();
+}
+
+function renderAccountMenu() {
+  accountMenuName.textContent = customerFullName() || "Your account";
+  accountMenuPhone.textContent = state.draft.customer.phone || "";
+  accountMenuEmail.textContent = state.draft.customer.email || "";
+}
+
+function closeAccountMenu() {
+  accountMenu.hidden = true;
+}
+
+function openAccountMenu() {
+  renderAccountMenu();
+  accountMenu.hidden = false;
+}
+
+function openAccount() {
+  if (!state.draft.customer.phoneVerifiedAt) {
+    whatsappInput.value = state.draft.customer.phone
+      ? state.draft.customer.phone.replace(/^\+?62/, "")
+      : "";
+    setMessage(whatsappMessage, "");
+    openModal(whatsappModal);
+    return;
+  }
+
+  accountMenu.hidden ? openAccountMenu() : closeAccountMenu();
+}
+
+function logoutAccount() {
+  localStorage.removeItem(draftKey);
+  state.draft = loadDraft();
+  closeAccountMenu();
+  hydrateDetailsForm();
+  syncFulfillmentUi();
+  whatsappInput.value = "";
+  openModal(whatsappModal);
+}
+
+async function saveProfile() {
+  const firstName = profileFirstNameInput.value.trim();
+  const lastName = profileLastNameInput.value.trim();
+  const email = profileEmailInput.value.trim();
+  const idleButtonText = profileModalTitle.textContent === "Your details"
+    ? "Save details"
+    : "Save and continue";
+
+  if (!firstName || !lastName) {
+    setMessage(profileMessage, "Please enter your first and last name");
+    return;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    setMessage(profileMessage, "Please enter a valid email address");
+    return;
+  }
+
+  saveProfileButton.disabled = true;
+  saveProfileButton.textContent = "Saving...";
+  setMessage(profileMessage, "");
+  try {
+    const payload = await request("/api/customer/profile", {
+      method: "POST",
+      body: JSON.stringify({
+        phone: state.draft.customer.phone,
+        firstName,
+        lastName,
+        email
+      })
+    });
+    applyCustomerProfile(payload.profile);
+    persistDraft();
+    hydrateDetailsForm();
+    closeModal(profileModal);
+  } catch (error) {
+    setMessage(profileMessage, error.message);
+  } finally {
+    saveProfileButton.disabled = false;
+    saveProfileButton.textContent = idleButtonText;
+  }
+}
+
+function buildCartQuery() {
+  const search = new URLSearchParams();
+  search.set("fulfillment", state.draft.fulfillmentType);
+  search.set("voucher", state.draft.voucherCode || "");
+  if (state.draft.destination.lat != null && state.draft.destination.lng != null) {
+    search.set("lat", state.draft.destination.lat);
+    search.set("lng", state.draft.destination.lng);
+    search.set("route_km", state.draft.destination.routeDistanceKm || "");
+    search.set("address", state.draft.destination.formattedAddress || "");
+    search.set("location_notes", state.draft.destination.locationNotes || "");
+  }
+  return search.toString();
+}
+
+async function refreshCart() {
+  state.cart = await request(`/api/cart?${buildCartQuery()}`);
+  if (state.cart?.shipping?.distanceKm) {
+    state.draft.destination.routeDistanceKm = state.cart.shipping.distanceKm;
+    state.draft.destination.deliveryFee = state.cart.deliveryFee;
+  }
+  state.draft.destination.quoteSource = state.cart?.quoteSource || "";
+  state.draft.destination.courierName = state.cart?.shipping?.courierName || "";
+  state.draft.destination.courierServiceName = state.cart?.shipping?.courierServiceName || "";
+  persistDraft();
+  renderCartSummary();
+  syncFulfillmentUi();
+}
+
+async function addToCart(itemId) {
+  await request("/api/cart", {
+    method: "POST",
+    body: JSON.stringify({ itemId, quantity: 1 })
+  });
+  await refreshCart();
+}
+
+async function resetTestData() {
+  await request("/api/reset", { method: "POST" });
+  localStorage.removeItem(latestOrderKey);
+  renderOrderBanner();
+  await refreshCart();
+}
+
+async function bootstrap() {
+  const payload = await request("/api/menu");
+  state.store = payload.store;
+  state.promo = payload.promo;
+  state.categories = payload.categories;
+  state.items = payload.items;
+
+  document.title = `${state.store.name} Order System`;
+  if (storeEyebrow) {
+    storeEyebrow.textContent = state.store.eyebrow;
+  }
+  promoKicker.textContent = state.promo.kicker;
+  promoAddButton.textContent = state.promo.buttonLabel;
+  const promoItem = currentPromoItem();
+  if (promoHeroImage && promoItem?.imagePath) {
+    promoHeroImage.src = versionedAsset(promoItem.imagePath);
+    promoHeroImage.alt = promoItem.name;
+  }
+  if (promoHeroTitle) {
+    promoHeroTitle.textContent = promoItem?.name || "Best seller ready to ship";
+  }
+  if (promoHeroPrice) {
+    promoHeroPrice.textContent = promoItem?.price ? formatRupiah.format(promoItem.price) : "Rp 0";
+  }
+  whatsappPrompt.textContent = state.store.whatsappPrompt;
+  modeBanner.hidden = appMode !== "test";
+  modeBannerBody.textContent = state.store.testModeDescription;
+  syncFooterLinks();
+  locationPicker = window.BakeaholicLocationPicker?.createLocationPicker({
+    rootId: "locationModal",
+    kitchen: {
+      lat: state.store.kitchenLat,
+      lng: state.store.kitchenLng
+    },
+    googleMapsApiKey: state.store.integrations?.googleMapsApiKey,
+    initialValue: state.draft.destination,
+    onSave: async (destination) => {
+      state.draft.destination = destination;
+      state.draft.customer.address = destination.formattedAddress;
+      persistDraft();
+      hydrateDetailsForm();
+      closeModal(locationModal);
+      await refreshCart();
+    }
+  });
+  syncFulfillmentUi();
+  hydrateDetailsForm();
+  renderChips();
+  renderCatalog();
+  updateActiveCategoryFromScroll();
+  updateHeaderChrome();
+  renderOrderBanner();
+  await refreshCart();
+
+  if (!state.draft.customer.phoneVerifiedAt) {
+    whatsappInput.value = "";
+    openModal(whatsappModal);
+  }
+}
+
+addressButton.addEventListener("click", () => {
+  openModal(locationModal);
+  locationPicker?.open();
+});
+searchInput.addEventListener("input", () => {
+  renderCatalog();
+  updateActiveCategoryFromScroll();
+});
+searchBar?.addEventListener("click", () => {
+  const header = document.querySelector(".app-header");
+  if (!header?.classList.contains("header-condensed")) return;
+  searchBar.classList.add("search-expanded");
+  searchInput.focus();
+});
+searchInput.addEventListener("blur", () => {
+  const header = document.querySelector(".app-header");
+  if (!header?.classList.contains("header-condensed")) return;
+  if (!searchInput.value.trim()) {
+    searchBar?.classList.remove("search-expanded");
+  }
+});
+window.addEventListener("scroll", scheduleScrollSpy, { passive: true });
+window.addEventListener("scroll", scheduleHeaderChrome, { passive: true });
+window.addEventListener("resize", scheduleScrollSpy);
+document.addEventListener("click", (event) => {
+  if (accountMenu.hidden) return;
+  if (accountMenu.contains(event.target) || loginButton?.contains(event.target)) return;
+  closeAccountMenu();
+});
+promoAddButton.addEventListener("click", () => addToCart(state.promo.itemId));
+stickyCartButton.addEventListener("click", () => {
+  window.location.href = `/cart.html${modeQuery}`;
+});
+loginButton?.addEventListener("click", () => {
+  openAccount();
+});
+accountSummaryButton?.addEventListener("click", () => {
+  closeAccountMenu();
+  openProfileModal("account");
+});
+accountOrderHistoryButton?.addEventListener("click", () => {
+  closeAccountMenu();
+  window.location.href = `/orders.html${modeQuery}`;
+});
+accountAddressesButton?.addEventListener("click", () => {
+  closeAccountMenu();
+  window.location.href = `/addresses.html${modeQuery}`;
+});
+accountLogoutButton?.addEventListener("click", logoutAccount);
+resetTestButton.addEventListener("click", resetTestData);
+closeWhatsappModal.addEventListener("click", () => closeModal(whatsappModal));
+closeOtpModal.addEventListener("click", () => closeModal(otpModal));
+closeProfileModal.addEventListener("click", () => closeModal(profileModal));
+closeDetailsModal.addEventListener("click", () => closeModal(detailsModal));
+closeProductModal.addEventListener("click", () => closeModal(productModal));
+document.getElementById("closeLocationModal")?.addEventListener("click", () => closeModal(locationModal));
+modalScrim.addEventListener("click", () => {
+  closeAccountMenu();
+  closeModal(whatsappModal);
+  closeModal(otpModal);
+  closeModal(profileModal);
+  closeModal(detailsModal);
+  closeModal(locationModal);
+  closeModal(productModal);
+});
+saveWhatsappButton.addEventListener("click", requestOtp);
+whatsappInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    requestOtp();
+  }
+});
+verifyOtpButton.addEventListener("click", verifyOtp);
+otpInput.addEventListener("input", () => {
+  otpInput.value = otpInput.value.replace(/[^\d]/g, "").slice(0, 6);
+});
+otpInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    verifyOtp();
+  }
+});
+resendOtpButton.addEventListener("click", async () => {
+  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
+  await requestOtp();
+});
+changePhoneButton.addEventListener("click", () => {
+  closeModal(otpModal);
+  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
+  openModal(whatsappModal);
+});
+copyOtpButton.addEventListener("click", async () => {
+  if (!testOtpCode.textContent) return;
+  try {
+    await navigator.clipboard.writeText(testOtpCode.textContent);
+    copyOtpButton.textContent = "Copied";
+    window.setTimeout(() => {
+      copyOtpButton.textContent = "Copy code";
+    }, 1400);
+  } catch (_error) {
+    otpInput.value = testOtpCode.textContent;
+  }
+});
+saveDetailsButton.addEventListener("click", () => {
+  state.draft.customer.name = customerNameInput.value.trim();
+  state.draft.customer.phone = customerPhoneInput.value.trim();
+  state.draft.customer.address = customerAddressInput.value.trim();
+  persistDraft();
+  syncFulfillmentUi();
+  closeModal(detailsModal);
+});
+saveProfileButton.addEventListener("click", saveProfile);
+profileEmailInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    saveProfile();
+  }
+});
+productModalAddButton.addEventListener("click", async () => {
+  if (!selectedProductId) return;
+  await addToCart(selectedProductId);
+  closeModal(productModal);
+});
+
+bootstrap().catch((error) => {
+  catalog.innerHTML = `
+    <section class="empty-card">
+      <strong>Unable to load the storefront.</strong>
+      <p>${escapeHtml(error.message)}</p>
+    </section>
+  `;
+});

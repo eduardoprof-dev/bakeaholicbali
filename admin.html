@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bakeaholic Admin</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="admin-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Local Admin</p>
+          <h1>Update the storefront without editing JSON by hand.</h1>
+          <p class="hero-text">
+            This page saves directly into the local catalog file used by the storefront and test mode.
+          </p>
+        </div>
+        <div class="hero-card">
+          <p class="hero-label">Admin links</p>
+          <strong><a href="/index.html" style="color: inherit;">Open storefront</a></strong>
+          <span><a href="/index.html?mode=test" style="color: inherit;">Open test mode</a></span>
+        </div>
+      </header>
+
+      <main class="admin-layout">
+        <section class="admin-panel">
+          <div class="admin-actions">
+            <button id="saveCatalogButton" class="admin-button" type="button">Save catalog</button>
+            <button id="addProductButton" class="admin-button secondary" type="button">Add product</button>
+            <span id="adminStatus" class="admin-status">Loading catalog...</span>
+          </div>
+        </section>
+
+        <section class="admin-panel">
+          <h2>Store Settings</h2>
+          <div class="admin-grid">
+            <div class="admin-field">
+              <label for="storeName">Store name</label>
+              <input id="storeName" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="orderWhatsapp">WhatsApp number</label>
+              <input id="orderWhatsapp" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="storeEyebrowInput">Eyebrow</label>
+              <input id="storeEyebrowInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="perkLabelInput">Contact label</label>
+              <input id="perkLabelInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="perkTitleInput">Contact title</label>
+              <input id="perkTitleInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="perkDescriptionInput">Contact note</label>
+              <input id="perkDescriptionInput" type="text" />
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel">
+          <div class="admin-section-head">
+            <div>
+              <h2>Integrations</h2>
+              <p class="helper-text">Save your Google Maps, Biteship, Midtrans, and WhatsApp Business API credentials here.</p>
+            </div>
+            <button id="saveIntegrationsButton" class="admin-button" type="button">Save integrations</button>
+          </div>
+          <div class="admin-grid">
+            <div class="admin-field">
+              <label for="googleMapsApiKeyInput">Google Maps API key</label>
+              <input id="googleMapsApiKeyInput" type="password" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="biteshipApiKeyInput">Biteship API key</label>
+              <input id="biteshipApiKeyInput" type="password" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="biteshipCouriersInput">Biteship couriers</label>
+              <input id="biteshipCouriersInput" type="text" placeholder="gojek,grab" />
+            </div>
+            <div class="admin-field">
+              <label for="midtransEnvironmentInput">Midtrans environment</label>
+              <select id="midtransEnvironmentInput">
+                <option value="sandbox">Sandbox</option>
+                <option value="production">Production</option>
+              </select>
+            </div>
+            <div class="admin-field">
+              <label for="midtransServerKeyInput">Midtrans server key</label>
+              <input id="midtransServerKeyInput" type="password" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="midtransClientKeyInput">Midtrans client key</label>
+              <input id="midtransClientKeyInput" type="password" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappAccessTokenInput">WhatsApp access token</label>
+              <input id="whatsappAccessTokenInput" type="password" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappPhoneNumberIdInput">WhatsApp phone number ID</label>
+              <input id="whatsappPhoneNumberIdInput" type="text" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappBusinessAccountIdInput">WhatsApp business account ID</label>
+              <input id="whatsappBusinessAccountIdInput" type="text" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappVerifyTokenInput">WhatsApp verify token</label>
+              <input id="whatsappVerifyTokenInput" type="password" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappAppIdInput">Meta app ID</label>
+              <input id="whatsappAppIdInput" type="text" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappAppSecretInput">Meta app secret</label>
+              <input id="whatsappAppSecretInput" type="password" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappOtpTemplateNameInput">OTP template name</label>
+              <input id="whatsappOtpTemplateNameInput" type="text" placeholder="otp_verification" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappOrderTemplateNameInput">Order update template name</label>
+              <input id="whatsappOrderTemplateNameInput" type="text" placeholder="order_status_update" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappTemplateLanguageInput">Template language</label>
+              <input id="whatsappTemplateLanguageInput" type="text" placeholder="en" />
+            </div>
+          </div>
+          <p class="helper-text">These values are stored locally in `order-demo/.env` and applied to the app immediately. WhatsApp template names should match templates already approved in Meta.</p>
+        </section>
+
+        <section class="admin-panel">
+          <h2>Promo Spotlight</h2>
+          <div class="admin-grid">
+            <div class="admin-field">
+              <label for="promoItemId">Featured product</label>
+              <select id="promoItemId"></select>
+            </div>
+            <div class="admin-field">
+              <label for="promoButtonLabel">Button label</label>
+              <input id="promoButtonLabel" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="promoKickerInput">Promo kicker</label>
+              <input id="promoKickerInput" type="text" />
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel">
+          <h2>Categories</h2>
+          <p class="helper-text">Keep category ids stable if products already use them.</p>
+          <div id="categoryList" class="product-editor-list"></div>
+        </section>
+
+        <section class="admin-panel">
+          <h2>Products</h2>
+          <p class="helper-text">Edit price, stock, image path, labels, and shelf details here.</p>
+          <div id="productList" class="product-editor-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="admin.js"></script>
+  </body>
+</html>
