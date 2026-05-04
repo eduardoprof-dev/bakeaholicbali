@@ -30,7 +30,7 @@ const state = {
   addresses: [],
   defaultAddressId: "",
   locationPicker: null,
-  integrations: null
+  publicConfig: null
 };
 
 function saveDraft() {
@@ -119,7 +119,6 @@ function render() {
       const response = await accountCommon.request(appMode, "/api/customer/addresses/default", {
         method: "POST",
         body: JSON.stringify({
-          phone: state.draft.customer.phone,
           addressId
         })
       });
@@ -132,7 +131,7 @@ function render() {
 }
 
 async function loadAddresses() {
-  const response = await accountCommon.request(appMode, `/api/customer/addresses?phone=${encodeURIComponent(state.draft.customer.phone || "")}`);
+  const response = await accountCommon.request(appMode, "/api/customer/addresses");
   state.addresses = response.addresses || [];
   state.defaultAddressId = response.defaultAddressId || "";
 
@@ -140,7 +139,6 @@ async function loadAddresses() {
     const seeded = await accountCommon.request(appMode, "/api/customer/addresses", {
       method: "POST",
       body: JSON.stringify({
-        phone: state.draft.customer.phone,
         label: state.draft.destination.label || "Saved address",
         formattedAddress: state.draft.destination.formattedAddress,
         locationNotes: state.draft.destination.locationNotes || "",
@@ -159,17 +157,16 @@ async function loadAddresses() {
 }
 
 async function initializeLocationPicker() {
-  state.integrations = await accountCommon.request(appMode, "/api/admin/integrations");
+  state.publicConfig = await accountCommon.request(appMode, "/api/public-config");
   state.locationPicker = window.BakeaholicLocationPicker?.createLocationPicker({
     rootId: "locationModal",
     kitchen: kitchenLocation,
     initialValue: state.draft.destination,
-    googleMapsApiKey: state.integrations.googleMapsApiKey,
+    googleMapsApiKey: state.publicConfig.googleMapsApiKey,
     onSave: async (destination) => {
       const response = await accountCommon.request(appMode, "/api/customer/addresses", {
         method: "POST",
         body: JSON.stringify({
-          phone: state.draft.customer.phone,
           label: destination.label,
           formattedAddress: destination.formattedAddress,
           locationNotes: destination.locationNotes,

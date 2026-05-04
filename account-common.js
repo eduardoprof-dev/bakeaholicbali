@@ -23,6 +23,14 @@ window.BakeaholicAccountCommon = (() => {
     });
   }
 
+  async function logoutSession(appMode) {
+    try {
+      await request(appMode, "/api/session/logout", { method: "POST" });
+    } catch (_error) {
+      // Ignore logout failures and still clear local browser state.
+    }
+  }
+
   function loadDraft(draftKey, fallback) {
     try {
       return JSON.parse(localStorage.getItem(draftKey) || "null") || fallback;
@@ -91,9 +99,11 @@ window.BakeaholicAccountCommon = (() => {
 
     accountLogoutButton?.addEventListener("click", (event) => {
       event.stopPropagation();
-      localStorage.removeItem(draftKey);
-      closeMenu();
-      window.location.href = `/index.html${modeQuery}`;
+      logoutSession(modeQuery === "?mode=test" ? "test" : "live").finally(() => {
+        localStorage.removeItem(draftKey);
+        closeMenu();
+        window.location.href = `/index.html${modeQuery}`;
+      });
     });
 
     document.addEventListener("click", (event) => {
@@ -108,6 +118,7 @@ window.BakeaholicAccountCommon = (() => {
   return {
     escapeHtml,
     request,
+    logoutSession,
     loadDraft,
     customerFullName,
     accountInitials,

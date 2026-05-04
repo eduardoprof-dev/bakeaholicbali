@@ -242,6 +242,30 @@ function request(path, options = {}) {
   });
 }
 
+async function syncSessionProfile() {
+  try {
+    const payload = await request("/api/session");
+    if (!payload?.authenticated) {
+      return false;
+    }
+
+    state.draft.customer.phone = payload.customer?.phone || state.draft.customer.phone;
+    state.draft.customer.phoneVerifiedAt = payload.customer?.verifiedAt || state.draft.customer.phoneVerifiedAt;
+    applyCustomerProfile(payload.profile);
+    persistDraft();
+    return true;
+  } catch (_error) {
+    state.draft.customer.phone = "";
+    state.draft.customer.phoneVerifiedAt = "";
+    state.draft.customer.firstName = "";
+    state.draft.customer.lastName = "";
+    state.draft.customer.email = "";
+    state.draft.customer.name = "";
+    persistDraft();
+    return false;
+  }
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
@@ -708,13 +732,17 @@ function openAccount() {
 }
 
 function logoutAccount() {
-  localStorage.removeItem(draftKey);
-  state.draft = loadDraft();
-  closeAccountMenu();
-  hydrateDetailsForm();
-  syncFulfillmentUi();
-  whatsappInput.value = "";
-  openModal(whatsappModal);
+  request("/api/session/logout", { method: "POST" })
+    .catch(() => null)
+    .finally(() => {
+      localStorage.removeItem(draftKey);
+      state.draft = loadDraft();
+      closeAccountMenu();
+      hydrateDetailsForm();
+      syncFulfillmentUi();
+      whatsappInput.value = "";
+      openModal(whatsappModal);
+    });
 }
 
 async function saveProfile() {
@@ -742,7 +770,6 @@ async function saveProfile() {
     const payload = await request("/api/customer/profile", {
       method: "POST",
       body: JSON.stringify({
-        phone: state.draft.customer.phone,
         firstName,
         lastName,
         email
@@ -856,6 +883,12 @@ async function bootstrap() {
   updateHeaderChrome();
   renderOrderBanner();
   await refreshCart();
+
+  if (state.draft.customer.phoneVerifiedAt) {
+    await syncSessionProfile();
+    renderAccountMenu();
+    hydrateDetailsForm();
+  }
 
   if (!state.draft.customer.phoneVerifiedAt) {
     whatsappInput.value = "";

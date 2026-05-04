@@ -477,10 +477,31 @@ const contentTypes = {
   ".jpeg": "image/jpeg"
 };
 
+const CUSTOMER_SESSION_COOKIE = "bakeaholic_customer_session";
+const ADMIN_SESSION_COOKIE = "bakeaholic_admin_session";
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 12;
+const SESSION_SECRET = process.env.SESSION_SECRET
+  || process.env.WHATSAPP_APP_SECRET
+  || process.env.MIDTRANS_SERVER_KEY
+  || crypto.randomBytes(32).toString("hex");
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
+const rateLimitBuckets = new Map();
+
+function defaultSecurityHeaders() {
+  return {
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(self)"
+  };
+}
+
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
+    ...defaultSecurityHeaders()
   });
   response.end(JSON.stringify(payload));
 }
@@ -496,10 +517,203 @@ function sendFile(response, targetPath) {
 
     response.writeHead(200, {
       "Content-Type": contentType,
-      "Cache-Control": "no-store"
+      ...defaultSecurityHeaders()
     });
     response.end(content);
   });
+}
+
+function timingSafeEqualString(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""), "utf8");
+  const rightBuffer = Buffer.from(String(right || ""), "utf8");
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function encodeBase64Url(value) {
+  return Buffer.from(value, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function decodeBase64Url(value) {
+  const normalized = String(value || "")
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
+  return Buffer.from(`${normalized}${padding}`, "base64").toString("utf8");
+}
+
+function signValue(value) {
+  return crypto
+    .createHmac("sha256", SESSION_SECRET)
+    .update(value)
+    .digest("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function createSignedSession(payload) {
+  const encodedPayload = encodeBase64Url(JSON.stringify(payload));
+  const signature = signValue(encodedPayload);
+  return `${encodedPayload}.${signature}`;
+}
+
+function parseSignedSession(token) {
+  const [encodedPayload, signature] = String(token || "").split(".");
+  if (!encodedPayload || !signature) {
+    return null;
+  }
+  if (!timingSafeEqualString(signValue(encodedPayload), signature)) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(decodeBase64Url(encodedPayload));
+    if (!payload?.exp || payload.exp < Date.now()) {
+      return null;
+    }
+    return payload;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function parseCookies(request) {
+  const cookieHeader = String(request.headers.cookie || "");
+  return cookieHeader
+    .split(";")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .reduce((cookies, entry) => {
+      const separatorIndex = entry.indexOf("=");
+      if (separatorIndex <= 0) {
+        return cookies;
+      }
+      const key = entry.slice(0, separatorIndex).trim();
+      const value = entry.slice(separatorIndex + 1).trim();
+      cookies[key] = decodeURIComponent(value);
+      return cookies;
+    }, {});
+}
+
+function serializeCookie(name, value, options = {}) {
+  const parts = [`${name}=${encodeURIComponent(value)}`];
+  parts.push(`Path=${options.path || "/"}`);
+  parts.push(`SameSite=${options.sameSite || "Lax"}`);
+  if (options.maxAge != null) {
+    parts.push(`Max-Age=${Math.max(0, Math.floor(options.maxAge))}`);
+  }
+  if (options.httpOnly !== false) {
+    parts.push("HttpOnly");
+  }
+  if (options.secure !== false) {
+    parts.push("Secure");
+  }
+  return parts.join("; ");
+}
+
+function appendSetCookie(response, cookieValue) {
+  const existing = response.getHeader("Set-Cookie");
+  if (!existing) {
+    response.setHeader("Set-Cookie", cookieValue);
+    return;
+  }
+  const next = Array.isArray(existing) ? existing.concat(cookieValue) : [existing, cookieValue];
+  response.setHeader("Set-Cookie", next);
+}
+
+function isSecureRequest(request) {
+  return String(request.headers["x-forwarded-proto"] || "").toLowerCase() === "https";
+}
+
+function setSignedSessionCookie(response, request, cookieName, payload, maxAgeSeconds) {
+  const token = createSignedSession({
+    ...payload,
+    exp: Date.now() + maxAgeSeconds * 1000
+  });
+  appendSetCookie(response, serializeCookie(cookieName, token, {
+    maxAge: maxAgeSeconds,
+    secure: isSecureRequest(request)
+  }));
+}
+
+function clearSessionCookie(response, request, cookieName) {
+  appendSetCookie(response, serializeCookie(cookieName, "", {
+    maxAge: 0,
+    secure: isSecureRequest(request)
+  }));
+}
+
+function currentCustomerSession(request) {
+  const cookies = parseCookies(request);
+  const payload = parseSignedSession(cookies[CUSTOMER_SESSION_COOKIE]);
+  if (!payload || payload.role !== "customer" || !payload.phone) {
+    return null;
+  }
+  return payload;
+}
+
+function currentAdminSession(request) {
+  const cookies = parseCookies(request);
+  const payload = parseSignedSession(cookies[ADMIN_SESSION_COOKIE]);
+  if (!payload || payload.role !== "admin") {
+    return null;
+  }
+  return payload;
+}
+
+function requireCustomerSession(request, response) {
+  const session = currentCustomerSession(request);
+  if (!session) {
+    sendJson(response, 401, { error: "Please log in again to continue" });
+    return null;
+  }
+  return session;
+}
+
+function requireAdminSession(request, response) {
+  if (!ADMIN_PASSWORD) {
+    sendJson(response, 503, { error: "Admin access is disabled until ADMIN_PASSWORD is configured" });
+    return null;
+  }
+  const session = currentAdminSession(request);
+  if (!session) {
+    sendJson(response, 401, { error: "Admin login required" });
+    return null;
+  }
+  return session;
+}
+
+function requestIpAddress(request) {
+  const forwarded = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || request.socket.remoteAddress || "unknown";
+}
+
+function checkRateLimit(key, limit, windowMs) {
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(key) || [];
+  const freshEvents = bucket.filter((entry) => now - entry < windowMs);
+  freshEvents.push(now);
+  rateLimitBuckets.set(key, freshEvents);
+  return freshEvents.length <= limit;
+}
+
+function enforceSameOrigin(request, response) {
+  const origin = String(request.headers.origin || "");
+  if (!origin) {
+    return true;
+  }
+  const expectedOrigin = `${isSecureRequest(request) ? "https" : "http"}://${request.headers.host}`;
+  if (origin !== expectedOrigin) {
+    sendJson(response, 403, { error: "Blocked cross-origin request" });
+    return false;
+  }
+  return true;
 }
 
 function parseBody(request) {
@@ -635,6 +849,10 @@ function getCustomerProfile(phone) {
   return publicCustomerProfile(customers[formatIndonesianPhone(phone)]);
 }
 
+function getCustomerProfileFromSession(session) {
+  return getCustomerProfile(session?.phone);
+}
+
 function normalizeAddressEntry(input = {}) {
   const id = String(input.id || crypto.randomUUID()).trim();
   const label = String(input.label || input.name || "").trim() || "Saved address";
@@ -652,8 +870,8 @@ function normalizeAddressEntry(input = {}) {
   };
 }
 
-function saveCustomerProfile(input = {}) {
-  const phone = formatIndonesianPhone(input.phone);
+function saveCustomerProfile(input = {}, verifiedPhone = "") {
+  const phone = formatIndonesianPhone(verifiedPhone || input.phone);
   if (!phone) {
     throw new Error("Verified WhatsApp number is required");
   }
@@ -699,8 +917,12 @@ function getCustomerAddresses(phone) {
   };
 }
 
-function saveCustomerAddress(input = {}) {
-  const phone = formatIndonesianPhone(input.phone);
+function getCustomerAddressesFromSession(session) {
+  return getCustomerAddresses(session?.phone);
+}
+
+function saveCustomerAddress(input = {}, verifiedPhone = "") {
+  const phone = formatIndonesianPhone(verifiedPhone || input.phone);
   const customer = customers[phone];
   if (!customer) {
     throw new Error("Customer profile not found");
@@ -723,8 +945,8 @@ function saveCustomerAddress(input = {}) {
   return getCustomerAddresses(phone);
 }
 
-function setDefaultCustomerAddress(input = {}) {
-  const phone = formatIndonesianPhone(input.phone);
+function setDefaultCustomerAddress(input = {}, verifiedPhone = "") {
+  const phone = formatIndonesianPhone(verifiedPhone || input.phone);
   const customer = customers[phone];
   if (!customer) {
     throw new Error("Customer profile not found");
@@ -1523,6 +1745,13 @@ function buildWhatsappUrl(order) {
   return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
 }
 
+function customerOwnsOrder(session, order) {
+  if (!session || !order) {
+    return false;
+  }
+  return formatIndonesianPhone(session.phone) === formatIndonesianPhone(order.customer?.phone);
+}
+
 function validateCheckoutDraft(draft, summary) {
   if (!summary.itemCount) {
     throw new Error("Your basket is empty");
@@ -1698,6 +1927,21 @@ async function createOrder(mode, payload) {
   return enrichOrder(order);
 }
 
+async function createOrderForSession(mode, payload, session) {
+  if (!session?.phone) {
+    throw new Error("Please log in again to continue");
+  }
+  const body = {
+    ...payload,
+    customer: {
+      ...(payload.customer || {}),
+      phone: `+${formatIndonesianPhone(session.phone)}`,
+      phoneVerifiedAt: session.verifiedAt || new Date().toISOString()
+    }
+  };
+  return createOrder(mode, body);
+}
+
 function findOrder(mode, orderId) {
   return getStoreState(mode).orders.find((order) => order.id === orderId) || null;
 }
@@ -1730,6 +1974,14 @@ async function updateOrderPaymentStatus(mode, orderId) {
   return enrichOrder(order);
 }
 
+async function updateOrderPaymentStatusForSession(mode, orderId, session) {
+  const order = findOrder(mode, orderId);
+  if (!order || !customerOwnsOrder(session, order)) {
+    throw new Error("Order not found");
+  }
+  return updateOrderPaymentStatus(mode, orderId);
+}
+
 async function cancelOrder(mode, orderId) {
   const order = findOrder(mode, orderId);
   if (!order) {
@@ -1745,6 +1997,14 @@ async function cancelOrder(mode, orderId) {
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
+}
+
+async function cancelOrderForSession(mode, orderId, session) {
+  const order = findOrder(mode, orderId);
+  if (!order || !customerOwnsOrder(session, order)) {
+    throw new Error("Order not found");
+  }
+  return cancelOrder(mode, orderId);
 }
 
 function resetStore(mode) {
@@ -1793,6 +2053,79 @@ function handleApi(requestUrl, request, response) {
   const pathname = requestUrl.pathname;
   const mode = getAppMode(requestUrl, request);
   const storeState = getStoreState(mode);
+  const mutatingRequest = new Set(["POST", "PUT", "PATCH", "DELETE"]).has(request.method);
+
+  if (mutatingRequest && pathname !== "/api/midtrans/notification" && !enforceSameOrigin(request, response)) {
+    return true;
+  }
+
+  if (request.method === "GET" && pathname === "/api/public-config") {
+    sendJson(response, 200, {
+      googleMapsApiKey: getIntegrationConfig().googleMapsApiKey
+    });
+    return true;
+  }
+
+  if (request.method === "GET" && pathname === "/api/session") {
+    const session = currentCustomerSession(request);
+    if (!session) {
+      sendJson(response, 401, { error: "Not logged in" });
+      return true;
+    }
+    sendJson(response, 200, {
+      session: {
+        phone: session.phone,
+        verifiedAt: session.verifiedAt
+      },
+      profile: getCustomerProfileFromSession(session)
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/session/logout") {
+    clearSessionCookie(response, request, CUSTOMER_SESSION_COOKIE);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/session") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    sendJson(response, 200, { authenticated: true, session });
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/login") {
+    const ipAddress = requestIpAddress(request);
+    if (!checkRateLimit(`admin-login:${ipAddress}`, 10, 15 * 60 * 1000)) {
+      sendJson(response, 429, { error: "Too many admin login attempts. Please try again later." });
+      return true;
+    }
+
+    parseBody(request)
+      .then((body) => {
+        const password = String(body.password || "");
+        if (!ADMIN_PASSWORD || !timingSafeEqualString(password, ADMIN_PASSWORD)) {
+          sendJson(response, 401, { error: "Incorrect admin password" });
+          return;
+        }
+        setSignedSessionCookie(response, request, ADMIN_SESSION_COOKIE, {
+          role: "admin",
+          createdAt: new Date().toISOString()
+        }, ADMIN_SESSION_TTL_SECONDS);
+        sendJson(response, 200, { ok: true });
+      })
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/logout") {
+    clearSessionCookie(response, request, ADMIN_SESSION_COOKIE);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
 
   if (request.method === "GET" && pathname === "/api/menu") {
     sendJson(response, 200, {
@@ -1827,8 +2160,12 @@ function handleApi(requestUrl, request, response) {
 
   if (request.method === "GET" && pathname === "/api/order") {
     const orderId = String(requestUrl.searchParams.get("id") || "").trim();
+    const session = requireCustomerSession(request, response);
+    if (!session) {
+      return true;
+    }
     const order = enrichOrder(findOrder(mode, orderId));
-    if (!order) {
+    if (!order || !customerOwnsOrder(session, order)) {
       sendJson(response, 404, { error: "Order not found" });
       return true;
     }
@@ -1837,6 +2174,10 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/orders") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
     sendJson(response, 200, {
       mode,
       orders: storeState.orders.map((order) => enrichOrder(order))
@@ -1845,27 +2186,41 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/customer/orders") {
-    const phone = formatIndonesianPhone(requestUrl.searchParams.get("phone"));
-    const orders = phone
-      ? storeState.orders
-          .filter((order) => normalizePhoneNumber(order.customer.phone) === phone)
-          .map((order) => enrichOrder(order))
-      : [];
+    const session = requireCustomerSession(request, response);
+    if (!session) {
+      return true;
+    }
+    const phone = formatIndonesianPhone(session.phone);
+    const orders = storeState.orders
+      .filter((order) => normalizePhoneNumber(order.customer.phone) === phone)
+      .map((order) => enrichOrder(order));
     sendJson(response, 200, { orders });
     return true;
   }
 
   if (request.method === "GET" && pathname === "/api/admin/catalog") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
     sendJson(response, 200, catalog);
     return true;
   }
 
   if (request.method === "GET" && pathname === "/api/admin/integrations") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
     sendJson(response, 200, readIntegrationSettings());
     return true;
   }
 
   if (request.method === "PUT" && pathname === "/api/admin/catalog") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
     parseBody(request)
       .then((body) => {
         const saved = saveCatalog(body);
@@ -1877,6 +2232,10 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "PUT" && pathname === "/api/admin/integrations") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
     parseBody(request)
       .then((body) => {
         const saved = saveIntegrationSettings(body);
@@ -1907,8 +2266,15 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/register/start") {
+    const ipAddress = requestIpAddress(request);
     parseBody(request)
       .then(async (body) => {
+        const phone = formatIndonesianPhone(body.phone);
+        if (!checkRateLimit(`otp-start-ip:${ipAddress}`, 8, 15 * 60 * 1000)
+          || !checkRateLimit(`otp-start-phone:${phone}`, 5, 15 * 60 * 1000)) {
+          sendJson(response, 429, { error: "Too many verification requests. Please try again later." });
+          return;
+        }
         const registration = await startRegistration(mode, storeState, body);
         sendJson(response, 200, { registration });
       })
@@ -1917,9 +2283,21 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/register/verify") {
+    const ipAddress = requestIpAddress(request);
     parseBody(request)
       .then((body) => {
+        const phone = formatIndonesianPhone(body.phone);
+        if (!checkRateLimit(`otp-verify-ip:${ipAddress}`, 20, 15 * 60 * 1000)
+          || !checkRateLimit(`otp-verify-phone:${phone}`, 10, 15 * 60 * 1000)) {
+          sendJson(response, 429, { error: "Too many verification attempts. Please try again later." });
+          return;
+        }
         const registration = verifyRegistration(storeState, body);
+        setSignedSessionCookie(response, request, CUSTOMER_SESSION_COOKIE, {
+          role: "customer",
+          phone: registration.phone,
+          verifiedAt: registration.verifiedAt
+        }, SESSION_TTL_SECONDS);
         sendJson(response, 200, { registration });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -1927,8 +2305,11 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/customer/profile") {
-    const phone = requestUrl.searchParams.get("phone");
-    const profile = getCustomerProfile(phone);
+    const session = requireCustomerSession(request, response);
+    if (!session) {
+      return true;
+    }
+    const profile = getCustomerProfileFromSession(session);
     if (!profile) {
       sendJson(response, 404, { error: "Customer profile not found" });
       return true;
@@ -1938,9 +2319,13 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/customer/profile") {
+    const session = requireCustomerSession(request, response);
+    if (!session) {
+      return true;
+    }
     parseBody(request)
       .then((body) => {
-        const profile = saveCustomerProfile(body);
+        const profile = saveCustomerProfile(body, session.phone);
         sendJson(response, 200, { profile });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -1948,15 +2333,22 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/customer/addresses") {
-    const phone = requestUrl.searchParams.get("phone");
-    sendJson(response, 200, getCustomerAddresses(phone));
+    const session = requireCustomerSession(request, response);
+    if (!session) {
+      return true;
+    }
+    sendJson(response, 200, getCustomerAddressesFromSession(session));
     return true;
   }
 
   if (request.method === "POST" && pathname === "/api/customer/addresses") {
+    const session = requireCustomerSession(request, response);
+    if (!session) {
+      return true;
+    }
     parseBody(request)
       .then((body) => {
-        const result = saveCustomerAddress(body);
+        const result = saveCustomerAddress(body, session.phone);
         sendJson(response, 200, result);
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -1964,9 +2356,13 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/customer/addresses/default") {
+    const session = requireCustomerSession(request, response);
+    if (!session) {
+      return true;
+    }
     parseBody(request)
       .then((body) => {
-        const result = setDefaultCustomerAddress(body);
+        const result = setDefaultCustomerAddress(body, session.phone);
         sendJson(response, 200, result);
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -1974,9 +2370,13 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/checkout") {
+    const session = requireCustomerSession(request, response);
+    if (!session) {
+      return true;
+    }
     parseBody(request)
       .then(async (body) => {
-        const order = await createOrder(mode, body);
+        const order = await createOrderForSession(mode, body, session);
         sendJson(response, 201, { order });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -1984,9 +2384,13 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/order/payment-status") {
+    const session = requireCustomerSession(request, response);
+    if (!session) {
+      return true;
+    }
     parseBody(request)
       .then(async (body) => {
-        const order = await updateOrderPaymentStatus(mode, String(body.id || "").trim());
+        const order = await updateOrderPaymentStatusForSession(mode, String(body.id || "").trim(), session);
         sendJson(response, 200, { order });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -1994,9 +2398,13 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/order/cancel") {
+    const session = requireCustomerSession(request, response);
+    if (!session) {
+      return true;
+    }
     parseBody(request)
       .then(async (body) => {
-        const order = await cancelOrder(mode, String(body.id || "").trim());
+        const order = await cancelOrderForSession(mode, String(body.id || "").trim(), session);
         sendJson(response, 200, { order });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -2055,7 +2463,16 @@ const server = http.createServer((request, response) => {
 
   const relativePath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
   const targetPath = path.normalize(path.join(rootDir, relativePath));
+  const fileName = path.basename(targetPath);
   if (!targetPath.startsWith(rootDir)) {
+    sendJson(response, 403, { error: "Forbidden" });
+    return;
+  }
+  if (
+    fileName.startsWith(".")
+    || targetPath === envPath
+    || targetPath.startsWith(path.join(rootDir, "data"))
+  ) {
     sendJson(response, 403, { error: "Forbidden" });
     return;
   }

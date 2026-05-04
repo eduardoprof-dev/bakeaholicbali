@@ -131,7 +131,7 @@ async function bootstrap() {
     return;
   }
 
-  const response = await accountCommon.request(appMode, `/api/customer/orders?phone=${encodeURIComponent(phone)}`);
+  const response = await accountCommon.request(appMode, "/api/customer/orders");
   const orders = Array.isArray(response.orders) ? response.orders : [];
   if (!orders.length) {
     renderEmpty("Your Orders", "Your future purchases will show up here once you place an order.");

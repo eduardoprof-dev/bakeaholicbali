@@ -58,6 +58,27 @@ async function request(path, options = {}) {
   return response.json();
 }
 
+async function ensureAdminSession() {
+  try {
+    await request("/api/admin/session");
+    return;
+  } catch (error) {
+    if (!String(error.message || "").includes("401")) {
+      throw error;
+    }
+  }
+
+  const password = window.prompt("Enter the admin password");
+  if (!password) {
+    throw new Error("Admin login was cancelled.");
+  }
+
+  await request("/api/admin/login", {
+    method: "POST",
+    body: JSON.stringify({ password })
+  });
+}
+
 function setStatus(message) {
   adminStatus.textContent = message;
 }
@@ -339,6 +360,7 @@ function addProduct() {
 }
 
 async function bootstrap() {
+  await ensureAdminSession();
   const [catalog, integrations] = await Promise.all([
     request("/api/admin/catalog"),
     request("/api/admin/integrations")
