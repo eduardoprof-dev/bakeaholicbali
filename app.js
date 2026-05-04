@@ -450,7 +450,31 @@ function scheduleHeaderChrome() {
   headerChromeFrame = requestAnimationFrame(updateHeaderChrome);
 }
 
+function imageFit(item) {
+  return item.imageFit === "cover" ? "cover" : "contain";
+}
+
+function imagePosition(item) {
+  switch (item.imagePosition) {
+    case "top":
+      return "center top";
+    case "bottom":
+      return "center bottom";
+    case "left":
+      return "left center";
+    case "right":
+      return "right center";
+    default:
+      return "center center";
+  }
+}
+
+function productImageStyle(item) {
+  return `style="object-fit:${imageFit(item)};object-position:${imagePosition(item)};"`;
+}
+
 function renderCatalog() {
+
   catalog.innerHTML = state.categories
     .map((category) => {
       const items = filteredItemsForCategory(category.id);
@@ -467,7 +491,7 @@ function renderCatalog() {
               .map(
                 (item) => `
                   <article class="product-card" role="button" tabindex="0" data-product-id="${escapeHtml(item.id)}" aria-label="View ${escapeHtml(item.name)} details">
-                    <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" />
+                    <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" ${productImageStyle(item)} />
                     <div class="product-copy">
                       <div class="product-topline">
                         <h3>${escapeHtml(item.name)}</h3>
@@ -535,6 +559,8 @@ function openProductModal(itemId) {
   productModalImage.src = versionedAsset(item.imagePath);
   productModalImage.alt = item.name;
   productModalImage.className = "product-modal-image";
+  productModalImage.style.objectFit = imageFit(item);
+  productModalImage.style.objectPosition = imagePosition(item);
   productModalCategory.textContent = getCategoryLabel(item.category);
   productModalTitle.textContent = item.name;
   productModalBadge.textContent = item.badge || "";
@@ -847,6 +873,8 @@ async function bootstrap() {
   if (promoHeroImage && promoItem?.imagePath) {
     promoHeroImage.src = versionedAsset(promoItem.imagePath);
     promoHeroImage.alt = promoItem.name;
+    promoHeroImage.style.objectFit = imageFit(promoItem);
+    promoHeroImage.style.objectPosition = imagePosition(promoItem);
   }
   if (promoHeroTitle) {
     promoHeroTitle.textContent = promoItem?.name || "Best seller ready to ship";

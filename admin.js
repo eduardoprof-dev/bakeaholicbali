@@ -125,6 +125,38 @@ function renderPromo() {
   });
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function normalizeImageFit(value) {
+  return value === "cover" ? "cover" : "contain";
+}
+
+function normalizeImagePosition(value) {
+  switch (value) {
+    case "top":
+      return "center top";
+    case "bottom":
+      return "center bottom";
+    case "left":
+      return "left center";
+    case "right":
+      return "right center";
+    default:
+      return "center center";
+  }
+}
+
+function productPreviewStyle(product) {
+  return `object-fit: ${normalizeImageFit(product.imageFit)}; object-position: ${normalizeImagePosition(product.imagePosition)};`;
+}
+
 function categoryMarkup(category, index) {
   return `
     <article class="product-editor-card" data-category-index="${index}">
@@ -208,7 +240,24 @@ function productMarkup(product, index) {
         </div>
         <div class="admin-field">
           <label>Image path</label>
-          <input data-product-field="imagePath" type="text" value="${product.imagePath || ""}" />
+          <input class="admin-code-input" data-product-field="imagePath" type="text" value="${product.imagePath || ""}" />
+        </div>
+        <div class="admin-field">
+          <label>Image fit</label>
+          <select data-product-field="imageFit">
+            <option value="contain" ${normalizeImageFit(product.imageFit) === "contain" ? "selected" : ""}>Contain</option>
+            <option value="cover" ${normalizeImageFit(product.imageFit) === "cover" ? "selected" : ""}>Cover</option>
+          </select>
+        </div>
+        <div class="admin-field">
+          <label>Image position</label>
+          <select data-product-field="imagePosition">
+            <option value="center" ${(!product.imagePosition || product.imagePosition === "center") ? "selected" : ""}>Center</option>
+            <option value="top" ${product.imagePosition === "top" ? "selected" : ""}>Top</option>
+            <option value="bottom" ${product.imagePosition === "bottom" ? "selected" : ""}>Bottom</option>
+            <option value="left" ${product.imagePosition === "left" ? "selected" : ""}>Left</option>
+            <option value="right" ${product.imagePosition === "right" ? "selected" : ""}>Right</option>
+          </select>
         </div>
         <div class="admin-field">
           <label>Min order</label>
@@ -217,6 +266,12 @@ function productMarkup(product, index) {
         <div class="admin-field">
           <label>Shelf life</label>
           <input data-product-field="shelfLife" type="text" value="${product.shelfLife || ""}" />
+        </div>
+        <div class="admin-field admin-image-preview-field">
+          <label>Image preview</label>
+          <div class="admin-image-preview-frame">
+            ${product.imagePath ? `<img class="admin-image-preview" data-product-preview src="${escapeHtml(product.imagePath)}" alt="${escapeHtml(product.name || "Product preview")}" style="${productPreviewStyle(product)}" />` : `<div class="admin-image-preview-empty" data-product-preview-empty>No image yet</div>`}
+          </div>
         </div>
         <div class="admin-field" style="grid-column: 1 / -1;">
           <label>Description</label>
@@ -244,6 +299,34 @@ function renderProducts() {
       state.catalog.items.splice(index, 1);
       renderPromoOptions();
       renderProducts();
+    });
+  });
+
+  productList.querySelectorAll("[data-product-index]").forEach((card) => {
+    const syncPreview = () => {
+      const pathField = card.querySelector('[data-product-field="imagePath"]');
+      const fitField = card.querySelector('[data-product-field="imageFit"]');
+      const positionField = card.querySelector('[data-product-field="imagePosition"]');
+      const preview = card.querySelector("[data-product-preview]");
+      const emptyState = card.querySelector("[data-product-preview-empty]");
+      const imagePath = pathField?.value.trim() || "";
+      const previewStyle = `object-fit: ${normalizeImageFit(fitField?.value)}; object-position: ${normalizeImagePosition(positionField?.value)};`;
+
+      if (imagePath) {
+        if (preview) {
+          preview.src = imagePath;
+          preview.style.cssText = previewStyle;
+        } else if (emptyState) {
+          emptyState.outerHTML = `<img class="admin-image-preview" data-product-preview src="${imagePath}" alt="Product preview" style="${previewStyle}" />`;
+        }
+      } else if (preview) {
+        preview.outerHTML = '<div class="admin-image-preview-empty" data-product-preview-empty>No image yet</div>';
+      }
+    };
+
+    card.querySelectorAll('[data-product-field="imagePath"], [data-product-field="imageFit"], [data-product-field="imagePosition"]').forEach((field) => {
+      field.addEventListener("input", syncPreview);
+      field.addEventListener("change", syncPreview);
     });
   });
 }
@@ -370,6 +453,8 @@ function addProduct() {
     minOrder: "",
     shelfLife: "",
     imagePath: "",
+    imageFit: "contain",
+    imagePosition: "center",
     stock: 0
   });
   renderPromoOptions();
