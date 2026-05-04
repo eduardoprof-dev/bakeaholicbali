@@ -486,7 +486,7 @@ const contentTypes = {
 const CUSTOMER_SESSION_COOKIE = "bakeaholic_customer_session";
 const ADMIN_SESSION_COOKIE = "bakeaholic_admin_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
-const ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 12;
+const ADMIN_SESSION_TTL_SECONDS = 60 * 15;
 const SESSION_SECRET = process.env.SESSION_SECRET
   || process.env.WHATSAPP_APP_SECRET
   || process.env.MIDTRANS_SERVER_KEY

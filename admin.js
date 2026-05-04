@@ -5,6 +5,7 @@ const state = {
 const saveCatalogButton = document.getElementById("saveCatalogButton");
 const saveIntegrationsButton = document.getElementById("saveIntegrationsButton");
 const addProductButton = document.getElementById("addProductButton");
+const adminLogoutButton = document.getElementById("adminLogoutButton");
 const adminStatus = document.getElementById("adminStatus");
 const categoryList = document.getElementById("categoryList");
 const productList = document.getElementById("productList");
@@ -79,6 +80,20 @@ async function ensureAdminSession() {
     method: "POST",
     body: JSON.stringify({ password })
   });
+
+  setStatus("Admin login successful. Session lasts 15 minutes.");
+}
+
+async function logoutAdmin() {
+  try {
+    await request("/api/admin/logout", {
+      method: "POST"
+    });
+    setStatus("Logged out. Reloading admin login...");
+    window.location.reload();
+  } catch (error) {
+    setStatus(error.message);
+  }
 }
 
 function setStatus(message) {
@@ -376,6 +391,7 @@ async function bootstrap() {
 saveCatalogButton.addEventListener("click", saveCatalog);
 saveIntegrationsButton.addEventListener("click", saveIntegrations);
 addProductButton.addEventListener("click", addProduct);
+adminLogoutButton.addEventListener("click", logoutAdmin);
 
 bootstrap().catch((error) => {
   setStatus(error.message);
