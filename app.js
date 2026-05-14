@@ -110,15 +110,10 @@ const productModalAddButton = document.getElementById("productModalAddButton");
 let locationPicker;
 let activeCategoryId = "";
 let scrollSpyFrame = 0;
-let headerChromeFrame = 0;
-let headerIsCondensed = false;
 let selectedProductId = "";
 let pendingOtpPhone = "";
 let otpResendAvailableAt = 0;
 let otpTimerId = 0;
-
-const HEADER_CONDENSE_AT = 220;
-const HEADER_EXPAND_AT = 72;
 
 const whatsappIcon = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -437,28 +432,6 @@ function updateActiveCategoryFromScroll() {
 function scheduleScrollSpy() {
   if (scrollSpyFrame) return;
   scrollSpyFrame = requestAnimationFrame(updateActiveCategoryFromScroll);
-}
-
-function updateHeaderChrome() {
-  headerChromeFrame = 0;
-  const header = document.querySelector(".app-header");
-  if (!header) return;
-  const scrollY = window.scrollY;
-  if (!headerIsCondensed && scrollY >= HEADER_CONDENSE_AT) {
-    headerIsCondensed = true;
-  } else if (headerIsCondensed && scrollY <= HEADER_EXPAND_AT) {
-    headerIsCondensed = false;
-  }
-
-  header.classList.toggle("header-condensed", headerIsCondensed);
-  if (!headerIsCondensed) {
-    searchBar?.classList.remove("search-expanded");
-  }
-}
-
-function scheduleHeaderChrome() {
-  if (headerChromeFrame) return;
-  headerChromeFrame = requestAnimationFrame(updateHeaderChrome);
 }
 
 function imageFit(item) {
@@ -919,7 +892,6 @@ async function bootstrap() {
   renderChips();
   renderCatalog();
   updateActiveCategoryFromScroll();
-  updateHeaderChrome();
   renderOrderBanner();
   await refreshCart();
 
@@ -940,20 +912,12 @@ searchInput.addEventListener("input", () => {
   updateActiveCategoryFromScroll();
 });
 searchBar?.addEventListener("click", () => {
-  const header = document.querySelector(".app-header");
-  if (!header?.classList.contains("header-condensed")) return;
-  searchBar.classList.add("search-expanded");
   searchInput.focus();
 });
 searchInput.addEventListener("blur", () => {
-  const header = document.querySelector(".app-header");
-  if (!header?.classList.contains("header-condensed")) return;
-  if (!searchInput.value.trim()) {
-    searchBar?.classList.remove("search-expanded");
-  }
+  searchBar?.classList.remove("search-expanded");
 });
 window.addEventListener("scroll", scheduleScrollSpy, { passive: true });
-window.addEventListener("scroll", scheduleHeaderChrome, { passive: true });
 window.addEventListener("resize", scheduleScrollSpy);
 document.addEventListener("click", (event) => {
   if (accountMenu.hidden) return;
