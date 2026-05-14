@@ -282,6 +282,12 @@ function versionedAsset(path) {
   return `${path}${path.includes("?") ? "&" : "?"}v=${assetVersion}`;
 }
 
+function hasDeliveryDestination(destination = state.draft.destination) {
+  return Number.isFinite(Number(destination.lat))
+    && Number.isFinite(Number(destination.lng))
+    && Boolean(String(destination.formattedAddress || "").trim());
+}
+
 function syncFulfillmentUi() {
   state.draft.fulfillmentType = "delivery";
 
@@ -291,6 +297,11 @@ function syncFulfillmentUi() {
   addressTitle.textContent = state.store.addressLabel;
   addressText.textContent =
     state.draft.destination.formattedAddress || "Add your address and customer details before checkout.";
+
+  if (!hasDeliveryDestination()) {
+    deliveryFeeLine.textContent = "Add your address to estimate delivery fee.";
+    return;
+  }
 
   const feeAmount = state.cart?.deliveryFee || state.draft.destination.deliveryFee || 0;
   if (state.cart?.quoteSource === "biteship") {
@@ -817,7 +828,7 @@ function buildCartQuery() {
   const search = new URLSearchParams();
   search.set("fulfillment", state.draft.fulfillmentType);
   search.set("voucher", state.draft.voucherCode || "");
-  if (state.draft.destination.lat != null && state.draft.destination.lng != null) {
+  if (hasDeliveryDestination()) {
     search.set("lat", state.draft.destination.lat);
     search.set("lng", state.draft.destination.lng);
     search.set("route_km", state.draft.destination.routeDistanceKm || "");

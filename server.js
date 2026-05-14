@@ -60,6 +60,7 @@ const PAYMENT_METHODS = [
   { id: "qris", label: "QRIS", kind: "qris", logoText: "QRIS" },
   { id: "bca-va", label: "BCA Virtual Account", kind: "va", bankCode: "014", logoText: "BCA" }
 ];
+const MAX_DELIVERY_DISTANCE_KM = 100;
 
 const DEMO_VOUCHERS = [
   { code: "SWEET10", label: "10% off subtotal", type: "percent", value: 10, maxDiscount: 15000 },
@@ -983,6 +984,12 @@ function normalizeDestination(input = {}) {
   };
 }
 
+function hasCompleteDestination(destination) {
+  return destination.lat != null
+    && destination.lng != null
+    && Boolean(String(destination.formattedAddress || "").trim());
+}
+
 function normalizeCheckoutDraft(input = {}) {
   const customer = normalizeCustomerDetails(input.customer);
   const fulfillmentType = "delivery";
@@ -1369,7 +1376,7 @@ function buildCartSummary(storeState, options = {}) {
 
   if (lineItems.length && fulfillmentType === "delivery") {
     const destination = normalizeDestination(options.destination);
-    if (destination.lat != null && destination.lng != null) {
+    if (hasCompleteDestination(destination)) {
       const kitchen = {
         lat: store.kitchenLat,
         lng: store.kitchenLng
@@ -1379,7 +1386,16 @@ function buildCartSummary(storeState, options = {}) {
         destination,
         destination.routeDistanceKm
       );
-      shipping = calculateGoSendStyleFee(routeDistanceKm);
+      if (routeDistanceKm <= MAX_DELIVERY_DISTANCE_KM) {
+        shipping = calculateGoSendStyleFee(routeDistanceKm);
+      } else {
+        shipping = {
+          distanceKm: 0,
+          bikeFare: 0,
+          serviceFee: store.deliveryFee,
+          total: store.deliveryFee
+        };
+      }
     } else {
       shipping = {
         distanceKm: 0,
