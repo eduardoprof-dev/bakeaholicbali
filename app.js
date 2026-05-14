@@ -918,10 +918,6 @@ async function bootstrap() {
     hydrateDetailsForm();
   }
 
-  if (!state.draft.customer.phoneVerifiedAt) {
-    whatsappInput.value = "";
-    openModal(whatsappModal);
-  }
 }
 
 addressButton.addEventListener("click", () => {
