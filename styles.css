@@ -892,7 +892,21 @@ body::before {
   align-items: start;
 }
 
-.footer-row > div {
+.footer-contact {
+  display: contents;
+}
+
+.footer-contact strong {
+  grid-column: 1 / -1;
+}
+
+.footer-contact .footer-icon-link {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.footer-row > div,
+.footer-row > a {
   min-width: 0;
 }
 
@@ -915,6 +929,8 @@ body::before {
 }
 
 .footer-follow {
+  grid-column: 2;
+  grid-row: 2;
   display: flex;
   gap: 12px;
   align-items: center;
@@ -1206,13 +1222,12 @@ body::before {
 }
 
 .app-header.header-condensed .address-strip {
-  opacity: 0;
-  max-height: 0;
-  margin-top: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-bottom-color: transparent;
-  pointer-events: none;
+  opacity: 1;
+  max-height: 120px;
+  margin-top: 8px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  pointer-events: auto;
 }
 
 .app-header.header-condensed .delivery-fee-line {
@@ -1242,8 +1257,18 @@ body::before {
 
 .app-header.header-condensed .search-bar span {
   flex: 0 0 auto;
-  font-size: 1.24rem;
   line-height: 1;
+}
+
+.app-header.header-condensed .search-bar svg,
+.search-bar svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .app-header.header-condensed .search-bar input {
@@ -1867,6 +1892,7 @@ body::before {
   min-width: 0;
   overflow: hidden;
   border-radius: 16px;
+  padding-bottom: 68px;
 }
 
 .feature-media img {
@@ -1882,7 +1908,7 @@ body::before {
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: 10px;
+  bottom: 0;
   max-width: calc(100% - 24px);
   display: grid;
   gap: 3px;
@@ -2063,6 +2089,10 @@ body::before {
   border: 1px solid rgba(107, 66, 38, 0.12);
   box-shadow: 0 20px 35px rgba(77, 42, 12, 0.18);
   padding: 14px 16px;
+}
+
+.sticky-submit[hidden] {
+  display: none;
 }
 
 .storefront-sticky {

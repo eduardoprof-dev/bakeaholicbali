@@ -10,7 +10,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260514-search-footer" />
+    <link rel="stylesheet" href="styles.css?v=20260514-nav-footer-cart" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -80,7 +80,12 @@
         <div class="delivery-fee-line" id="deliveryFeeLine"></div>
 
         <label class="search-bar">
-          <span>⌕</span>
+          <span class="search-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="m16 16 4 4" />
+            </svg>
+          </span>
           <input
             id="searchInput"
             type="search"
@@ -129,7 +134,7 @@
         <img class="footer-logo" src="/assets/bakeaholic-logo.jpg" alt="Bakeaholic Bali" />
         <p class="footer-tagline">Bali's original packaged treats and wholesome snacks.</p>
         <div class="footer-row">
-          <div>
+          <div class="footer-contact">
             <strong>CONTACT US</strong>
             <a id="footerWhatsappLink" class="footer-icon-link" href="#" target="_blank" rel="noreferrer">
               <span class="footer-icon" aria-hidden="true">☎</span>
@@ -150,7 +155,7 @@
       </footer>
     </div>
 
-    <button class="sticky-submit storefront-sticky" id="stickyCartButton" type="button">
+    <button class="sticky-submit storefront-sticky" id="stickyCartButton" type="button" hidden>
       <div>
         <strong id="stickyCartLabel">0 items</strong>
         <p id="stickyCartHint">Add something delicious</p>
@@ -313,7 +318,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260514-search-footer"></script>
-    <script src="app.js?v=20260514-search-footer"></script>
+    <script src="location-picker.js?v=20260514-nav-footer-cart"></script>
+    <script src="app.js?v=20260514-nav-footer-cart"></script>
   </body>
 </html>

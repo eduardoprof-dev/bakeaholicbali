@@ -419,7 +419,7 @@ function updateActiveCategoryFromScroll() {
   if (!sections.length) return;
 
   const headerBottom = document.querySelector(".app-header")?.getBoundingClientRect().bottom || 0;
-  const activationLine = Math.max(120, headerBottom + 16);
+  const activationLine = Math.max(160, Math.min(window.innerHeight * 0.45, headerBottom + 220));
   let currentSection = sections[0];
   sections.forEach((section) => {
     if (section.getBoundingClientRect().top <= activationLine) {
@@ -569,6 +569,7 @@ function openProductModal(itemId) {
 
 function renderCartSummary() {
   const itemCount = state.cart?.itemCount || 0;
+  stickyCartButton.hidden = itemCount <= 0;
   stickyCartLabel.textContent = `${itemCount} item${itemCount === 1 ? "" : "s"}`;
   stickyCartHint.textContent = itemCount
     ? "Delivery order ready for review"
