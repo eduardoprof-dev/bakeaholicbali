@@ -1207,16 +1207,16 @@ body::before {
 
 .app-header.header-condensed .search-bar {
   position: absolute;
-  top: 10px;
+  top: 18px;
   left: 16px;
-  width: 62px;
-  min-width: 62px;
-  height: 62px;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
   margin: 0;
   padding: 0;
   justify-content: center;
   gap: 0;
-  border-radius: 16px;
+  border-radius: 10px;
   overflow: hidden;
   cursor: text;
   transition: width 180ms ease, padding 180ms ease, margin 180ms ease;
@@ -1224,7 +1224,7 @@ body::before {
 
 .app-header.header-condensed .search-bar span {
   flex: 0 0 auto;
-  font-size: 1.9rem;
+  font-size: 1.55rem;
   line-height: 1;
 }
 
