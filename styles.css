@@ -24,6 +24,7 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
 body {
@@ -31,6 +32,7 @@ body {
   min-height: 100vh;
   font-family: var(--font-body);
   color: var(--text);
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.55), transparent 28%),
     radial-gradient(circle at bottom right, rgba(191, 123, 48, 0.18), transparent 20%),
@@ -217,7 +219,13 @@ body::before {
   display: flex;
   gap: 10px;
   overflow-x: auto;
+  overflow-y: hidden;
   padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.chip-row::-webkit-scrollbar {
+  display: none;
 }
 
 .chip {
@@ -1018,6 +1026,7 @@ body::before {
   width: min(100%, 760px);
   margin: 0 auto;
   padding: 0 0 140px;
+  overflow-x: clip;
 }
 
 .app-header,
@@ -1845,6 +1854,9 @@ body::before {
   position: relative;
   display: grid;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 16px;
 }
 
 .feature-media img {
@@ -1861,6 +1873,7 @@ body::before {
   left: 12px;
   right: 12px;
   bottom: 10px;
+  max-width: calc(100% - 24px);
   display: grid;
   gap: 3px;
   padding: 9px 11px;
