@@ -330,11 +330,12 @@ function syncFooterLinks() {
       ? `https://wa.me/${whatsappNumber}`
       : "#";
     const whatsappLabel = whatsappNumber
-      ? `+${whatsappNumber.replace(/^62/, "62 ")} (24 hours)`
+      ? `+${whatsappNumber.replace(/^62/, "62 ")}`
       : "WhatsApp";
+    const hoursLabel = whatsappNumber ? `<span class="footer-hours">(24 hours)</span>` : "";
     footerWhatsappLink.innerHTML = `
       <span class="footer-icon">${whatsappIcon}</span>
-      <span class="footer-link-label">${escapeHtml(whatsappLabel)}</span>
+      <span class="footer-link-label">${escapeHtml(whatsappLabel)}${hoursLabel}</span>
     `;
   }
 
@@ -912,10 +913,13 @@ searchInput.addEventListener("input", () => {
   updateActiveCategoryFromScroll();
 });
 searchBar?.addEventListener("click", () => {
+  searchBar.classList.add("search-expanded");
   searchInput.focus();
 });
 searchInput.addEventListener("blur", () => {
-  searchBar?.classList.remove("search-expanded");
+  if (!searchInput.value.trim()) {
+    searchBar?.classList.remove("search-expanded");
+  }
 });
 window.addEventListener("scroll", scheduleScrollSpy, { passive: true });
 window.addEventListener("resize", scheduleScrollSpy);

@@ -885,8 +885,15 @@ body::before {
 }
 
 .footer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   padding-bottom: 22px;
   border-bottom: 1px solid var(--line);
+  align-items: start;
+}
+
+.footer-row > div {
+  min-width: 0;
 }
 
 .footer-row strong {
@@ -911,12 +918,28 @@ body::before {
   display: flex;
   gap: 12px;
   align-items: center;
+  justify-content: end;
+}
+
+.footer-follow > span {
+  white-space: nowrap;
 }
 
 .footer-icon-link {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.footer-link-label {
+  display: grid;
+  gap: 2px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.footer-hours {
+  display: block;
 }
 
 .footer-icon {
@@ -1200,18 +1223,21 @@ body::before {
 }
 
 .app-header.header-condensed .search-bar {
-  position: static;
-  width: 100%;
-  min-width: 0;
-  height: auto;
-  margin: 4px 0 0;
-  padding: 10px 12px;
-  justify-content: flex-start;
-  gap: 10px;
-  border-radius: 12px;
-  overflow: visible;
+  position: absolute;
+  top: 15px;
+  left: 16px;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  margin: 0;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+  border-radius: 10px;
+  overflow: hidden;
   cursor: text;
   transition: width 180ms ease, padding 180ms ease, margin 180ms ease;
+  z-index: 2;
 }
 
 .app-header.header-condensed .search-bar span {
@@ -1221,17 +1247,19 @@ body::before {
 }
 
 .app-header.header-condensed .search-bar input {
-  width: 100%;
+  width: 0;
   min-width: 0;
-  opacity: 1;
-  pointer-events: auto;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .app-header.header-condensed .search-bar.search-expanded,
 .app-header.header-condensed .search-bar:focus-within {
-  width: 100%;
-  padding: 10px 12px;
+  width: min(320px, calc(100vw - 32px));
+  padding: 8px 12px;
   gap: 10px;
+  justify-content: flex-start;
+  background: #fff;
 }
 
 .app-header.header-condensed .chip {
