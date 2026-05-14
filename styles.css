@@ -221,11 +221,6 @@ body::before {
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 2px;
-  scrollbar-width: none;
-}
-
-.chip-row::-webkit-scrollbar {
-  display: none;
 }
 
 .chip {
@@ -1111,7 +1106,7 @@ body::before {
 .brand-row {
   position: relative;
   justify-content: center;
-  min-height: 76px;
+  min-height: 64px;
   transition: min-height 180ms ease;
 }
 
@@ -1191,11 +1186,6 @@ body::before {
   overflow-x: auto;
   overflow-y: hidden;
   align-items: flex-start;
-  scrollbar-width: none;
-}
-
-.app-header.header-condensed .storefront-chip-row::-webkit-scrollbar {
-  display: none;
 }
 
 .app-header.header-condensed .address-strip {
@@ -2002,12 +1992,14 @@ body::before {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   padding: 5px 9px;
   border-radius: 999px;
   font-size: 0.76rem;
   font-weight: 800;
   background: rgba(107, 66, 38, 0.1);
   color: var(--accent);
+  white-space: nowrap;
 }
 
 .product-meta {
@@ -2682,6 +2674,24 @@ body::before {
     aspect-ratio: 2.35 / 1;
   }
 
+  .feature-media-card {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    max-width: calc(100% - 16px);
+    gap: 1px;
+    padding: 7px 9px;
+    border-radius: 10px;
+  }
+
+  .feature-media-card strong {
+    font-size: 0.78rem;
+  }
+
+  .feature-hero-price {
+    font-size: 0.84rem;
+  }
+
   .catalog-list {
     margin-top: -8px;
   }
@@ -2691,13 +2701,16 @@ body::before {
   }
 
   .feature-media-actions {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
   }
 
   .feature-media-actions .primary-button {
-    width: 100%;
-    min-width: 0;
+    width: auto;
+    min-width: 104px;
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 0.82rem;
   }
 
   .confirm-actions {
