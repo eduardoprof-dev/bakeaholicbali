@@ -869,7 +869,7 @@ async function bootstrap() {
   state.categories = payload.categories;
   state.items = payload.items;
 
-  document.title = `${state.store.name} Order System`;
+  document.title = "Bakeaholic Online Shop";
   if (storeEyebrow) {
     storeEyebrow.textContent = state.store.eyebrow;
   }

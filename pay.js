@@ -195,7 +195,7 @@ function renderPending() {
       `
       : "";
 
-  document.title = `Pay and Order ${state.order.id}`;
+  document.title = `Pay and Order ${state.order.id} | Bakeaholic Online Shop`;
   paymentApp.innerHTML = `
     <section class="payment-page-card">
       <h1>Pay and Order</h1>

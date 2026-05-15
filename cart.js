@@ -579,7 +579,7 @@ async function bootstrap() {
   state.vouchers = payload.vouchers;
 
   modeBanner.hidden = appMode !== "test";
-  document.title = `${state.store.name} Cart`;
+  document.title = "Your Cart | Bakeaholic Online Shop";
   syncTopLinks();
   syncFooterLinks();
   hydrateForm();
