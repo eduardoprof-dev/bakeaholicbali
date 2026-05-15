@@ -1083,7 +1083,6 @@ body::before {
   padding: 14px 16px 12px;
   border-radius: 0 0 22px 22px;
   backdrop-filter: blur(18px);
-  transition: padding 180ms ease, box-shadow 180ms ease, border-radius 180ms ease;
 }
 
 .brand-row,
@@ -1144,7 +1143,6 @@ body::before {
   position: relative;
   justify-content: center;
   min-height: 64px;
-  transition: min-height 180ms ease;
 }
 
 .brand-actions {
@@ -1223,12 +1221,9 @@ body::before {
 }
 
 .app-header.header-condensed .address-strip {
-  opacity: 1;
-  max-height: 120px;
   margin-top: 6px;
   padding-top: 8px;
   padding-bottom: 8px;
-  pointer-events: auto;
 }
 
 .app-header.address-hidden .address-strip {
@@ -1770,10 +1765,6 @@ body::before {
   font-weight: 600;
   overflow: hidden;
   max-height: 48px;
-  transition:
-    opacity 180ms ease,
-    max-height 180ms ease,
-    padding 180ms ease;
 }
 
 .search-bar {
@@ -1786,11 +1777,6 @@ body::before {
   border-radius: 12px;
   background: #fff;
   border: 1px solid rgba(107, 66, 38, 0.12);
-  transition:
-    width 180ms ease,
-    padding 180ms ease,
-    margin 180ms ease,
-    gap 180ms ease;
 }
 
 .search-bar > span {
@@ -1820,7 +1806,6 @@ body::before {
   background: transparent;
   border-bottom: 0;
   backdrop-filter: none;
-  transition: margin 180ms ease, padding 180ms ease;
 }
 
 .storefront-content,
