@@ -442,7 +442,7 @@ function updateAddressChrome() {
   const header = document.querySelector(".app-header");
   if (!header) return;
 
-  const shouldHideAddress = window.scrollY > 40;
+  const shouldHideAddress = window.scrollY > 4;
   if (addressIsHidden === shouldHideAddress) return;
 
   addressIsHidden = shouldHideAddress;

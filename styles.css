@@ -960,8 +960,8 @@ body::before {
 }
 
 .footer-icon {
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
   display: inline-grid;
   place-items: center;
   border: 1px solid rgba(107, 66, 38, 0.25);
@@ -972,8 +972,8 @@ body::before {
 }
 
 .footer-icon svg {
-  width: 15px;
-  height: 15px;
+  width: 20px;
+  height: 20px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.9;
@@ -1232,13 +1232,7 @@ body::before {
 }
 
 .app-header.address-hidden .address-strip {
-  opacity: 0;
-  max-height: 0;
-  margin-top: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-bottom-color: transparent;
-  pointer-events: none;
+  display: none;
 }
 
 .app-header.header-condensed .delivery-fee-line {
@@ -1261,8 +1255,9 @@ body::before {
   gap: 0;
   border-radius: 10px;
   overflow: hidden;
+  background: transparent;
+  border: 0;
   cursor: text;
-  transition: width 180ms ease, padding 180ms ease, margin 180ms ease;
   z-index: 2;
 }
 
@@ -1296,6 +1291,7 @@ body::before {
   gap: 10px;
   justify-content: flex-start;
   background: #fff;
+  border: 1px solid rgba(107, 66, 38, 0.12);
 }
 
 .app-header.header-condensed .chip {
