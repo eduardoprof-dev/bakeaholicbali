@@ -890,6 +890,7 @@ body::before {
   padding-bottom: 22px;
   border-bottom: 1px solid var(--line);
   align-items: start;
+  row-gap: 0;
 }
 
 .footer-contact {
@@ -912,7 +913,7 @@ body::before {
 
 .footer-row strong {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 0;
   letter-spacing: 0.04em;
 }
 
@@ -1224,9 +1225,9 @@ body::before {
 .app-header.header-condensed .address-strip {
   opacity: 1;
   max-height: 120px;
-  margin-top: 8px;
-  padding-top: 12px;
-  padding-bottom: 12px;
+  margin-top: 6px;
+  padding-top: 8px;
+  padding-bottom: 8px;
   pointer-events: auto;
 }
 
@@ -1754,12 +1755,6 @@ body::before {
   cursor: pointer;
   overflow: hidden;
   max-height: 120px;
-  transition:
-    opacity 180ms ease,
-    max-height 180ms ease,
-    margin 180ms ease,
-    padding 180ms ease,
-    border-color 180ms ease;
 }
 
 .address-title {
