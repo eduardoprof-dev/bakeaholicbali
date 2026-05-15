@@ -912,7 +912,7 @@ body::before {
 
 .footer-row strong {
   display: block;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
   letter-spacing: 0.04em;
 }
 
@@ -1228,6 +1228,16 @@ body::before {
   padding-top: 12px;
   padding-bottom: 12px;
   pointer-events: auto;
+}
+
+.app-header.address-hidden .address-strip {
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom-color: transparent;
+  pointer-events: none;
 }
 
 .app-header.header-condensed .delivery-fee-line {

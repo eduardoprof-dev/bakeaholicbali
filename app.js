@@ -110,6 +110,8 @@ const productModalAddButton = document.getElementById("productModalAddButton");
 let locationPicker;
 let activeCategoryId = "";
 let scrollSpyFrame = 0;
+let addressChromeFrame = 0;
+let addressIsHidden = false;
 let selectedProductId = "";
 let pendingOtpPhone = "";
 let otpResendAvailableAt = 0;
@@ -433,6 +435,23 @@ function updateActiveCategoryFromScroll() {
 function scheduleScrollSpy() {
   if (scrollSpyFrame) return;
   scrollSpyFrame = requestAnimationFrame(updateActiveCategoryFromScroll);
+}
+
+function updateAddressChrome() {
+  addressChromeFrame = 0;
+  const header = document.querySelector(".app-header");
+  if (!header) return;
+
+  const shouldHideAddress = window.scrollY > 40;
+  if (addressIsHidden === shouldHideAddress) return;
+
+  addressIsHidden = shouldHideAddress;
+  header.classList.toggle("address-hidden", addressIsHidden);
+}
+
+function scheduleAddressChrome() {
+  if (addressChromeFrame) return;
+  addressChromeFrame = requestAnimationFrame(updateAddressChrome);
 }
 
 function imageFit(item) {
@@ -894,6 +913,7 @@ async function bootstrap() {
   renderChips();
   renderCatalog();
   updateActiveCategoryFromScroll();
+  updateAddressChrome();
   renderOrderBanner();
   await refreshCart();
 
@@ -923,6 +943,7 @@ searchInput.addEventListener("blur", () => {
   }
 });
 window.addEventListener("scroll", scheduleScrollSpy, { passive: true });
+window.addEventListener("scroll", scheduleAddressChrome, { passive: true });
 window.addEventListener("resize", scheduleScrollSpy);
 document.addEventListener("click", (event) => {
   if (accountMenu.hidden) return;
