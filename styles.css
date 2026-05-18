@@ -1,16 +1,16 @@
 :root {
-  --bg: #f4ede2;
-  --bg-strong: #eadbc3;
-  --surface: rgba(255, 252, 247, 0.88);
-  --surface-solid: #fffaf3;
+  --bg: #fbf7f1;
+  --bg-strong: #f1dfc8;
+  --surface: rgba(255, 253, 249, 0.9);
+  --surface-solid: #fffdfa;
   --text: #332117;
   --muted: #816651;
-  --line: rgba(92, 57, 34, 0.12);
+  --line: rgba(92, 57, 34, 0.1);
   --accent: #6b4226;
   --accent-2: #bf7b30;
   --accent-soft: #f5d9ab;
   --success: #2d7a48;
-  --shadow: 0 18px 45px rgba(77, 42, 12, 0.12);
+  --shadow: 0 18px 45px rgba(77, 42, 12, 0.09);
   --radius-lg: 28px;
   --radius-md: 18px;
   --radius-sm: 12px;
@@ -34,9 +34,9 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
   background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.55), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(191, 123, 48, 0.18), transparent 20%),
-    linear-gradient(180deg, #f7f0e7 0%, #efe2cf 100%);
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.8), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(191, 123, 48, 0.1), transparent 22%),
+    linear-gradient(180deg, #fffaf4 0%, #f7ebdc 100%);
 }
 
 body::before {
@@ -1866,10 +1866,10 @@ body::before {
   padding: 18px;
   border-radius: 20px;
   background:
-    radial-gradient(circle at top right, rgba(245, 217, 171, 0.34), transparent 28%),
-    linear-gradient(180deg, rgba(255, 251, 246, 0.98), rgba(248, 239, 228, 0.96));
+    radial-gradient(circle at top right, rgba(245, 217, 171, 0.22), transparent 28%),
+    linear-gradient(180deg, rgba(255, 254, 251, 0.98), rgba(255, 250, 244, 0.96));
   border: 1px solid rgba(107, 66, 38, 0.1);
-  box-shadow: 0 14px 30px rgba(77, 42, 12, 0.08);
+  box-shadow: 0 14px 30px rgba(77, 42, 12, 0.06);
 }
 
 .brand-story-copy {
@@ -1904,6 +1904,69 @@ body::before {
   object-fit: cover;
   border-radius: 16px;
   box-shadow: 0 14px 28px rgba(77, 42, 12, 0.1);
+}
+
+.moment-guide {
+  margin-bottom: 12px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 253, 249, 0.94);
+  border: 1px solid rgba(107, 66, 38, 0.08);
+  box-shadow: 0 12px 24px rgba(77, 42, 12, 0.05);
+}
+
+.moment-guide-head {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.moment-guide-head h2 {
+  margin: 0;
+  max-width: 22ch;
+  font-size: clamp(1.25rem, 3.2vw, 1.7rem);
+  line-height: 1.08;
+}
+
+.moment-guide-head .feature-kicker {
+  margin: 0;
+}
+
+.moment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.moment-card {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border-radius: 16px;
+  color: var(--text);
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(107, 66, 38, 0.08);
+}
+
+.moment-card img {
+  width: 100%;
+  aspect-ratio: 1.36 / 1;
+  display: block;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.moment-card span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.moment-card strong {
+  font-size: 0.95rem;
+  line-height: 1.1;
 }
 
 .brand-story-points {
@@ -2859,6 +2922,7 @@ body::before {
   .cart-section,
   .feature-card,
   .brand-story-card,
+  .moment-guide,
   .order-banner {
     padding: 12px;
   }
@@ -2890,6 +2954,22 @@ body::before {
     aspect-ratio: 1.85 / 1;
     height: auto;
     order: -1;
+  }
+
+  .moment-guide-head h2 {
+    font-size: 1.3rem;
+  }
+
+  .moment-grid {
+    display: flex;
+    overflow-x: auto;
+    gap: 10px;
+    margin: 0 -12px;
+    padding: 0 12px 2px;
+  }
+
+  .moment-card {
+    flex: 0 0 148px;
   }
 
   .bestseller-strip {
