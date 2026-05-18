@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bakeaholic Online Shop</title>
-    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260515-tab-brand" />
-    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260515-tab-brand" />
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260518-brand-story" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260518-brand-story" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260515-tab-brand" />
+    <link rel="stylesheet" href="styles.css?v=20260518-brand-story" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -99,27 +99,36 @@
       </header>
 
       <main class="storefront-content">
-        <section class="feature-card" id="promoCard">
-          <div class="feature-copy-block">
-            <div class="feature-topline">
-              <p class="feature-kicker" id="promoKicker">Best Seller</p>
-            </div>
-            <h1>Today’s bestseller</h1>
+        <section class="brand-story-card" aria-labelledby="brandStoryTitle">
+          <p class="feature-kicker">Bakeaholic Bali</p>
+          <h1 id="brandStoryTitle">Bali-born treats for everyday good moments.</h1>
+          <p>
+            Bakeaholic started from a small Bali kitchen with a simple idea: make packaged treats that feel homemade, travel well, and are easy to share.
+          </p>
+          <p>
+            Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.
+          </p>
+          <div class="brand-story-points" aria-label="Bakeaholic highlights">
+            <span>Made in Bali</span>
+            <span>Retail-ready packs</span>
+            <span>Wholesome snack range</span>
           </div>
-          <div class="feature-media">
+        </section>
+
+        <section class="bestseller-strip" id="promoCard">
+          <div class="bestseller-strip-media">
             <img
               id="promoHeroImage"
               src="/assets/products/bliss-peanutella-lifestyle-20260422.png"
               alt="Bakeaholic bestseller"
             />
-            <div class="feature-media-card">
-              <strong id="promoHeroTitle">Best seller ready to ship</strong>
-              <div class="feature-media-actions">
-                <span class="feature-hero-price" id="promoHeroPrice">Rp 75.000</span>
-                <button class="primary-button" id="promoAddButton" type="button">Add Bestseller</button>
-              </div>
-            </div>
           </div>
+          <div class="bestseller-strip-copy">
+            <p class="feature-kicker" id="promoKicker">Best Seller</p>
+            <strong id="promoHeroTitle">Best seller ready to ship</strong>
+            <span id="promoHeroPrice">Rp 75.000</span>
+          </div>
+          <button class="primary-button" id="promoAddButton" type="button">Add Bestseller</button>
         </section>
 
         <section class="order-banner" id="orderBanner" hidden>
@@ -320,7 +329,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260515-tab-brand"></script>
-    <script src="app.js?v=20260515-tab-brand"></script>
+    <script src="location-picker.js?v=20260518-brand-story"></script>
+    <script src="app.js?v=20260518-brand-story"></script>
   </body>
 </html>
