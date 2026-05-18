@@ -2017,22 +2017,23 @@ body::before {
 
 .bestseller-strip {
   display: grid;
-  grid-template-columns: 106px minmax(0, 1fr) auto;
+  grid-template-columns: 210px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
-  padding: 14px;
-  border-radius: 20px;
+  gap: 20px;
+  min-height: 218px;
+  margin-bottom: 22px;
+  padding: 18px;
+  border-radius: 24px;
   background: rgba(255, 251, 247, 0.96);
   border: 1px solid rgba(107, 66, 38, 0.1);
-  box-shadow: 0 12px 26px rgba(77, 42, 12, 0.07);
+  box-shadow: 0 16px 32px rgba(77, 42, 12, 0.08);
 }
 
 .bestseller-strip-media {
-  width: 106px;
-  height: 94px;
+  width: 210px;
+  height: 170px;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: 20px;
   background: #fff8ef;
 }
 
@@ -2045,31 +2046,32 @@ body::before {
 
 .bestseller-strip-copy {
   display: grid;
-  gap: 3px;
+  gap: 7px;
   min-width: 0;
 }
 
 .bestseller-strip-copy .feature-kicker {
   margin: 0;
-  font-size: 0.76rem;
+  font-size: 0.82rem;
 }
 
 .bestseller-strip-copy strong {
   min-width: 0;
-  font-size: 1.08rem;
+  font-size: 1.42rem;
+  line-height: 1.08;
   overflow-wrap: anywhere;
 }
 
 .bestseller-strip-copy span {
   color: var(--accent);
-  font-size: 1.06rem;
+  font-size: 1.32rem;
   font-weight: 900;
 }
 
 .bestseller-strip .primary-button {
-  min-height: 44px;
-  padding: 0 18px;
-  border-radius: 14px;
+  min-height: 56px;
+  padding: 0 24px;
+  border-radius: 18px;
   white-space: nowrap;
 }
 
@@ -3001,30 +3003,31 @@ body::before {
   }
 
   .bestseller-strip {
-    grid-template-columns: 86px minmax(0, 1fr) 44px;
+    grid-template-columns: 140px minmax(0, 1fr) 52px;
     gap: 12px;
-    padding: 11px;
-    border-radius: 18px;
+    min-height: 210px;
+    padding: 14px;
+    border-radius: 22px;
   }
 
   .bestseller-strip-media {
-    width: 86px;
-    height: 82px;
-    border-radius: 14px;
+    width: 140px;
+    height: 158px;
+    border-radius: 18px;
   }
 
   .bestseller-strip-copy strong {
-    font-size: 0.98rem;
+    font-size: 1.16rem;
   }
 
   .bestseller-strip-copy span {
-    font-size: 0.96rem;
+    font-size: 1.1rem;
   }
 
   .bestseller-strip .primary-button {
-    width: 44px;
-    min-width: 44px;
-    min-height: 44px;
+    width: 52px;
+    min-width: 52px;
+    min-height: 52px;
     padding: 0;
     font-size: 0;
     border-radius: 12px;
