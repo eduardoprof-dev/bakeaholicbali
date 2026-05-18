@@ -25,6 +25,22 @@ const promoFields = {
   kicker: document.getElementById("promoKickerInput")
 };
 
+const brandStoryFields = {
+  kicker: document.getElementById("brandStoryKickerInput"),
+  title: document.getElementById("brandStoryTitleInput"),
+  body: document.getElementById("brandStoryBodyInput"),
+  secondaryBody: document.getElementById("brandStorySecondaryBodyInput"),
+  imagePath: document.getElementById("brandStoryImagePathInput")
+};
+
+const brandStoryPointFields = [
+  document.getElementById("brandStoryPointOneInput"),
+  document.getElementById("brandStoryPointTwoInput"),
+  document.getElementById("brandStoryPointThreeInput")
+];
+
+const brandStoryImagePreview = document.getElementById("brandStoryImagePreview");
+
 const integrationFields = {
   googleMapsApiKey: document.getElementById("googleMapsApiKeyInput"),
   biteshipApiKey: document.getElementById("biteshipApiKeyInput"),
@@ -123,6 +139,37 @@ function renderPromo() {
   Object.entries(promoFields).forEach(([key, field]) => {
     field.value = state.catalog.promo[key] || "";
   });
+}
+
+function defaultBrandStory() {
+  return {
+    kicker: "Bakeaholic Bali",
+    title: "Bali-born treats for everyday good moments.",
+    body: "Bakeaholic started from a small Bali kitchen with a simple idea: make packaged treats that feel homemade, travel well, and are easy to share.",
+    secondaryBody: "Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.",
+    imagePath: "/assets/products/bliss-salted-caramel-lifestyle-20260422.png",
+    points: ["Bali kitchen roots", "Ready to share", "Feel-good treats"]
+  };
+}
+
+function syncBrandStoryPreview() {
+  if (!brandStoryImagePreview) return;
+  const imagePath = brandStoryFields.imagePath.value.trim();
+  brandStoryImagePreview.src = imagePath || defaultBrandStory().imagePath;
+}
+
+function renderBrandStory() {
+  const story = {
+    ...defaultBrandStory(),
+    ...(state.catalog.brandStory || {})
+  };
+  Object.entries(brandStoryFields).forEach(([key, field]) => {
+    field.value = story[key] || "";
+  });
+  brandStoryPointFields.forEach((field, index) => {
+    field.value = story.points?.[index] || "";
+  });
+  syncBrandStoryPreview();
 }
 
 function escapeHtml(value) {
@@ -334,6 +381,7 @@ function renderProducts() {
 function renderAll() {
   renderStore();
   renderPromo();
+  renderBrandStory();
   renderCategories();
   renderProducts();
 }
@@ -357,6 +405,15 @@ function collectPromo() {
     promo[key] = field.value.trim();
   });
   return promo;
+}
+
+function collectBrandStory() {
+  const story = {};
+  Object.entries(brandStoryFields).forEach(([key, field]) => {
+    story[key] = field.value.trim();
+  });
+  story.points = brandStoryPointFields.map((field) => field.value.trim()).filter(Boolean);
+  return story;
 }
 
 function collectCategories() {
@@ -390,6 +447,7 @@ async function saveCatalog() {
     const payload = {
       store: collectStore(),
       promo: collectPromo(),
+      brandStory: collectBrandStory(),
       categories: collectCategories(),
       items: collectProducts()
     };
@@ -477,6 +535,7 @@ saveCatalogButton.addEventListener("click", saveCatalog);
 saveIntegrationsButton.addEventListener("click", saveIntegrations);
 addProductButton.addEventListener("click", addProduct);
 adminLogoutButton.addEventListener("click", logoutAdmin);
+brandStoryFields.imagePath.addEventListener("input", syncBrandStoryPreview);
 
 bootstrap().catch((error) => {
   setStatus(error.message);

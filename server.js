@@ -53,6 +53,15 @@ const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4173);
 const bundledCatalogPath = path.join(bundledDataDir, "catalog.json");
 const catalogPath = path.join(dataDir, "catalog.json");
+
+const DEFAULT_BRAND_STORY = {
+  kicker: "Bakeaholic Bali",
+  title: "Bali-born treats for everyday good moments.",
+  body: "Bakeaholic started from a small Bali kitchen with a simple idea: make packaged treats that feel homemade, travel well, and are easy to share.",
+  secondaryBody: "Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.",
+  imagePath: "/assets/products/bliss-salted-caramel-lifestyle-20260422.png",
+  points: ["Bali kitchen roots", "Ready to share", "Feel-good treats"]
+};
 const customersPath = path.join(dataDir, "customers.json");
 const ordersLivePath = path.join(dataDir, "orders-live.json");
 const ordersTestPath = path.join(dataDir, "orders-test.json");
@@ -1057,6 +1066,7 @@ function validateCatalog(nextCatalog) {
 }
 
 function sanitizeCatalog(nextCatalog) {
+  const brandStoryInput = nextCatalog.brandStory || {};
   return {
     store: {
       ...nextCatalog.store,
@@ -1066,6 +1076,17 @@ function sanitizeCatalog(nextCatalog) {
       itemId: String(nextCatalog.promo?.itemId || "").trim(),
       buttonLabel: String(nextCatalog.promo?.buttonLabel || "").trim(),
       kicker: String(nextCatalog.promo?.kicker || "").trim()
+    },
+    brandStory: {
+      kicker: String(brandStoryInput.kicker || DEFAULT_BRAND_STORY.kicker).trim(),
+      title: String(brandStoryInput.title || DEFAULT_BRAND_STORY.title).trim(),
+      body: String(brandStoryInput.body || DEFAULT_BRAND_STORY.body).trim(),
+      secondaryBody: String(brandStoryInput.secondaryBody || DEFAULT_BRAND_STORY.secondaryBody).trim(),
+      imagePath: String(brandStoryInput.imagePath || DEFAULT_BRAND_STORY.imagePath).trim(),
+      points: (Array.isArray(brandStoryInput.points) ? brandStoryInput.points : DEFAULT_BRAND_STORY.points)
+        .map((point) => String(point || "").trim())
+        .filter(Boolean)
+        .slice(0, 3)
     },
     categories: nextCatalog.categories.map((category) => ({
       id: String(category.id).trim(),
@@ -2154,6 +2175,10 @@ function handleApi(requestUrl, request, response) {
       mode,
       store: getStoreConfig(),
       promo: catalog.promo,
+      brandStory: {
+        ...DEFAULT_BRAND_STORY,
+        ...(catalog.brandStory || {})
+      },
       categories: catalog.categories,
       items: catalog.items,
       paymentMethods: PAYMENT_METHODS,

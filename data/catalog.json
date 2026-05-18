@@ -17,6 +17,18 @@
     "buttonLabel": "Add Bestseller",
     "kicker": "Best Seller"
   },
+  "brandStory": {
+    "kicker": "Bakeaholic Bali",
+    "title": "Bali-born treats for everyday good moments.",
+    "body": "Bakeaholic started from a small Bali kitchen with a simple idea: make packaged treats that feel homemade, travel well, and are easy to share.",
+    "secondaryBody": "Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.",
+    "imagePath": "/assets/products/bliss-salted-caramel-lifestyle-20260422.png",
+    "points": [
+      "Bali kitchen roots",
+      "Ready to share",
+      "Feel-good treats"
+    ]
+  },
   "categories": [
     {
       "id": "bliss-balls",

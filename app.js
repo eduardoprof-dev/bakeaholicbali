@@ -15,6 +15,7 @@ const state = {
   appMode,
   store: null,
   promo: null,
+  brandStory: null,
   categories: [],
   items: [],
   cart: null,
@@ -38,6 +39,12 @@ const promoAddButton = document.getElementById("promoAddButton");
 const promoHeroImage = document.getElementById("promoHeroImage");
 const promoHeroTitle = document.getElementById("promoHeroTitle");
 const promoHeroPrice = document.getElementById("promoHeroPrice");
+const brandStoryKicker = document.getElementById("brandStoryKicker");
+const brandStoryTitle = document.getElementById("brandStoryTitle");
+const brandStoryBody = document.getElementById("brandStoryBody");
+const brandStorySecondaryBody = document.getElementById("brandStorySecondaryBody");
+const brandStoryPoints = document.getElementById("brandStoryPoints");
+const brandStoryImage = document.getElementById("brandStoryImage");
 const stickyCartButton = document.getElementById("stickyCartButton");
 const stickyCartLabel = document.getElementById("stickyCartLabel");
 const stickyCartHint = document.getElementById("stickyCartHint");
@@ -855,6 +862,23 @@ async function addToCart(itemId) {
   await refreshCart();
 }
 
+function renderBrandStory() {
+  if (!state.brandStory) return;
+  const points = Array.isArray(state.brandStory.points) ? state.brandStory.points.filter(Boolean).slice(0, 3) : [];
+
+  if (brandStoryKicker) brandStoryKicker.textContent = state.brandStory.kicker || "Bakeaholic Bali";
+  if (brandStoryTitle) brandStoryTitle.textContent = state.brandStory.title || "Bali-born treats for everyday good moments.";
+  if (brandStoryBody) brandStoryBody.textContent = state.brandStory.body || "";
+  if (brandStorySecondaryBody) brandStorySecondaryBody.textContent = state.brandStory.secondaryBody || "";
+  if (brandStoryPoints) {
+    brandStoryPoints.innerHTML = points.map((point) => `<span>${escapeHtml(point)}</span>`).join("");
+  }
+  if (brandStoryImage && state.brandStory.imagePath) {
+    brandStoryImage.src = versionedAsset(state.brandStory.imagePath);
+    brandStoryImage.alt = state.brandStory.imageAlt || "Bakeaholic packaged snacks";
+  }
+}
+
 async function resetTestData() {
   await request("/api/reset", { method: "POST" });
   localStorage.removeItem(latestOrderKey);
@@ -866,6 +890,7 @@ async function bootstrap() {
   const payload = await request("/api/menu");
   state.store = payload.store;
   state.promo = payload.promo;
+  state.brandStory = payload.brandStory;
   state.categories = payload.categories;
   state.items = payload.items;
 
@@ -888,6 +913,7 @@ async function bootstrap() {
   if (promoHeroPrice) {
     promoHeroPrice.textContent = promoItem?.price ? formatRupiah.format(promoItem.price) : "Rp 0";
   }
+  renderBrandStory();
   whatsappPrompt.textContent = state.store.whatsappPrompt;
   modeBanner.hidden = appMode !== "test";
   modeBannerBody.textContent = state.store.testModeDescription;

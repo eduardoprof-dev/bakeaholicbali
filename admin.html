@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
-    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260515-tab-brand" />
-    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260515-tab-brand" />
-    <link rel="stylesheet" href="styles.css?v=20260515-tab-brand" />
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260518-story-admin" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260518-story-admin" />
+    <link rel="stylesheet" href="styles.css?v=20260518-story-admin" />
   </head>
   <body>
     <div class="admin-shell">
@@ -160,6 +160,51 @@
         </section>
 
         <section class="admin-panel">
+          <h2>Homepage Intro</h2>
+          <p class="helper-text">Edit the story section at the top of the storefront. Use an existing image path from the product image fields.</p>
+          <div class="admin-grid">
+            <div class="admin-field">
+              <label for="brandStoryKickerInput">Small label</label>
+              <input id="brandStoryKickerInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="brandStoryImagePathInput">Intro image path</label>
+              <input class="admin-code-input" id="brandStoryImagePathInput" type="text" />
+            </div>
+            <div class="admin-field" style="grid-column: 1 / -1;">
+              <label for="brandStoryTitleInput">Title</label>
+              <input id="brandStoryTitleInput" type="text" />
+            </div>
+            <div class="admin-field" style="grid-column: 1 / -1;">
+              <label for="brandStoryBodyInput">Paragraph 1</label>
+              <textarea id="brandStoryBodyInput"></textarea>
+            </div>
+            <div class="admin-field" style="grid-column: 1 / -1;">
+              <label for="brandStorySecondaryBodyInput">Paragraph 2</label>
+              <textarea id="brandStorySecondaryBodyInput"></textarea>
+            </div>
+            <div class="admin-field">
+              <label for="brandStoryPointOneInput">Brand note 1</label>
+              <input id="brandStoryPointOneInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="brandStoryPointTwoInput">Brand note 2</label>
+              <input id="brandStoryPointTwoInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="brandStoryPointThreeInput">Brand note 3</label>
+              <input id="brandStoryPointThreeInput" type="text" />
+            </div>
+            <div class="admin-field admin-image-preview-field">
+              <label>Intro image preview</label>
+              <div class="admin-image-preview-frame wide">
+                <img class="admin-image-preview" id="brandStoryImagePreview" src="" alt="Homepage intro preview" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel">
           <h2>Categories</h2>
           <p class="helper-text">Keep category ids stable if products already use them.</p>
           <div id="categoryList" class="product-editor-list"></div>
@@ -173,6 +218,6 @@
       </main>
     </div>
 
-    <script src="admin.js?v=20260515-tab-brand"></script>
+    <script src="admin.js?v=20260518-story-admin"></script>
   </body>
 </html>
