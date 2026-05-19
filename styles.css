@@ -1125,8 +1125,8 @@ body::before {
 
 .brand-logo {
   display: block;
-  width: 100px;
-  max-width: 34vw;
+  width: 126px;
+  max-width: 40vw;
   height: auto;
   margin: 0 auto;
   mix-blend-mode: multiply;
@@ -1164,7 +1164,7 @@ body::before {
 .brand-row {
   position: relative;
   justify-content: center;
-  min-height: 64px;
+  min-height: 72px;
 }
 
 .brand-actions {
@@ -1216,7 +1216,7 @@ body::before {
 
 .app-header.header-condensed .brand-row {
   width: 100%;
-  min-height: 52px;
+  min-height: 60px;
 }
 
 .app-header.header-condensed .brand-subtitle {
@@ -1858,18 +1858,30 @@ body::before {
 }
 
 .brand-story-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 34%);
-  align-items: stretch;
-  gap: 16px;
+  position: relative;
+  overflow: hidden;
   margin-bottom: 10px;
-  padding: 18px;
   border-radius: 20px;
   background:
     radial-gradient(circle at top right, rgba(245, 217, 171, 0.22), transparent 28%),
     linear-gradient(180deg, rgba(255, 254, 251, 0.98), rgba(255, 250, 244, 0.96));
   border: 1px solid rgba(107, 66, 38, 0.1);
   box-shadow: 0 14px 30px rgba(77, 42, 12, 0.06);
+}
+
+.brand-story-track {
+  display: flex;
+  transition: transform 260ms ease;
+  will-change: transform;
+}
+
+.brand-story-slide {
+  flex: 0 0 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 34%);
+  align-items: stretch;
+  gap: 16px;
+  padding: 18px 18px 58px;
 }
 
 .brand-story-copy {
@@ -2013,6 +2025,40 @@ body::before {
 
 .brand-story-points span:nth-child(3)::before {
   background-image: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='%23f5d9ab' stroke='%236b4226' stroke-width='1.4' d='M7.3 15.4c-1.4-1.9-1-4.9.9-6.8 2.5-2.5 6.9-2.1 8.9-4.9 1.1 4.2.5 8.4-2 10.9-2.1 2.1-5.5 2.4-7.8.8Z'/%3E%3Cpath fill='none' stroke='%236b4226' stroke-width='1.2' stroke-linecap='round' d='M8.8 13.8c2.2-1.4 3.8-3 5.2-5.4'/%3E%3C/svg%3E");
+}
+
+.brand-story-controls {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.story-arrow {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(107, 66, 38, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--accent);
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.story-arrow:disabled {
+  opacity: 0.38;
+  cursor: default;
 }
 
 .bestseller-strip {
@@ -2975,8 +3021,13 @@ body::before {
   }
 
   .brand-story-card {
+    border-radius: 20px;
+  }
+
+  .brand-story-slide {
     grid-template-columns: 1fr;
     gap: 12px;
+    padding: 12px 12px 52px;
   }
 
   .brand-story-image {
@@ -2984,6 +3035,12 @@ body::before {
     aspect-ratio: 1.85 / 1;
     height: auto;
     order: -1;
+  }
+
+  .brand-story-controls {
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
   }
 
   .moment-guide-head h2 {

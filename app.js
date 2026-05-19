@@ -45,6 +45,10 @@ const brandStoryBody = document.getElementById("brandStoryBody");
 const brandStorySecondaryBody = document.getElementById("brandStorySecondaryBody");
 const brandStoryPoints = document.getElementById("brandStoryPoints");
 const brandStoryImage = document.getElementById("brandStoryImage");
+const brandStoryTrack = document.getElementById("brandStoryTrack");
+const brandStoryPrev = document.getElementById("brandStoryPrev");
+const brandStoryNext = document.getElementById("brandStoryNext");
+const brandStoryCounter = document.getElementById("brandStoryCounter");
 const stickyCartButton = document.getElementById("stickyCartButton");
 const stickyCartLabel = document.getElementById("stickyCartLabel");
 const stickyCartHint = document.getElementById("stickyCartHint");
@@ -119,6 +123,7 @@ let activeCategoryId = "";
 let scrollSpyFrame = 0;
 let addressChromeFrame = 0;
 let addressIsHidden = false;
+let brandStorySlideIndex = 0;
 let selectedProductId = "";
 let pendingOtpPhone = "";
 let otpResendAvailableAt = 0;
@@ -877,6 +882,43 @@ function renderBrandStory() {
     brandStoryImage.src = versionedAsset(state.brandStory.imagePath);
     brandStoryImage.alt = state.brandStory.imageAlt || "Bakeaholic packaged snacks";
   }
+  updateBrandStorySlide();
+}
+
+function updateBrandStorySlide() {
+  if (!brandStoryTrack) return;
+  const slides = [...brandStoryTrack.querySelectorAll(".brand-story-slide")];
+  if (!slides.length) return;
+
+  brandStorySlideIndex = Math.max(0, Math.min(brandStorySlideIndex, slides.length - 1));
+  brandStoryTrack.style.transform = `translateX(-${brandStorySlideIndex * 100}%)`;
+  slides.forEach((slide, index) => {
+    slide.setAttribute("aria-hidden", String(index !== brandStorySlideIndex));
+  });
+  if (brandStoryCounter) {
+    brandStoryCounter.textContent = `${brandStorySlideIndex + 1} / ${slides.length}`;
+  }
+  if (brandStoryPrev) {
+    brandStoryPrev.disabled = brandStorySlideIndex === 0;
+  }
+  if (brandStoryNext) {
+    brandStoryNext.disabled = brandStorySlideIndex === slides.length - 1;
+  }
+}
+
+function changeBrandStorySlide(direction) {
+  if (!brandStoryTrack) return;
+  const slides = brandStoryTrack.querySelectorAll(".brand-story-slide");
+  if (!slides.length) return;
+  brandStorySlideIndex = Math.max(0, Math.min(brandStorySlideIndex + direction, slides.length - 1));
+  updateBrandStorySlide();
+  document.activeElement?.blur?.();
+  if (window.matchMedia("(max-width: 620px)").matches) {
+    const card = brandStoryTrack.closest(".brand-story-card");
+    const headerHeight = document.querySelector(".app-header")?.offsetHeight || 0;
+    const targetTop = (card?.getBoundingClientRect().top || 0) + window.scrollY - headerHeight - 10;
+    window.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+  }
 }
 
 async function resetTestData() {
@@ -978,6 +1020,8 @@ document.addEventListener("click", (event) => {
   closeAccountMenu();
 });
 promoAddButton.addEventListener("click", () => addToCart(state.promo.itemId));
+brandStoryPrev?.addEventListener("click", () => changeBrandStorySlide(-1));
+brandStoryNext?.addEventListener("click", () => changeBrandStorySlide(1));
 stickyCartButton.addEventListener("click", () => {
   window.location.href = `/cart.html${modeQuery}`;
 });
