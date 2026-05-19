@@ -25,21 +25,20 @@ const promoFields = {
   kicker: document.getElementById("promoKickerInput")
 };
 
-const brandStoryFields = {
-  kicker: document.getElementById("brandStoryKickerInput"),
-  title: document.getElementById("brandStoryTitleInput"),
-  body: document.getElementById("brandStoryBodyInput"),
-  secondaryBody: document.getElementById("brandStorySecondaryBodyInput"),
-  imagePath: document.getElementById("brandStoryImagePathInput")
-};
-
-const brandStoryPointFields = [
-  document.getElementById("brandStoryPointOneInput"),
-  document.getElementById("brandStoryPointTwoInput"),
-  document.getElementById("brandStoryPointThreeInput")
+const brandStorySlideList = document.getElementById("brandStorySlideList");
+const storyIconOptions = [
+  { value: "oats", label: "Oats" },
+  { value: "coconut", label: "Coconut" },
+  { value: "cashew", label: "Cashew" },
+  { value: "gift", label: "Gift" },
+  { value: "leaf", label: "Leaf" },
+  { value: "batch", label: "Small batch" },
+  { value: "spoon", label: "Flavor spoon" },
+  { value: "pack", label: "Retail pack" },
+  { value: "cart", label: "Online order" },
+  { value: "cup", label: "Cafe" },
+  { value: "boxes", label: "Wholesale" }
 ];
-
-const brandStoryImagePreview = document.getElementById("brandStoryImagePreview");
 
 const integrationFields = {
   googleMapsApiKey: document.getElementById("googleMapsApiKeyInput"),
@@ -148,14 +147,158 @@ function defaultBrandStory() {
     body: "Bakeaholic started from a small Bali kitchen with a simple idea: make packaged treats that feel homemade, travel well, and are easy to share.",
     secondaryBody: "Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.",
     imagePath: "/assets/products/bliss-salted-caramel-lifestyle-20260422.png",
-    points: ["Bali kitchen roots", "Ready to share", "Feel-good treats"]
+    points: [
+      { label: "Bali kitchen roots", icon: "oats" },
+      { label: "Ready to share", icon: "gift" },
+      { label: "Feel-good treats", icon: "leaf" }
+    ],
+    slides: [
+      {
+        kicker: "Bakeaholic Bali",
+        title: "Bali-born treats for everyday good moments.",
+        body: "Bakeaholic started from a small Bali kitchen with a simple idea: make packaged treats that feel homemade, travel well, and are easy to share.",
+        secondaryBody: "Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.",
+        imagePath: "/assets/products/bliss-salted-caramel-lifestyle-20260422.png",
+        imageAlt: "Bakeaholic packaged snacks",
+        points: [
+          { label: "Bali kitchen roots", icon: "oats" },
+          { label: "Ready to share", icon: "gift" },
+          { label: "Feel-good treats", icon: "leaf" }
+        ]
+      },
+      {
+        kicker: "Our history",
+        title: "From kitchen batches to packed Bali favorites.",
+        body: "Bakeaholic grew from testing flavors, textures, and shelf-ready packs until the snacks felt just right: familiar, generous, and easy to bring anywhere.",
+        secondaryBody: "The range now moves from bliss balls to cookies, oats, and mellow treats, all made to support busy days, retail shelves, and thoughtful gifting.",
+        imagePath: "/assets/products/bliss-cranberry-lifestyle-20260422.png",
+        imageAlt: "Bakeaholic Cranberry Bliss Balls",
+        points: [
+          { label: "Small-batch roots", icon: "batch" },
+          { label: "Flavor testing", icon: "spoon" },
+          { label: "Retail-ready", icon: "pack" }
+        ]
+      },
+      {
+        kicker: "Where we sell",
+        title: "Made for homes, cafés, villas, and retail shelves.",
+        body: "Our snacks are easy to stock, display, and share, whether customers are ordering for daily treats, hospitality welcome packs, or grab-and-go retail.",
+        secondaryBody: "Order online for delivery, or contact us for wholesale and stocking conversations around Bali.",
+        imagePath: "/assets/products/overnight-oats-assorted.jpg",
+        imageAlt: "Bakeaholic assorted overnight oats",
+        points: [
+          { label: "Online orders", icon: "cart" },
+          { label: "Café shelves", icon: "cup" },
+          { label: "Wholesale packs", icon: "boxes" }
+        ]
+      }
+    ]
   };
 }
 
-function syncBrandStoryPreview() {
-  if (!brandStoryImagePreview) return;
-  const imagePath = brandStoryFields.imagePath.value.trim();
-  brandStoryImagePreview.src = imagePath || defaultBrandStory().imagePath;
+function normalizeStoryPoint(point, fallbackIcon = "leaf") {
+  if (typeof point === "string") {
+    return { label: point, icon: fallbackIcon };
+  }
+  return {
+    label: point?.label || "",
+    icon: point?.icon || fallbackIcon
+  };
+}
+
+function normalizeBrandStorySlides(story) {
+  const defaults = defaultBrandStory().slides;
+  const slides = Array.isArray(story?.slides) && story.slides.length
+    ? story.slides
+    : [{ ...defaults[0], ...(story || {}) }, ...defaults.slice(1)];
+
+  return defaults.map((fallback, index) => {
+    const slide = slides[index] || fallback;
+    return {
+      ...fallback,
+      ...slide,
+      points: [0, 1, 2].map((pointIndex) => normalizeStoryPoint(
+        slide.points?.[pointIndex],
+        fallback.points[pointIndex]?.icon || "leaf"
+      ))
+    };
+  });
+}
+
+function storyIconOptionsMarkup(selectedIcon) {
+  return storyIconOptions
+    .map((option) => `
+      <option value="${option.value}" ${option.value === selectedIcon ? "selected" : ""}>${option.label}</option>
+    `)
+    .join("");
+}
+
+function storySlideMarkup(slide, index) {
+  const points = [0, 1, 2].map((pointIndex) => normalizeStoryPoint(slide.points?.[pointIndex]));
+  return `
+    <article class="story-slide-editor-card" data-story-slide-index="${index}">
+      <h3>Slide ${index + 1}</h3>
+      <div class="admin-grid">
+        <div class="admin-field">
+          <label>Small label</label>
+          <input data-story-field="kicker" type="text" value="${escapeHtml(slide.kicker || "")}" />
+        </div>
+        <div class="admin-field">
+          <label>Image path</label>
+          <input class="admin-code-input" data-story-field="imagePath" type="text" value="${escapeHtml(slide.imagePath || "")}" />
+        </div>
+        <div class="admin-field" style="grid-column: 1 / -1;">
+          <label>Title</label>
+          <input data-story-field="title" type="text" value="${escapeHtml(slide.title || "")}" />
+        </div>
+        <div class="admin-field" style="grid-column: 1 / -1;">
+          <label>Paragraph 1</label>
+          <textarea data-story-field="body">${escapeHtml(slide.body || "")}</textarea>
+        </div>
+        <div class="admin-field" style="grid-column: 1 / -1;">
+          <label>Paragraph 2</label>
+          <textarea data-story-field="secondaryBody">${escapeHtml(slide.secondaryBody || "")}</textarea>
+        </div>
+        <div class="admin-field">
+          <label>Note 1</label>
+          <input data-story-point-label="0" type="text" value="${escapeHtml(points[0].label)}" />
+        </div>
+        <div class="admin-field">
+          <label>Icon 1</label>
+          <select data-story-point-icon="0">${storyIconOptionsMarkup(points[0].icon)}</select>
+        </div>
+        <div class="admin-field">
+          <label>Note 2</label>
+          <input data-story-point-label="1" type="text" value="${escapeHtml(points[1].label)}" />
+        </div>
+        <div class="admin-field">
+          <label>Icon 2</label>
+          <select data-story-point-icon="1">${storyIconOptionsMarkup(points[1].icon)}</select>
+        </div>
+        <div class="admin-field">
+          <label>Note 3</label>
+          <input data-story-point-label="2" type="text" value="${escapeHtml(points[2].label)}" />
+        </div>
+        <div class="admin-field">
+          <label>Icon 3</label>
+          <select data-story-point-icon="2">${storyIconOptionsMarkup(points[2].icon)}</select>
+        </div>
+        <div class="admin-field admin-image-preview-field">
+          <label>Slide image preview</label>
+          <div class="admin-image-preview-frame wide">
+            <img class="admin-image-preview" data-story-preview src="${escapeHtml(slide.imagePath || defaultBrandStory().imagePath)}" alt="Homepage carousel preview" />
+          </div>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function syncBrandStoryPreview(card) {
+  const preview = card?.querySelector("[data-story-preview]");
+  const imageInput = card?.querySelector('[data-story-field="imagePath"]');
+  if (!preview || !imageInput) return;
+  preview.src = imageInput.value.trim() || defaultBrandStory().imagePath;
 }
 
 function renderBrandStory() {
@@ -163,13 +306,8 @@ function renderBrandStory() {
     ...defaultBrandStory(),
     ...(state.catalog.brandStory || {})
   };
-  Object.entries(brandStoryFields).forEach(([key, field]) => {
-    field.value = story[key] || "";
-  });
-  brandStoryPointFields.forEach((field, index) => {
-    field.value = story.points?.[index] || "";
-  });
-  syncBrandStoryPreview();
+  const slides = normalizeBrandStorySlides(story);
+  brandStorySlideList.innerHTML = slides.map((slide, index) => storySlideMarkup(slide, index)).join("");
 }
 
 function escapeHtml(value) {
@@ -408,12 +546,22 @@ function collectPromo() {
 }
 
 function collectBrandStory() {
-  const story = {};
-  Object.entries(brandStoryFields).forEach(([key, field]) => {
-    story[key] = field.value.trim();
+  const slides = [...brandStorySlideList.querySelectorAll("[data-story-slide-index]")].map((card) => {
+    const slide = {};
+    card.querySelectorAll("[data-story-field]").forEach((field) => {
+      slide[field.dataset.storyField] = field.value.trim();
+    });
+    slide.points = [0, 1, 2].map((pointIndex) => ({
+      label: card.querySelector(`[data-story-point-label="${pointIndex}"]`)?.value.trim() || "",
+      icon: card.querySelector(`[data-story-point-icon="${pointIndex}"]`)?.value || "leaf"
+    })).filter((point) => point.label);
+    return slide;
   });
-  story.points = brandStoryPointFields.map((field) => field.value.trim()).filter(Boolean);
-  return story;
+  return {
+    ...slides[0],
+    points: slides[0]?.points || [],
+    slides
+  };
 }
 
 function collectCategories() {
@@ -535,7 +683,11 @@ saveCatalogButton.addEventListener("click", saveCatalog);
 saveIntegrationsButton.addEventListener("click", saveIntegrations);
 addProductButton.addEventListener("click", addProduct);
 adminLogoutButton.addEventListener("click", logoutAdmin);
-brandStoryFields.imagePath.addEventListener("input", syncBrandStoryPreview);
+brandStorySlideList.addEventListener("input", (event) => {
+  if (event.target.matches('[data-story-field="imagePath"]')) {
+    syncBrandStoryPreview(event.target.closest("[data-story-slide-index]"));
+  }
+});
 
 bootstrap().catch((error) => {
   setStatus(error.message);

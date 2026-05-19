@@ -24,9 +24,86 @@
     "secondaryBody": "Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.",
     "imagePath": "/assets/products/bliss-salted-caramel-lifestyle-20260422.png",
     "points": [
-      "Bali kitchen roots",
-      "Ready to share",
-      "Feel-good treats"
+      {
+        "label": "Bali kitchen roots",
+        "icon": "oats"
+      },
+      {
+        "label": "Ready to share",
+        "icon": "gift"
+      },
+      {
+        "label": "Feel-good treats",
+        "icon": "leaf"
+      }
+    ],
+    "slides": [
+      {
+        "kicker": "Bakeaholic Bali",
+        "title": "Bali-born treats for everyday good moments.",
+        "body": "Bakeaholic started from a small Bali kitchen with a simple idea: make packaged treats that feel homemade, travel well, and are easy to share.",
+        "secondaryBody": "Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.",
+        "imagePath": "/assets/products/bliss-salted-caramel-lifestyle-20260422.png",
+        "imageAlt": "Bakeaholic packaged snacks",
+        "points": [
+          {
+            "label": "Bali kitchen roots",
+            "icon": "oats"
+          },
+          {
+            "label": "Ready to share",
+            "icon": "gift"
+          },
+          {
+            "label": "Feel-good treats",
+            "icon": "leaf"
+          }
+        ]
+      },
+      {
+        "kicker": "Our history",
+        "title": "From kitchen batches to packed Bali favorites.",
+        "body": "Bakeaholic grew from testing flavors, textures, and shelf-ready packs until the snacks felt just right: familiar, generous, and easy to bring anywhere.",
+        "secondaryBody": "The range now moves from bliss balls to cookies, oats, and mellow treats, all made to support busy days, retail shelves, and thoughtful gifting.",
+        "imagePath": "/assets/products/bliss-cranberry-lifestyle-20260422.png",
+        "imageAlt": "Bakeaholic Cranberry Bliss Balls",
+        "points": [
+          {
+            "label": "Small-batch roots",
+            "icon": "batch"
+          },
+          {
+            "label": "Flavor testing",
+            "icon": "spoon"
+          },
+          {
+            "label": "Retail-ready",
+            "icon": "pack"
+          }
+        ]
+      },
+      {
+        "kicker": "Where we sell",
+        "title": "Made for homes, cafés, villas, and retail shelves.",
+        "body": "Our snacks are easy to stock, display, and share, whether customers are ordering for daily treats, hospitality welcome packs, or grab-and-go retail.",
+        "secondaryBody": "Order online for delivery, or contact us for wholesale and stocking conversations around Bali.",
+        "imagePath": "/assets/products/overnight-oats-assorted.jpg",
+        "imageAlt": "Bakeaholic assorted overnight oats",
+        "points": [
+          {
+            "label": "Online orders",
+            "icon": "cart"
+          },
+          {
+            "label": "Café shelves",
+            "icon": "cup"
+          },
+          {
+            "label": "Wholesale packs",
+            "icon": "boxes"
+          }
+        ]
+      }
     ]
   },
   "categories": [

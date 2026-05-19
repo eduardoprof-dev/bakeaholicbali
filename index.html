@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bakeaholic Online Shop</title>
-    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260519-story-carousel" />
-    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260519-story-carousel" />
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260519-editable-story" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260519-editable-story" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260519-story-carousel" />
+    <link rel="stylesheet" href="styles.css?v=20260519-editable-story" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -112,9 +112,9 @@
                   Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.
                 </p>
                 <div class="brand-story-points" id="brandStoryPoints" aria-label="Bakeaholic highlights">
-                  <span>Bali kitchen roots</span>
-                  <span>Ready to share</span>
-                  <span>Feel-good treats</span>
+                  <span data-story-icon="oats">Bali kitchen roots</span>
+                  <span data-story-icon="gift">Ready to share</span>
+                  <span data-story-icon="leaf">Feel-good treats</span>
                 </div>
               </div>
               <img class="brand-story-image" id="brandStoryImage" src="/assets/products/bliss-salted-caramel-lifestyle-20260422.png" alt="Bakeaholic packaged snacks" />
@@ -130,9 +130,9 @@
                   The range now moves from bliss balls to cookies, oats, and mellow treats, all made to support busy days, retail shelves, and thoughtful gifting.
                 </p>
                 <div class="brand-story-points" aria-label="Bakeaholic history highlights">
-                  <span>Small-batch roots</span>
-                  <span>Flavor testing</span>
-                  <span>Retail-ready</span>
+                  <span data-story-icon="batch">Small-batch roots</span>
+                  <span data-story-icon="spoon">Flavor testing</span>
+                  <span data-story-icon="pack">Retail-ready</span>
                 </div>
               </div>
               <img class="brand-story-image" src="/assets/products/bliss-cranberry-lifestyle-20260422.png" alt="Bakeaholic Cranberry Bliss Balls" />
@@ -148,9 +148,9 @@
                   Order online for delivery, or contact us for wholesale and stocking conversations around Bali.
                 </p>
                 <div class="brand-story-points" aria-label="Bakeaholic sales channels">
-                  <span>Online orders</span>
-                  <span>Café shelves</span>
-                  <span>Wholesale packs</span>
+                  <span data-story-icon="cart">Online orders</span>
+                  <span data-story-icon="cup">Café shelves</span>
+                  <span data-story-icon="boxes">Wholesale packs</span>
                 </div>
               </div>
               <img class="brand-story-image" src="/assets/products/overnight-oats-assorted.jpg" alt="Bakeaholic assorted overnight oats" />
@@ -165,7 +165,7 @@
 
         <section class="moment-guide" aria-labelledby="momentGuideTitle">
           <div class="moment-guide-head">
-            <p class="feature-kicker">Shop by moment</p>
+            <p class="feature-kicker">Shop by Category</p>
             <h2 id="momentGuideTitle">Pick the snack for what you need today.</h2>
           </div>
           <div class="moment-grid">
@@ -183,6 +183,11 @@
               <img src="/assets/products/overnight-oats-assorted.jpg" alt="Overnight oats for morning pantry" />
               <span>Morning pantry</span>
               <strong>Overnight Oats</strong>
+            </a>
+            <a class="moment-card" href="#munchie-mallow">
+              <img src="/assets/products/mallow-vanilla-20260422.jpg" alt="Munchie Mallow for kids favorite snacks" />
+              <span>Kids favorite</span>
+              <strong>Munchie Mallow</strong>
             </a>
           </div>
         </section>
@@ -401,7 +406,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260519-story-carousel"></script>
-    <script src="app.js?v=20260519-story-carousel"></script>
+    <script src="location-picker.js?v=20260519-editable-story"></script>
+    <script src="app.js?v=20260519-editable-story"></script>
   </body>
 </html>

@@ -869,20 +869,99 @@ async function addToCart(itemId) {
 
 function renderBrandStory() {
   if (!state.brandStory) return;
-  const points = Array.isArray(state.brandStory.points) ? state.brandStory.points.filter(Boolean).slice(0, 3) : [];
-
-  if (brandStoryKicker) brandStoryKicker.textContent = state.brandStory.kicker || "Bakeaholic Bali";
-  if (brandStoryTitle) brandStoryTitle.textContent = state.brandStory.title || "Bali-born treats for everyday good moments.";
-  if (brandStoryBody) brandStoryBody.textContent = state.brandStory.body || "";
-  if (brandStorySecondaryBody) brandStorySecondaryBody.textContent = state.brandStory.secondaryBody || "";
-  if (brandStoryPoints) {
-    brandStoryPoints.innerHTML = points.map((point) => `<span>${escapeHtml(point)}</span>`).join("");
-  }
-  if (brandStoryImage && state.brandStory.imagePath) {
-    brandStoryImage.src = versionedAsset(state.brandStory.imagePath);
-    brandStoryImage.alt = state.brandStory.imageAlt || "Bakeaholic packaged snacks";
+  const slides = normalizeBrandStorySlides(state.brandStory);
+  if (brandStoryTrack) {
+    brandStoryTrack.innerHTML = slides.map((slide, index) => storySlideMarkup(slide, index)).join("");
   }
   updateBrandStorySlide();
+}
+
+function normalizeStoryPoint(point, fallbackIcon = "leaf") {
+  if (typeof point === "string") {
+    return { label: point, icon: fallbackIcon };
+  }
+  return {
+    label: point?.label || "",
+    icon: point?.icon || fallbackIcon
+  };
+}
+
+function normalizeBrandStorySlides(story) {
+  const fallbackSlides = [
+    {
+      kicker: "Bakeaholic Bali",
+      title: "Bali-born treats for everyday good moments.",
+      body: "Bakeaholic started from a small Bali kitchen with a simple idea: make packaged treats that feel homemade, travel well, and are easy to share.",
+      secondaryBody: "Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.",
+      imagePath: "/assets/products/bliss-salted-caramel-lifestyle-20260422.png",
+      imageAlt: "Bakeaholic packaged snacks",
+      points: [
+        { label: "Bali kitchen roots", icon: "oats" },
+        { label: "Ready to share", icon: "gift" },
+        { label: "Feel-good treats", icon: "leaf" }
+      ]
+    },
+    {
+      kicker: "Our history",
+      title: "From kitchen batches to packed Bali favorites.",
+      body: "Bakeaholic grew from testing flavors, textures, and shelf-ready packs until the snacks felt just right: familiar, generous, and easy to bring anywhere.",
+      secondaryBody: "The range now moves from bliss balls to cookies, oats, and mellow treats, all made to support busy days, retail shelves, and thoughtful gifting.",
+      imagePath: "/assets/products/bliss-cranberry-lifestyle-20260422.png",
+      imageAlt: "Bakeaholic Cranberry Bliss Balls",
+      points: [
+        { label: "Small-batch roots", icon: "batch" },
+        { label: "Flavor testing", icon: "spoon" },
+        { label: "Retail-ready", icon: "pack" }
+      ]
+    },
+    {
+      kicker: "Where we sell",
+      title: "Made for homes, cafés, villas, and retail shelves.",
+      body: "Our snacks are easy to stock, display, and share, whether customers are ordering for daily treats, hospitality welcome packs, or grab-and-go retail.",
+      secondaryBody: "Order online for delivery, or contact us for wholesale and stocking conversations around Bali.",
+      imagePath: "/assets/products/overnight-oats-assorted.jpg",
+      imageAlt: "Bakeaholic assorted overnight oats",
+      points: [
+        { label: "Online orders", icon: "cart" },
+        { label: "Café shelves", icon: "cup" },
+        { label: "Wholesale packs", icon: "boxes" }
+      ]
+    }
+  ];
+  const storySlides = Array.isArray(story.slides) && story.slides.length
+    ? story.slides
+    : [{ ...fallbackSlides[0], ...story }, ...fallbackSlides.slice(1)];
+
+  return fallbackSlides.map((fallback, index) => {
+    const slide = storySlides[index] || fallback;
+    return {
+      ...fallback,
+      ...slide,
+      points: [0, 1, 2].map((pointIndex) => normalizeStoryPoint(
+        slide.points?.[pointIndex],
+        fallback.points[pointIndex]?.icon || "leaf"
+      )).filter((point) => point.label)
+    };
+  });
+}
+
+function storySlideMarkup(slide, index) {
+  const titleId = `brandStoryTitle${index + 1}`;
+  const points = Array.isArray(slide.points) ? slide.points : [];
+  return `
+    <article class="brand-story-slide" aria-labelledby="${titleId}">
+      <div class="brand-story-copy">
+        <p class="feature-kicker">${escapeHtml(slide.kicker)}</p>
+        <h1 id="${titleId}">${escapeHtml(slide.title)}</h1>
+        <p>${escapeHtml(slide.body)}</p>
+        <p>${escapeHtml(slide.secondaryBody)}</p>
+        <div class="brand-story-points" aria-label="Bakeaholic story highlights">
+          ${points.map((point) => `<span data-story-icon="${escapeHtml(point.icon)}">${escapeHtml(point.label)}</span>`).join("")}
+        </div>
+      </div>
+      <img class="brand-story-image" src="${versionedAsset(slide.imagePath)}" alt="${escapeHtml(slide.imageAlt || "Bakeaholic packaged snacks")}" />
+    </article>
+  `;
 }
 
 function updateBrandStorySlide() {
@@ -919,6 +998,58 @@ function changeBrandStorySlide(direction) {
     const targetTop = (card?.getBoundingClientRect().top || 0) + window.scrollY - headerHeight - 10;
     window.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
   }
+}
+
+function enableBrandStorySwipe() {
+  if (!brandStoryTrack) return;
+  let startX = 0;
+  let startY = 0;
+  let pointerStarted = false;
+
+  const startSwipe = (clientX, clientY) => {
+    if (!window.matchMedia("(max-width: 1024px)").matches) return;
+    startX = clientX;
+    startY = clientY;
+    pointerStarted = true;
+  };
+
+  const finishSwipe = (clientX, clientY) => {
+    if (!pointerStarted) return;
+    pointerStarted = false;
+    const deltaX = clientX - startX;
+    const deltaY = clientY - startY;
+    if (Math.abs(deltaX) < 45 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+    changeBrandStorySlide(deltaX < 0 ? 1 : -1);
+  };
+
+  brandStoryTrack.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse") return;
+    startSwipe(event.clientX, event.clientY);
+  });
+
+  brandStoryTrack.addEventListener("pointerup", (event) => {
+    finishSwipe(event.clientX, event.clientY);
+  });
+
+  brandStoryTrack.addEventListener("touchstart", (event) => {
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    startSwipe(touch.clientX, touch.clientY);
+  }, { passive: true });
+
+  brandStoryTrack.addEventListener("touchend", (event) => {
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    finishSwipe(touch.clientX, touch.clientY);
+  }, { passive: true });
+
+  brandStoryTrack.addEventListener("pointercancel", () => {
+    pointerStarted = false;
+  });
+
+  brandStoryTrack.addEventListener("touchcancel", () => {
+    pointerStarted = false;
+  }, { passive: true });
 }
 
 async function resetTestData() {
@@ -1022,6 +1153,7 @@ document.addEventListener("click", (event) => {
 promoAddButton.addEventListener("click", () => addToCart(state.promo.itemId));
 brandStoryPrev?.addEventListener("click", () => changeBrandStorySlide(-1));
 brandStoryNext?.addEventListener("click", () => changeBrandStorySlide(1));
+enableBrandStorySwipe();
 stickyCartButton.addEventListener("click", () => {
   window.location.href = `/cart.html${modeQuery}`;
 });

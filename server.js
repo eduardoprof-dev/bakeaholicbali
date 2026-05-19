@@ -60,7 +60,52 @@ const DEFAULT_BRAND_STORY = {
   body: "Bakeaholic started from a small Bali kitchen with a simple idea: make packaged treats that feel homemade, travel well, and are easy to share.",
   secondaryBody: "Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.",
   imagePath: "/assets/products/bliss-salted-caramel-lifestyle-20260422.png",
-  points: ["Bali kitchen roots", "Ready to share", "Feel-good treats"]
+  points: [
+    { label: "Bali kitchen roots", icon: "oats" },
+    { label: "Ready to share", icon: "gift" },
+    { label: "Feel-good treats", icon: "leaf" }
+  ],
+  slides: [
+    {
+      kicker: "Bakeaholic Bali",
+      title: "Bali-born treats for everyday good moments.",
+      body: "Bakeaholic started from a small Bali kitchen with a simple idea: make packaged treats that feel homemade, travel well, and are easy to share.",
+      secondaryBody: "Every snack is built for real life, with retail-ready packs, familiar flavors, and shelf lives that make gifting, stocking, and daily snacking simple.",
+      imagePath: "/assets/products/bliss-salted-caramel-lifestyle-20260422.png",
+      imageAlt: "Bakeaholic packaged snacks",
+      points: [
+        { label: "Bali kitchen roots", icon: "oats" },
+        { label: "Ready to share", icon: "gift" },
+        { label: "Feel-good treats", icon: "leaf" }
+      ]
+    },
+    {
+      kicker: "Our history",
+      title: "From kitchen batches to packed Bali favorites.",
+      body: "Bakeaholic grew from testing flavors, textures, and shelf-ready packs until the snacks felt just right: familiar, generous, and easy to bring anywhere.",
+      secondaryBody: "The range now moves from bliss balls to cookies, oats, and mellow treats, all made to support busy days, retail shelves, and thoughtful gifting.",
+      imagePath: "/assets/products/bliss-cranberry-lifestyle-20260422.png",
+      imageAlt: "Bakeaholic Cranberry Bliss Balls",
+      points: [
+        { label: "Small-batch roots", icon: "batch" },
+        { label: "Flavor testing", icon: "spoon" },
+        { label: "Retail-ready", icon: "pack" }
+      ]
+    },
+    {
+      kicker: "Where we sell",
+      title: "Made for homes, cafés, villas, and retail shelves.",
+      body: "Our snacks are easy to stock, display, and share, whether customers are ordering for daily treats, hospitality welcome packs, or grab-and-go retail.",
+      secondaryBody: "Order online for delivery, or contact us for wholesale and stocking conversations around Bali.",
+      imagePath: "/assets/products/overnight-oats-assorted.jpg",
+      imageAlt: "Bakeaholic assorted overnight oats",
+      points: [
+        { label: "Online orders", icon: "cart" },
+        { label: "Café shelves", icon: "cup" },
+        { label: "Wholesale packs", icon: "boxes" }
+      ]
+    }
+  ]
 };
 const customersPath = path.join(dataDir, "customers.json");
 const ordersLivePath = path.join(dataDir, "orders-live.json");
@@ -1065,8 +1110,68 @@ function validateCatalog(nextCatalog) {
   }
 }
 
+function normalizeStoryPoint(point, fallbackIcon = "leaf") {
+  if (typeof point === "string") {
+    return {
+      label: point.trim(),
+      icon: fallbackIcon
+    };
+  }
+
+  return {
+    label: String(point?.label || "").trim(),
+    icon: String(point?.icon || fallbackIcon).trim()
+  };
+}
+
+function normalizeBrandStorySlides(brandStoryInput) {
+  const inputSlides = Array.isArray(brandStoryInput.slides) && brandStoryInput.slides.length
+    ? brandStoryInput.slides
+    : [
+        {
+          ...DEFAULT_BRAND_STORY.slides[0],
+          ...brandStoryInput
+        },
+        ...DEFAULT_BRAND_STORY.slides.slice(1)
+      ];
+
+  return inputSlides
+    .slice(0, 3)
+    .map((slide, index) => {
+      const fallback = DEFAULT_BRAND_STORY.slides[index] || DEFAULT_BRAND_STORY.slides[0];
+      return {
+        kicker: String(slide?.kicker || fallback.kicker).trim(),
+        title: String(slide?.title || fallback.title).trim(),
+        body: String(slide?.body || fallback.body).trim(),
+        secondaryBody: String(slide?.secondaryBody || fallback.secondaryBody).trim(),
+        imagePath: String(slide?.imagePath || fallback.imagePath).trim(),
+        imageAlt: String(slide?.imageAlt || fallback.imageAlt).trim(),
+        points: (Array.isArray(slide?.points) ? slide.points : fallback.points)
+          .map((point, pointIndex) => normalizeStoryPoint(point, fallback.points[pointIndex]?.icon || "leaf"))
+          .filter((point) => point.label)
+          .slice(0, 3)
+      };
+    });
+}
+
+function withDefaultBrandStory(brandStoryInput = {}) {
+  const merged = {
+    ...DEFAULT_BRAND_STORY,
+    ...brandStoryInput
+  };
+  const slides = normalizeBrandStorySlides(merged);
+  return {
+    ...merged,
+    ...slides[0],
+    points: slides[0]?.points || merged.points,
+    slides
+  };
+}
+
 function sanitizeCatalog(nextCatalog) {
   const brandStoryInput = nextCatalog.brandStory || {};
+  const brandStorySlides = normalizeBrandStorySlides(brandStoryInput);
+  const primarySlide = brandStorySlides[0] || DEFAULT_BRAND_STORY.slides[0];
   return {
     store: {
       ...nextCatalog.store,
@@ -1078,15 +1183,14 @@ function sanitizeCatalog(nextCatalog) {
       kicker: String(nextCatalog.promo?.kicker || "").trim()
     },
     brandStory: {
-      kicker: String(brandStoryInput.kicker || DEFAULT_BRAND_STORY.kicker).trim(),
-      title: String(brandStoryInput.title || DEFAULT_BRAND_STORY.title).trim(),
-      body: String(brandStoryInput.body || DEFAULT_BRAND_STORY.body).trim(),
-      secondaryBody: String(brandStoryInput.secondaryBody || DEFAULT_BRAND_STORY.secondaryBody).trim(),
-      imagePath: String(brandStoryInput.imagePath || DEFAULT_BRAND_STORY.imagePath).trim(),
-      points: (Array.isArray(brandStoryInput.points) ? brandStoryInput.points : DEFAULT_BRAND_STORY.points)
-        .map((point) => String(point || "").trim())
-        .filter(Boolean)
-        .slice(0, 3)
+      kicker: primarySlide.kicker,
+      title: primarySlide.title,
+      body: primarySlide.body,
+      secondaryBody: primarySlide.secondaryBody,
+      imagePath: primarySlide.imagePath,
+      imageAlt: primarySlide.imageAlt,
+      points: primarySlide.points,
+      slides: brandStorySlides
     },
     categories: nextCatalog.categories.map((category) => ({
       id: String(category.id).trim(),
@@ -2175,10 +2279,7 @@ function handleApi(requestUrl, request, response) {
       mode,
       store: getStoreConfig(),
       promo: catalog.promo,
-      brandStory: {
-        ...DEFAULT_BRAND_STORY,
-        ...(catalog.brandStory || {})
-      },
+      brandStory: withDefaultBrandStory(catalog.brandStory),
       categories: catalog.categories,
       items: catalog.items,
       paymentMethods: PAYMENT_METHODS,
@@ -2250,7 +2351,10 @@ function handleApi(requestUrl, request, response) {
     if (!session) {
       return true;
     }
-    sendJson(response, 200, catalog);
+    sendJson(response, 200, {
+      ...catalog,
+      brandStory: withDefaultBrandStory(catalog.brandStory)
+    });
     return true;
   }
 
