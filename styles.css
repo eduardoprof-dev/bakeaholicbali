@@ -2659,6 +2659,31 @@ body::before {
   grid-row: 1 / span 2;
 }
 
+.otp-actions {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.otp-action-link {
+  color: var(--accent);
+  font-size: 0.96rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.otp-action-link:disabled {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.otp-actions .modal-copy {
+  margin: 0;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
 .phone-prefix {
   display: inline-flex;
   align-items: center;
