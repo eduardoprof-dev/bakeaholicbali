@@ -53,6 +53,7 @@ const integrationFields = {
   whatsappVerifyToken: document.getElementById("whatsappVerifyTokenInput"),
   whatsappAppId: document.getElementById("whatsappAppIdInput"),
   whatsappAppSecret: document.getElementById("whatsappAppSecretInput"),
+  whatsappGraphVersion: document.getElementById("whatsappGraphVersionInput"),
   whatsappOtpTemplateName: document.getElementById("whatsappOtpTemplateNameInput"),
   whatsappOrderTemplateName: document.getElementById("whatsappOrderTemplateNameInput"),
   whatsappTemplateLanguage: document.getElementById("whatsappTemplateLanguageInput")
@@ -627,6 +628,7 @@ async function saveIntegrations() {
       whatsappVerifyToken: integrationFields.whatsappVerifyToken.value.trim(),
       whatsappAppId: integrationFields.whatsappAppId.value.trim(),
       whatsappAppSecret: integrationFields.whatsappAppSecret.value.trim(),
+      whatsappGraphVersion: integrationFields.whatsappGraphVersion.value.trim(),
       whatsappOtpTemplateName: integrationFields.whatsappOtpTemplateName.value.trim(),
       whatsappOrderTemplateName: integrationFields.whatsappOrderTemplateName.value.trim(),
       whatsappTemplateLanguage: integrationFields.whatsappTemplateLanguage.value.trim()

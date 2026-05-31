@@ -185,6 +185,7 @@ function writeEnvMap(targetPath, envMap) {
     "WHATSAPP_VERIFY_TOKEN",
     "WHATSAPP_APP_ID",
     "WHATSAPP_APP_SECRET",
+    "WHATSAPP_GRAPH_VERSION",
     "WHATSAPP_OTP_TEMPLATE_NAME",
     "WHATSAPP_ORDER_TEMPLATE_NAME",
     "WHATSAPP_TEMPLATE_LANGUAGE"
@@ -224,6 +225,7 @@ function getIntegrationConfig() {
     whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN || "",
     whatsappAppId: process.env.WHATSAPP_APP_ID || "",
     whatsappAppSecret: process.env.WHATSAPP_APP_SECRET || "",
+    whatsappGraphVersion: process.env.WHATSAPP_GRAPH_VERSION || "v22.0",
     whatsappOtpTemplateName: process.env.WHATSAPP_OTP_TEMPLATE_NAME || "",
     whatsappOrderTemplateName: process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "",
     whatsappTemplateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en"
@@ -258,7 +260,7 @@ function whatsappMessagesUrl() {
   return `https://graph.facebook.com/${whatsappGraphVersion()}/${phoneNumberId}/messages`;
 }
 
-async function sendWhatsappTemplateMessage(to, templateName, parameters = []) {
+async function sendWhatsappTemplateMessage(to, templateName, parameters = [], options = {}) {
   if (!isWhatsappCloudReady()) {
     throw new Error("WhatsApp Cloud API is not configured");
   }
@@ -300,6 +302,21 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = []) {
     ];
   }
 
+  if (options.authenticationCode) {
+    payload.template.components = payload.template.components || [];
+    payload.template.components.push({
+      type: "button",
+      sub_type: "url",
+      index: "0",
+      parameters: [
+        {
+          type: "text",
+          text: String(options.authenticationCode).trim()
+        }
+      ]
+    });
+  }
+
   const response = await fetch(whatsappMessagesUrl(), {
     method: "POST",
     headers: {
@@ -327,7 +344,7 @@ async function sendWhatsappOtpCode(phone, code) {
     throw new Error("WHATSAPP_OTP_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(phone, templateName, [code]);
+  return sendWhatsappTemplateMessage(phone, templateName, [code], { authenticationCode: code });
 }
 
 function humanizeOrderStatus(order) {
@@ -374,16 +391,57 @@ async function maybeSendWhatsappOrderStatus(order, previousStatus = "") {
   }
 
   try {
-    await sendWhatsappOrderUpdate(order);
+    const messageResponse = await sendWhatsappOrderUpdate(order);
     order.whatsappNotifications = {
       ...order.whatsappNotifications,
       lastStatusSent: order.status,
-      lastSentAt: new Date().toISOString()
+      lastSentAt: new Date().toISOString(),
+      messageId: messageResponse?.messages?.[0]?.id || order.whatsappNotifications?.messageId || ""
     };
     delete order.whatsappNotificationError;
   } catch (error) {
     order.whatsappNotificationError = error.message;
   }
+}
+
+function verifyMetaWebhookSignature(request, rawBody) {
+  const appSecret = String(process.env.WHATSAPP_APP_SECRET || "").trim();
+  if (!appSecret) {
+    return true;
+  }
+
+  const signatureHeader = String(request.headers["x-hub-signature-256"] || "");
+  const expectedSignature = `sha256=${crypto
+    .createHmac("sha256", appSecret)
+    .update(rawBody)
+    .digest("hex")}`;
+
+  return timingSafeEqualString(signatureHeader, expectedSignature);
+}
+
+function processWhatsappWebhook(payload) {
+  const valueEntries = Array.isArray(payload?.entry)
+    ? payload.entry.flatMap((entry) => Array.isArray(entry.changes) ? entry.changes : [])
+    : [];
+  const statuses = valueEntries.flatMap((change) => Array.isArray(change?.value?.statuses) ? change.value.statuses : []);
+  if (!statuses.length) {
+    return;
+  }
+
+  stores.live.orders.forEach((order) => {
+    if (!order.whatsappNotifications?.messageId) {
+      return;
+    }
+    const status = statuses.find((entry) => entry.id === order.whatsappNotifications.messageId);
+    if (!status) {
+      return;
+    }
+    order.whatsappNotifications.lastDeliveryStatus = status.status || "";
+    order.whatsappNotifications.lastDeliveryAt = status.timestamp
+      ? new Date(Number(status.timestamp) * 1000).toISOString()
+      : new Date().toISOString();
+  });
+  saveOrders(ordersLivePath, stores.live.orders);
 }
 
 function readIntegrationSettings() {
@@ -402,6 +460,7 @@ function readIntegrationSettings() {
     whatsappVerifyToken: envMap.WHATSAPP_VERIFY_TOKEN || config.whatsappVerifyToken,
     whatsappAppId: envMap.WHATSAPP_APP_ID || config.whatsappAppId,
     whatsappAppSecret: envMap.WHATSAPP_APP_SECRET || config.whatsappAppSecret,
+    whatsappGraphVersion: envMap.WHATSAPP_GRAPH_VERSION || config.whatsappGraphVersion,
     whatsappOtpTemplateName: envMap.WHATSAPP_OTP_TEMPLATE_NAME || config.whatsappOtpTemplateName,
     whatsappOrderTemplateName: envMap.WHATSAPP_ORDER_TEMPLATE_NAME || config.whatsappOrderTemplateName,
     whatsappTemplateLanguage: envMap.WHATSAPP_TEMPLATE_LANGUAGE || config.whatsappTemplateLanguage
@@ -429,6 +488,7 @@ function saveIntegrationSettings(input = {}) {
     whatsappVerifyToken: String(input.whatsappVerifyToken || "").trim(),
     whatsappAppId: String(input.whatsappAppId || "").trim(),
     whatsappAppSecret: String(input.whatsappAppSecret || "").trim(),
+    whatsappGraphVersion: String(input.whatsappGraphVersion || "v22.0").trim() || "v22.0",
     whatsappOtpTemplateName: String(input.whatsappOtpTemplateName || "").trim(),
     whatsappOrderTemplateName: String(input.whatsappOrderTemplateName || "").trim(),
     whatsappTemplateLanguage: String(input.whatsappTemplateLanguage || "en").trim() || "en"
@@ -448,6 +508,7 @@ function saveIntegrationSettings(input = {}) {
     WHATSAPP_VERIFY_TOKEN: nextSettings.whatsappVerifyToken,
     WHATSAPP_APP_ID: nextSettings.whatsappAppId,
     WHATSAPP_APP_SECRET: nextSettings.whatsappAppSecret,
+    WHATSAPP_GRAPH_VERSION: nextSettings.whatsappGraphVersion,
     WHATSAPP_OTP_TEMPLATE_NAME: nextSettings.whatsappOtpTemplateName,
     WHATSAPP_ORDER_TEMPLATE_NAME: nextSettings.whatsappOrderTemplateName,
     WHATSAPP_TEMPLATE_LANGUAGE: nextSettings.whatsappTemplateLanguage
@@ -465,6 +526,7 @@ function saveIntegrationSettings(input = {}) {
   process.env.WHATSAPP_VERIFY_TOKEN = nextSettings.whatsappVerifyToken;
   process.env.WHATSAPP_APP_ID = nextSettings.whatsappAppId;
   process.env.WHATSAPP_APP_SECRET = nextSettings.whatsappAppSecret;
+  process.env.WHATSAPP_GRAPH_VERSION = nextSettings.whatsappGraphVersion;
   process.env.WHATSAPP_OTP_TEMPLATE_NAME = nextSettings.whatsappOtpTemplateName;
   process.env.WHATSAPP_ORDER_TEMPLATE_NAME = nextSettings.whatsappOrderTemplateName;
   process.env.WHATSAPP_TEMPLATE_LANGUAGE = nextSettings.whatsappTemplateLanguage;
@@ -778,6 +840,20 @@ function enforceSameOrigin(request, response) {
 }
 
 function parseBody(request) {
+  return parseRawBody(request).then((raw) => {
+    if (!raw) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(raw);
+    } catch (_error) {
+      throw new Error("Invalid JSON body");
+    }
+  });
+}
+
+function parseRawBody(request) {
   return new Promise((resolve, reject) => {
     let raw = "";
     request.on("data", (chunk) => {
@@ -787,16 +863,7 @@ function parseBody(request) {
       }
     });
     request.on("end", () => {
-      if (!raw) {
-        resolve({});
-        return;
-      }
-
-      try {
-        resolve(JSON.parse(raw));
-      } catch (_error) {
-        reject(new Error("Invalid JSON body"));
-      }
+      resolve(raw);
     });
     request.on("error", reject);
   });
@@ -1329,6 +1396,28 @@ function buildShipmentItems(storeState) {
     .filter(Boolean);
 }
 
+function buildShipmentItemsFromOrder(order) {
+  return (Array.isArray(order.items) ? order.items : [])
+    .map(({ itemId, quantity }) => {
+      const item = findMenuItem(itemId);
+      if (!item) return null;
+      return {
+        name: item.name,
+        description: item.description,
+        category: "food_and_drink",
+        value: item.price,
+        quantity,
+        weight: defaultWeightGrams(item)
+      };
+    })
+    .filter(Boolean);
+}
+
+function localIndonesianPhone(phone) {
+  const normalized = formatIndonesianPhone(phone);
+  return normalized ? normalized.replace(/^62/, "0") : "";
+}
+
 function recalculateSummary(summary, options = {}) {
   const store = getStoreConfig();
   const deliveryFee = Number(options.deliveryFee || 0);
@@ -1406,6 +1495,7 @@ async function fetchBiteshipLiveQuote(storeState, destination) {
     courierCode: preferredOption.courier_code,
     courierName: preferredOption.courier_name,
     courierServiceName: preferredOption.courier_service_name,
+    courierServiceCode: preferredOption.courier_service_code || preferredOption.service_type || "",
     serviceType: preferredOption.service_type,
     duration: preferredOption.duration,
     distanceKm: destination.routeDistanceKm || 0,
@@ -1419,8 +1509,93 @@ async function getCartSummaryPayload(storeState, options = {}) {
   const summary = buildCartSummary(storeState, options);
   const destination = normalizeDestination(options.destination);
   if (summary.fulfillmentType !== "delivery" || destination.lat == null || destination.lng == null) {
-    return summary;
+  return summary;
+}
+
+async function createBiteshipShipment(order) {
+  const integrationConfig = getIntegrationConfig();
+  if (!integrationConfig.biteshipApiKey) {
+    return null;
   }
+
+  const shipping = order.pricing?.shipping || {};
+  const destination = normalizeDestination(order.fulfillment?.location || {});
+  const items = buildShipmentItemsFromOrder(order);
+  if (!items.length || !shipping.courierCode || destination.lat == null || destination.lng == null) {
+    return null;
+  }
+
+  const store = getStoreConfig();
+  const customerPhone = localIndonesianPhone(order.customer?.phone);
+  const storePhone = localIndonesianPhone(store.orderWhatsapp || store.perkTitle);
+  const payload = {
+    shipper_contact_name: store.name || "Bakeaholic Bali",
+    shipper_contact_phone: storePhone,
+    origin_contact_name: store.name || "Bakeaholic Bali",
+    origin_contact_phone: storePhone,
+    origin_address: store.kitchenAddress,
+    origin_latitude: store.kitchenLat,
+    origin_longitude: store.kitchenLng,
+    destination_contact_name: order.customer?.name || "Bakeaholic customer",
+    destination_contact_phone: customerPhone,
+    destination_address: order.customer?.address || order.fulfillment?.address,
+    destination_latitude: destination.lat,
+    destination_longitude: destination.lng,
+    courier_company: shipping.courierCode,
+    courier_type: shipping.courierServiceCode || shipping.serviceType || shipping.courierServiceName,
+    delivery_type: "now",
+    order_note: order.fulfillment?.deliveryNotes || order.orderNotes || "",
+    items
+  };
+
+  const response = await fetch("https://api.biteship.com/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: integrationConfig.biteshipApiKey,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const responseText = await response.text();
+  const parsed = parseJsonSafely(responseText, {});
+  if (!response.ok) {
+    throw new Error(parsed?.error || parsed?.message || `Biteship order failed with status ${response.status}`);
+  }
+
+  return {
+    provider: "biteship",
+    orderId: parsed.id || parsed.order_id || "",
+    status: parsed.status || "",
+    waybillId: parsed.waybill_id || "",
+    courier: parsed.courier || null,
+    trackingLink: parsed.courier?.link || parsed.tracking_link || "",
+    createdAt: new Date().toISOString(),
+    raw: parsed
+  };
+}
+
+async function maybeCreateBiteshipShipment(order) {
+  if (
+    order.mode !== "live" ||
+    order.status !== "paid" ||
+    order.fulfillment?.type !== "delivery" ||
+    order.fulfillment?.shipment?.orderId
+  ) {
+    return;
+  }
+
+  try {
+    const shipment = await createBiteshipShipment(order);
+    if (!shipment) {
+      return;
+    }
+    order.fulfillment.shipment = shipment;
+    delete order.fulfillment.shipmentError;
+  } catch (error) {
+    order.fulfillment.shipmentError = error.message;
+  }
+}
 
   try {
     const liveQuote = await fetchBiteshipLiveQuote(storeState, destination);
@@ -2115,6 +2290,7 @@ async function updateOrderPaymentStatus(mode, orderId) {
     order.whatsappUrl = buildWhatsappUrl(order);
   }
 
+  await maybeCreateBiteshipShipment(order);
   await maybeSendWhatsappOrderStatus(order, previousStatus);
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
@@ -2202,7 +2378,65 @@ function handleApi(requestUrl, request, response) {
   const storeState = getStoreState(mode);
   const mutatingRequest = new Set(["POST", "PUT", "PATCH", "DELETE"]).has(request.method);
 
-  if (mutatingRequest && pathname !== "/api/midtrans/notification" && !enforceSameOrigin(request, response)) {
+  const externalWebhookPaths = new Set([
+    "/api/midtrans/notification",
+    "/api/webhooks/whatsapp",
+    "/api/whatsapp/webhook",
+    "/api/webhooks/biteship",
+    "/api/biteship/webhook"
+  ]);
+
+  if (mutatingRequest && !externalWebhookPaths.has(pathname) && !enforceSameOrigin(request, response)) {
+    return true;
+  }
+
+  if (request.method === "GET" && (pathname === "/api/webhooks/whatsapp" || pathname === "/api/whatsapp/webhook")) {
+    const modeValue = requestUrl.searchParams.get("hub.mode");
+    const verifyToken = requestUrl.searchParams.get("hub.verify_token");
+    const challenge = requestUrl.searchParams.get("hub.challenge");
+    if (modeValue === "subscribe" && verifyToken === process.env.WHATSAPP_VERIFY_TOKEN) {
+      response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end(challenge || "");
+      return true;
+    }
+    sendJson(response, 403, { error: "Invalid WhatsApp verify token" });
+    return true;
+  }
+
+  if (request.method === "POST" && (pathname === "/api/webhooks/whatsapp" || pathname === "/api/whatsapp/webhook")) {
+    parseRawBody(request)
+      .then((rawBody) => {
+        if (!verifyMetaWebhookSignature(request, rawBody)) {
+          sendJson(response, 403, { error: "Invalid WhatsApp webhook signature" });
+          return;
+        }
+        const payload = parseJsonSafely(rawBody, {});
+        processWhatsappWebhook(payload);
+        sendJson(response, 200, { ok: true });
+      })
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && (pathname === "/api/webhooks/biteship" || pathname === "/api/biteship/webhook")) {
+    parseBody(request)
+      .then((body) => {
+        const biteshipOrderId = String(body.id || body.order_id || body.orderId || "").trim();
+        const order = stores.live.orders.find((entry) => entry.fulfillment?.shipment?.orderId === biteshipOrderId);
+        if (order) {
+          order.fulfillment.shipment = {
+            ...order.fulfillment.shipment,
+            status: body.status || order.fulfillment.shipment.status || "",
+            waybillId: body.waybill_id || order.fulfillment.shipment.waybillId || "",
+            trackingLink: body.courier?.link || body.tracking_link || order.fulfillment.shipment.trackingLink || "",
+            updatedAt: new Date().toISOString(),
+            lastWebhook: body
+          };
+          saveOrders(ordersLivePath, stores.live.orders);
+        }
+        sendJson(response, 200, { ok: true });
+      })
+      .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
   }
 
@@ -2579,6 +2813,7 @@ function handleApi(requestUrl, request, response) {
 
         const previousStatus = order.status;
         applyMidtransStatusToOrder(order, body);
+        await maybeCreateBiteshipShipment(order);
         await maybeSendWhatsappOrderStatus(order, previousStatus);
         saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);
         sendJson(response, 200, { ok: true });
