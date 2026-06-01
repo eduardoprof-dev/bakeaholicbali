@@ -119,7 +119,8 @@ const MAX_DELIVERY_DISTANCE_KM = 100;
 
 const DEMO_VOUCHERS = [
   { code: "SWEET10", label: "10% off subtotal", type: "percent", value: 10, maxDiscount: 15000 },
-  { code: "FREESHIP", label: "Free delivery", type: "delivery", value: 0 }
+  { code: "FREESHIP", label: "Free delivery", type: "delivery", value: 0 },
+  { code: "FULLTEST", label: "100% test discount", type: "fixed", value: 999999999 }
 ];
 
 function loadCatalog() {

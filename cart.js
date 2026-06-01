@@ -614,7 +614,7 @@ function renderSummary() {
   } else {
     voucherMessage.textContent = state.cart.discount?.code
       ? state.cart.discount.label || "Voucher saved. If it is valid, it will apply in the total."
-      : "Try demo codes: SWEET10, FREESHIP.";
+      : "Try demo codes: SWEET10, FREESHIP, FULLTEST.";
   }
 }
 
