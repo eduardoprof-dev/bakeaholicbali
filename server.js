@@ -2009,6 +2009,17 @@ function applyMidtransStatusToOrder(order, payload) {
 }
 
 function buildPaymentDetails(orderId, methodId, total) {
+  if (total <= 0) {
+    return {
+      id: "voucher",
+      label: "Voucher checkout",
+      kind: "voucher",
+      logoText: "FREE",
+      status: "paid",
+      instructions: "This order was fully covered by a discount voucher."
+    };
+  }
+
   const method = PAYMENT_METHODS.find((entry) => entry.id === methodId) || PAYMENT_METHODS[1];
   if (method.kind === "qris") {
     return {
@@ -2236,13 +2247,15 @@ async function createOrder(mode, payload) {
   const orderId = `${prefix}-${sequence}`;
   const now = new Date();
   const payment = buildPaymentDetails(orderId, draft.paymentMethodId, summary.total);
+  const isZeroTotalOrder = summary.total <= 0;
 
   const order = {
     id: orderId,
     mode,
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
-    status: "awaiting_payment",
+    status: isZeroTotalOrder ? "paid" : "awaiting_payment",
+    paidAt: isZeroTotalOrder ? now.toISOString() : "",
     itemCount: summary.itemCount,
     items: summary.items,
     customer: draft.customer,
@@ -2264,8 +2277,10 @@ async function createOrder(mode, payload) {
     payment
   };
 
-  const midtransCharge = await createMidtransCharge(enrichOrder(order));
-  order.payment = applyMidtransChargeToPayment(order.payment, midtransCharge);
+  if (!isZeroTotalOrder) {
+    const midtransCharge = await createMidtransCharge(enrichOrder(order));
+    order.payment = applyMidtransChargeToPayment(order.payment, midtransCharge);
+  }
   order.whatsappUrl = buildWhatsappUrl(order);
   order.whatsappNotifications = {
     lastStatusSent: "",
