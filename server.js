@@ -2550,7 +2550,7 @@ function handleApi(requestUrl, request, response) {
     "/api/biteship/webhook"
   ]);
 
-  if (mutatingRequest && !externalWebhookPaths.has(pathname) && !enforceSameOrigin(request, response)) {
+  if (mutatingRequest && !isBiteshipWebhookPath && !externalWebhookPaths.has(normalizedPathname) && !enforceSameOrigin(request, response)) {
     return true;
   }
 
