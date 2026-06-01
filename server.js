@@ -2568,8 +2568,13 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && (pathname === "/api/webhooks/biteship" || pathname === "/api/biteship/webhook")) {
-    parseBody(request)
+    parseRawBody(request)
       .then(async (body) => {
+        if (!String(body || "").trim()) {
+          sendJson(response, 200, { ok: true });
+          return;
+        }
+        body = parseJsonSafely(body, {});
         const payload = normalizeBiteshipWebhookPayload(body);
         const order = findOrderByBiteshipWebhook(body);
         if (order) {
