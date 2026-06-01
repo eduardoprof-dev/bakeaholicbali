@@ -104,8 +104,10 @@ function renderCancelled() {
 
 function renderPaid() {
   document.title = `Order ${state.order.id} Paid`;
+  const shipment = state.order.fulfillment?.shipment || {};
+  const trackingUrl = shipment.trackingLink || `/orders.html${appMode === "test" ? "?mode=test" : ""}`;
   const shipmentMessage = state.order.fulfillment?.shipment?.orderId
-    ? `<p class="success-note">Delivery order sent to Biteship.</p>`
+    ? `<p class="success-note">Delivery order sent to Biteship. ID: ${escapeHtml(shipment.orderId)}</p>`
     : state.order.fulfillment?.shipmentError
       ? `<p class="payment-alert">${escapeHtml(state.order.fulfillment.shipmentError)}</p>`
       : "";
@@ -142,7 +144,7 @@ function renderPaid() {
         ${lineItemsMarkup()}
       </div>
       ${shipmentMessage}
-      <a class="secondary-link" href="${escapeHtml(state.order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">Track your order</a>
+      <a class="secondary-link" href="${escapeHtml(trackingUrl)}" ${shipment.trackingLink ? 'target="_blank" rel="noreferrer"' : ""}>Track your order</a>
     </section>
   `;
 }

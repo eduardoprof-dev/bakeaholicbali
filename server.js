@@ -1473,7 +1473,7 @@ function preferredInstantCourier(couriers) {
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
-  return entries.includes("grab") ? "grab" : entries[0] || "grab";
+  return entries[0] || "grab";
 }
 
 function recalculateSummary(summary, options = {}) {
@@ -1688,6 +1688,64 @@ async function maybeCreateBiteshipShipment(order) {
   } catch (error) {
     order.fulfillment.shipmentError = error.message;
   }
+}
+
+function normalizeBiteshipWebhookPayload(body = {}) {
+  return body.data || body.order || body;
+}
+
+function biteshipWebhookIdentifiers(body = {}) {
+  const payload = normalizeBiteshipWebhookPayload(body);
+  return [
+    body.id,
+    body.order_id,
+    body.orderId,
+    body.reference_id,
+    body.referenceId,
+    body.external_id,
+    body.externalId,
+    body.metadata?.order_id,
+    body.metadata?.orderId,
+    payload.id,
+    payload.order_id,
+    payload.orderId,
+    payload.reference_id,
+    payload.referenceId,
+    payload.external_id,
+    payload.externalId,
+    payload.metadata?.order_id,
+    payload.metadata?.orderId
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function findOrderByBiteshipWebhook(body = {}) {
+  const identifiers = new Set(biteshipWebhookIdentifiers(body));
+  if (!identifiers.size) {
+    return null;
+  }
+  return stores.live.orders.find((entry) => (
+    identifiers.has(entry.id) ||
+    identifiers.has(entry.fulfillment?.shipment?.orderId)
+  )) || null;
+}
+
+function shipmentStatusToOrderStatus(status = "") {
+  const normalized = String(status || "").toLowerCase();
+  if (["confirmed", "allocated", "picking_up", "picked", "picking up"].includes(normalized)) {
+    return "on_delivery";
+  }
+  if (["dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalized)) {
+    return "on_delivery";
+  }
+  if (["delivered", "finish", "completed"].includes(normalized)) {
+    return "delivered";
+  }
+  if (["cancelled", "canceled", "rejected"].includes(normalized)) {
+    return "cancelled";
+  }
+  return "";
 }
 
 function computeDiscount(subtotal, deliveryFee, voucherCode, fulfillmentType) {
@@ -2511,21 +2569,42 @@ function handleApi(requestUrl, request, response) {
 
   if (request.method === "POST" && (pathname === "/api/webhooks/biteship" || pathname === "/api/biteship/webhook")) {
     parseBody(request)
-      .then((body) => {
-        const biteshipOrderId = String(body.id || body.order_id || body.orderId || "").trim();
-        const order = stores.live.orders.find((entry) => entry.fulfillment?.shipment?.orderId === biteshipOrderId);
+      .then(async (body) => {
+        const payload = normalizeBiteshipWebhookPayload(body);
+        const order = findOrderByBiteshipWebhook(body);
         if (order) {
+          const previousStatus = order.status;
+          const shipmentStatus = payload.status || body.status || order.fulfillment.shipment.status || "";
+          const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
           order.fulfillment.shipment = {
             ...order.fulfillment.shipment,
-            status: body.status || order.fulfillment.shipment.status || "",
-            waybillId: body.waybill_id || order.fulfillment.shipment.waybillId || "",
-            trackingLink: body.courier?.link || body.tracking_link || order.fulfillment.shipment.trackingLink || "",
+            status: shipmentStatus,
+            waybillId:
+              payload.waybill_id ||
+              payload.courier_waybill_id ||
+              body.waybill_id ||
+              body.courier_waybill_id ||
+              order.fulfillment.shipment.waybillId ||
+              "",
+            trackingLink:
+              payload.courier?.link ||
+              payload.tracking_link ||
+              payload.tracking_url ||
+              body.courier?.link ||
+              body.tracking_link ||
+              body.tracking_url ||
+              order.fulfillment.shipment.trackingLink ||
+              "",
             updatedAt: new Date().toISOString(),
             lastWebhook: body
           };
+          if (nextOrderStatus) {
+            order.status = nextOrderStatus;
+          }
+          await maybeSendWhatsappOrderStatus(order, previousStatus);
           saveOrders(ordersLivePath, stores.live.orders);
         }
-        sendJson(response, 200, { ok: true });
+        sendJson(response, 200, { ok: true, matched: Boolean(order) });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
