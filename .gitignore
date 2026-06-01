@@ -1,5 +1,6 @@
 .env
 data/customers.json
+data/integrations.json
 data/orders-live.json
 data/orders-test.json
 .DS_Store

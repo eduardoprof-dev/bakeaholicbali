@@ -53,6 +53,7 @@ const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4173);
 const bundledCatalogPath = path.join(bundledDataDir, "catalog.json");
 const catalogPath = path.join(dataDir, "catalog.json");
+const integrationsPath = path.join(dataDir, "integrations.json");
 
 const DEFAULT_BRAND_STORY = {
   kicker: "Bakeaholic Bali",
@@ -209,6 +210,22 @@ function writeEnvMap(targetPath, envMap) {
     });
 
   fs.writeFileSync(targetPath, `${lines.join("\n")}\n`, "utf8");
+}
+
+function readJsonFileSafely(targetPath, fallback = {}) {
+  try {
+    if (!fs.existsSync(targetPath)) {
+      return fallback;
+    }
+    return JSON.parse(fs.readFileSync(targetPath, "utf8"));
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function writeJsonFile(targetPath, payload) {
+  ensureParentDir(targetPath);
+  fs.writeFileSync(targetPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
 function getIntegrationConfig() {
@@ -446,24 +463,25 @@ function processWhatsappWebhook(payload) {
 
 function readIntegrationSettings() {
   const envMap = loadEnvMap(envPath);
+  const savedSettings = readJsonFileSafely(integrationsPath, {});
   const config = getIntegrationConfig();
   return {
-    googleMapsApiKey: envMap.GOOGLE_MAPS_API_KEY || config.googleMapsApiKey,
-    biteshipApiKey: envMap.BITESHIP_API_KEY || config.biteshipApiKey,
-    biteshipCouriers: envMap.BITESHIP_COURIERS || config.biteshipCouriers,
-    midtransServerKey: envMap.MIDTRANS_SERVER_KEY || config.midtransServerKey,
-    midtransClientKey: envMap.MIDTRANS_CLIENT_KEY || config.midtransClientKey,
-    midtransEnvironment: envMap.MIDTRANS_ENVIRONMENT || config.midtransEnvironment,
-    whatsappAccessToken: envMap.WHATSAPP_ACCESS_TOKEN || config.whatsappAccessToken,
-    whatsappPhoneNumberId: envMap.WHATSAPP_PHONE_NUMBER_ID || config.whatsappPhoneNumberId,
-    whatsappBusinessAccountId: envMap.WHATSAPP_BUSINESS_ACCOUNT_ID || config.whatsappBusinessAccountId,
-    whatsappVerifyToken: envMap.WHATSAPP_VERIFY_TOKEN || config.whatsappVerifyToken,
-    whatsappAppId: envMap.WHATSAPP_APP_ID || config.whatsappAppId,
-    whatsappAppSecret: envMap.WHATSAPP_APP_SECRET || config.whatsappAppSecret,
-    whatsappGraphVersion: envMap.WHATSAPP_GRAPH_VERSION || config.whatsappGraphVersion,
-    whatsappOtpTemplateName: envMap.WHATSAPP_OTP_TEMPLATE_NAME || config.whatsappOtpTemplateName,
-    whatsappOrderTemplateName: envMap.WHATSAPP_ORDER_TEMPLATE_NAME || config.whatsappOrderTemplateName,
-    whatsappTemplateLanguage: envMap.WHATSAPP_TEMPLATE_LANGUAGE || config.whatsappTemplateLanguage
+    googleMapsApiKey: savedSettings.googleMapsApiKey || envMap.GOOGLE_MAPS_API_KEY || config.googleMapsApiKey,
+    biteshipApiKey: savedSettings.biteshipApiKey || envMap.BITESHIP_API_KEY || config.biteshipApiKey,
+    biteshipCouriers: savedSettings.biteshipCouriers || envMap.BITESHIP_COURIERS || config.biteshipCouriers,
+    midtransServerKey: savedSettings.midtransServerKey || envMap.MIDTRANS_SERVER_KEY || config.midtransServerKey,
+    midtransClientKey: savedSettings.midtransClientKey || envMap.MIDTRANS_CLIENT_KEY || config.midtransClientKey,
+    midtransEnvironment: savedSettings.midtransEnvironment || envMap.MIDTRANS_ENVIRONMENT || config.midtransEnvironment,
+    whatsappAccessToken: savedSettings.whatsappAccessToken || envMap.WHATSAPP_ACCESS_TOKEN || config.whatsappAccessToken,
+    whatsappPhoneNumberId: savedSettings.whatsappPhoneNumberId || envMap.WHATSAPP_PHONE_NUMBER_ID || config.whatsappPhoneNumberId,
+    whatsappBusinessAccountId: savedSettings.whatsappBusinessAccountId || envMap.WHATSAPP_BUSINESS_ACCOUNT_ID || config.whatsappBusinessAccountId,
+    whatsappVerifyToken: savedSettings.whatsappVerifyToken || envMap.WHATSAPP_VERIFY_TOKEN || config.whatsappVerifyToken,
+    whatsappAppId: savedSettings.whatsappAppId || envMap.WHATSAPP_APP_ID || config.whatsappAppId,
+    whatsappAppSecret: savedSettings.whatsappAppSecret || envMap.WHATSAPP_APP_SECRET || config.whatsappAppSecret,
+    whatsappGraphVersion: savedSettings.whatsappGraphVersion || envMap.WHATSAPP_GRAPH_VERSION || config.whatsappGraphVersion,
+    whatsappOtpTemplateName: savedSettings.whatsappOtpTemplateName || envMap.WHATSAPP_OTP_TEMPLATE_NAME || config.whatsappOtpTemplateName,
+    whatsappOrderTemplateName: savedSettings.whatsappOrderTemplateName || envMap.WHATSAPP_ORDER_TEMPLATE_NAME || config.whatsappOrderTemplateName,
+    whatsappTemplateLanguage: savedSettings.whatsappTemplateLanguage || envMap.WHATSAPP_TEMPLATE_LANGUAGE || config.whatsappTemplateLanguage
   };
 }
 
@@ -494,25 +512,30 @@ function saveIntegrationSettings(input = {}) {
     whatsappTemplateLanguage: String(input.whatsappTemplateLanguage || "en").trim() || "en"
   };
 
-  writeEnvMap(envPath, {
-    ...existingEnvMap,
-    GOOGLE_MAPS_API_KEY: nextSettings.googleMapsApiKey,
-    BITESHIP_API_KEY: nextSettings.biteshipApiKey,
-    BITESHIP_COURIERS: nextSettings.biteshipCouriers,
-    MIDTRANS_SERVER_KEY: nextSettings.midtransServerKey,
-    MIDTRANS_CLIENT_KEY: nextSettings.midtransClientKey,
-    MIDTRANS_ENVIRONMENT: nextSettings.midtransEnvironment,
-    WHATSAPP_ACCESS_TOKEN: nextSettings.whatsappAccessToken,
-    WHATSAPP_PHONE_NUMBER_ID: nextSettings.whatsappPhoneNumberId,
-    WHATSAPP_BUSINESS_ACCOUNT_ID: nextSettings.whatsappBusinessAccountId,
-    WHATSAPP_VERIFY_TOKEN: nextSettings.whatsappVerifyToken,
-    WHATSAPP_APP_ID: nextSettings.whatsappAppId,
-    WHATSAPP_APP_SECRET: nextSettings.whatsappAppSecret,
-    WHATSAPP_GRAPH_VERSION: nextSettings.whatsappGraphVersion,
-    WHATSAPP_OTP_TEMPLATE_NAME: nextSettings.whatsappOtpTemplateName,
-    WHATSAPP_ORDER_TEMPLATE_NAME: nextSettings.whatsappOrderTemplateName,
-    WHATSAPP_TEMPLATE_LANGUAGE: nextSettings.whatsappTemplateLanguage
-  });
+  writeJsonFile(integrationsPath, nextSettings);
+  try {
+    writeEnvMap(envPath, {
+      ...existingEnvMap,
+      GOOGLE_MAPS_API_KEY: nextSettings.googleMapsApiKey,
+      BITESHIP_API_KEY: nextSettings.biteshipApiKey,
+      BITESHIP_COURIERS: nextSettings.biteshipCouriers,
+      MIDTRANS_SERVER_KEY: nextSettings.midtransServerKey,
+      MIDTRANS_CLIENT_KEY: nextSettings.midtransClientKey,
+      MIDTRANS_ENVIRONMENT: nextSettings.midtransEnvironment,
+      WHATSAPP_ACCESS_TOKEN: nextSettings.whatsappAccessToken,
+      WHATSAPP_PHONE_NUMBER_ID: nextSettings.whatsappPhoneNumberId,
+      WHATSAPP_BUSINESS_ACCOUNT_ID: nextSettings.whatsappBusinessAccountId,
+      WHATSAPP_VERIFY_TOKEN: nextSettings.whatsappVerifyToken,
+      WHATSAPP_APP_ID: nextSettings.whatsappAppId,
+      WHATSAPP_APP_SECRET: nextSettings.whatsappAppSecret,
+      WHATSAPP_GRAPH_VERSION: nextSettings.whatsappGraphVersion,
+      WHATSAPP_OTP_TEMPLATE_NAME: nextSettings.whatsappOtpTemplateName,
+      WHATSAPP_ORDER_TEMPLATE_NAME: nextSettings.whatsappOrderTemplateName,
+      WHATSAPP_TEMPLATE_LANGUAGE: nextSettings.whatsappTemplateLanguage
+    });
+  } catch (error) {
+    console.warn(`Unable to mirror integrations to ${envPath}: ${error.message}`);
+  }
 
   process.env.GOOGLE_MAPS_API_KEY = nextSettings.googleMapsApiKey;
   process.env.BITESHIP_API_KEY = nextSettings.biteshipApiKey;
