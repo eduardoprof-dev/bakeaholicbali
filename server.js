@@ -3036,8 +3036,10 @@ function handleApi(requestUrl, request, response) {
 
 const server = http.createServer((request, response) => {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+  const normalizedPathname = requestUrl.pathname.replace(/\/+$/, "") || "/";
+  const isPublicWebhookPath = normalizedPathname === "/webhooks/biteship" || normalizedPathname === "/biteship-webhook";
 
-  if (requestUrl.pathname.startsWith("/api/")) {
+  if (requestUrl.pathname.startsWith("/api/") || isPublicWebhookPath) {
     const handled = handleApi(requestUrl, request, response);
     if (!handled) {
       sendJson(response, 404, { error: "Not found" });
