@@ -60,7 +60,10 @@ const taxValue = document.getElementById("taxValue");
 const totalValue = document.getElementById("totalValue");
 const footerPaymentLogo = document.getElementById("footerPaymentLogo");
 const footerPaymentLabel = document.getElementById("footerPaymentLabel");
+const footerCartMeta = document.getElementById("footerCartMeta");
 const footerTotalLabel = document.getElementById("footerTotalLabel");
+const footerAddressButton = document.getElementById("footerAddressButton");
+const footerAddressLabel = document.getElementById("footerAddressLabel");
 const footerWhatsappLink = document.getElementById("footerWhatsappLink");
 const footerInstagramLink = document.getElementById("footerInstagramLink");
 const footerTermsLink = document.getElementById("footerTermsLink");
@@ -70,6 +73,24 @@ const modalScrim = document.getElementById("modalScrim");
 const paymentModal = document.getElementById("paymentModal");
 const paymentMethodList = document.getElementById("paymentMethodList");
 const closePaymentModal = document.getElementById("closePaymentModal");
+const whatsappModal = document.getElementById("whatsappModal");
+const closeWhatsappModal = document.getElementById("closeWhatsappModal");
+const whatsappPrompt = document.getElementById("whatsappPrompt");
+const whatsappMessage = document.getElementById("whatsappMessage");
+const whatsappInput = document.getElementById("whatsappInput");
+const saveWhatsappButton = document.getElementById("saveWhatsappButton");
+const otpModal = document.getElementById("otpModal");
+const closeOtpModal = document.getElementById("closeOtpModal");
+const otpPrompt = document.getElementById("otpPrompt");
+const otpInput = document.getElementById("otpInput");
+const otpMessage = document.getElementById("otpMessage");
+const verifyOtpButton = document.getElementById("verifyOtpButton");
+const resendOtpButton = document.getElementById("resendOtpButton");
+const changePhoneButton = document.getElementById("changePhoneButton");
+const otpTimerText = document.getElementById("otpTimerText");
+const testOtpCard = document.getElementById("testOtpCard");
+const testOtpCode = document.getElementById("testOtpCode");
+const copyOtpButton = document.getElementById("copyOtpButton");
 const detailsModal = document.getElementById("detailsModal");
 const closeDetailsModal = document.getElementById("closeDetailsModal");
 const locationModal = document.getElementById("locationModal");
@@ -80,8 +101,13 @@ const modalEmailInput = document.getElementById("modalEmailInput");
 const modalAddressLabel = document.getElementById("modalAddressLabel");
 const modalAddressInput = document.getElementById("modalAddressInput");
 const saveDetailsButton = document.getElementById("saveDetailsButton");
+const changeAddressInlineButton = document.getElementById("changeAddressInlineButton");
 
 let locationPicker;
+let pendingOtpPhone = "";
+let otpResendAvailableAt = 0;
+let otpTimerId = 0;
+let submitAfterLogin = false;
 
 const whatsappIcon = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -179,6 +205,21 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function setMessage(element, text, tone = "error") {
+  if (!element) return;
+  element.textContent = text || "";
+  element.dataset.tone = tone;
+  element.hidden = !text;
+}
+
+function normalizeWhatsAppPhone(input) {
+  const digits = String(input || "").replace(/[^\d]/g, "");
+  if (!digits) {
+    return "";
+  }
+  return digits.startsWith("62") ? digits : `62${digits.replace(/^0+/, "")}`;
+}
+
 function versionedAsset(path) {
   if (!path || !path.startsWith("/assets/")) {
     return path;
@@ -271,6 +312,7 @@ function syncFulfillmentUi() {
   addressTitle.textContent = state.store.addressLabel;
   addressText.textContent =
     state.draft.destination.formattedAddress || "Add your address before placing the order.";
+  footerAddressLabel.textContent = state.draft.destination.formattedAddress || "Set delivery address";
 
   if (!hasDeliveryDestination()) {
     deliveryFeeLine.textContent = "Add your address to estimate delivery fee.";
@@ -318,8 +360,114 @@ function openModal(modal) {
 
 function closeModal(modal) {
   modal.hidden = true;
-  if (paymentModal.hidden && detailsModal.hidden && locationModal.hidden) {
+  if (paymentModal.hidden && whatsappModal.hidden && otpModal.hidden && detailsModal.hidden && locationModal.hidden) {
     modalScrim.hidden = true;
+  }
+}
+
+function updateOtpTimer() {
+  const remainingSeconds = Math.max(0, Math.ceil((otpResendAvailableAt - Date.now()) / 1000));
+  resendOtpButton.disabled = remainingSeconds > 0;
+  otpTimerText.textContent = remainingSeconds > 0
+    ? `Please wait ${remainingSeconds} seconds before requesting a new code.`
+    : "Didn't receive the code? You can request a new one.";
+  if (remainingSeconds <= 0 && otpTimerId) {
+    window.clearInterval(otpTimerId);
+    otpTimerId = 0;
+  }
+}
+
+function startOtpTimer(seconds) {
+  otpResendAvailableAt = Date.now() + Number(seconds || 0) * 1000;
+  updateOtpTimer();
+  if (otpTimerId) {
+    window.clearInterval(otpTimerId);
+  }
+  otpTimerId = window.setInterval(updateOtpTimer, 1000);
+}
+
+function openWhatsappModal() {
+  syncDraftFromForm();
+  const phone = normalizeWhatsAppPhone(state.draft.customer.phone);
+  whatsappInput.value = phone ? phone.replace(/^62/, "") : "";
+  setMessage(whatsappMessage, "");
+  openModal(whatsappModal);
+  whatsappInput.focus();
+}
+
+function showOtpModal(registration) {
+  pendingOtpPhone = registration.phone;
+  otpInput.value = "";
+  otpPrompt.textContent = `We have sent a verification code to +${registration.phone}`;
+  testOtpCard.hidden = appMode !== "test" || !registration.testCode;
+  testOtpCode.textContent = registration.testCode || "";
+  setMessage(otpMessage, registration.message || "", "info");
+  startOtpTimer(registration.resendInSeconds || 30);
+  closeModal(whatsappModal);
+  openModal(otpModal);
+  otpInput.focus();
+}
+
+async function requestOtp() {
+  const phone = normalizeWhatsAppPhone(whatsappInput.value);
+  if (!phone) {
+    setMessage(whatsappMessage, "Please enter your WhatsApp number");
+    return;
+  }
+
+  saveWhatsappButton.disabled = true;
+  saveWhatsappButton.textContent = "Sending code...";
+  setMessage(whatsappMessage, "");
+  try {
+    const payload = await request("/api/register/start", {
+      method: "POST",
+      body: JSON.stringify({ phone })
+    });
+    showOtpModal(payload.registration);
+  } catch (error) {
+    setMessage(whatsappMessage, error.message);
+  } finally {
+    saveWhatsappButton.disabled = false;
+    saveWhatsappButton.textContent = "Continue";
+  }
+}
+
+async function verifyOtp() {
+  const code = otpInput.value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    setMessage(otpMessage, "Please enter the 6 digit verification code");
+    return;
+  }
+
+  verifyOtpButton.disabled = true;
+  verifyOtpButton.textContent = "Verifying...";
+  setMessage(otpMessage, "");
+  try {
+    const payload = await request("/api/register/verify", {
+      method: "POST",
+      body: JSON.stringify({ phone: pendingOtpPhone, code })
+    });
+    state.draft.customer.phone = `+${payload.registration.phone}`;
+    state.draft.customer.phoneVerifiedAt = payload.registration.verifiedAt;
+    if (payload.registration.profile?.email && !state.draft.customer.email) {
+      state.draft.customer.email = payload.registration.profile.email;
+    }
+    if (payload.registration.profile?.name && !state.draft.customer.name) {
+      state.draft.customer.name = payload.registration.profile.name;
+    }
+    persistDraft();
+    hydrateForm();
+    setMessage(otpMessage, "WhatsApp number verified.", "success");
+    closeModal(otpModal);
+    if (submitAfterLogin) {
+      submitAfterLogin = false;
+      await submitOrder();
+    }
+  } catch (error) {
+    setMessage(otpMessage, error.message);
+  } finally {
+    verifyOtpButton.disabled = false;
+    verifyOtpButton.textContent = "Verify";
   }
 }
 
@@ -371,15 +519,15 @@ function renderUpsell() {
 
   upsellSection.hidden = false;
   upsellCard.innerHTML = `
-    <article class="upsell-card">
+    <article class="upsell-card checkout-upsell-card">
       <img class="upsell-thumb" src="${escapeHtml(versionedAsset(upsell.imagePath))}" alt="${escapeHtml(upsell.name)}" />
       <div class="upsell-copy">
-        <span class="product-badge">${escapeHtml(upsell.badge || "Most Ordered")}</span>
+        <span class="upsell-label">Optional add-on</span>
         <strong>${escapeHtml(upsell.name)}</strong>
         <p>${escapeHtml(upsell.description)}</p>
         <strong>${formatRupiah.format(upsell.price)}</strong>
       </div>
-      <button class="mini-add-button" id="upsellAddButton" type="button">+</button>
+      <button class="mini-add-button upsell-add-button" id="upsellAddButton" type="button">+ Add</button>
     </article>
   `;
 
@@ -446,6 +594,7 @@ function renderSummary() {
   deliveryValue.textContent = formatRupiah.format(state.cart.deliveryFee);
   taxValue.textContent = formatRupiah.format(state.cart.tax);
   totalValue.textContent = formatRupiah.format(state.cart.total);
+  footerCartMeta.textContent = `${state.cart.itemCount} item${state.cart.itemCount === 1 ? "" : "s"}`;
   footerTotalLabel.textContent = formatRupiah.format(state.cart.total);
 
   const discountAmount = state.cart.discount?.amount || 0;
@@ -493,6 +642,28 @@ async function refreshCart() {
   applyCartPayload(cartPayload);
 }
 
+async function syncSessionProfile() {
+  try {
+    const payload = await request("/api/session");
+    if (!payload?.authenticated) {
+      return false;
+    }
+
+    state.draft.customer.phone = payload.customer?.phone || state.draft.customer.phone;
+    state.draft.customer.phoneVerifiedAt = payload.customer?.verifiedAt || state.draft.customer.phoneVerifiedAt;
+    if (payload.profile?.email && !state.draft.customer.email) {
+      state.draft.customer.email = payload.profile.email;
+    }
+    if (payload.profile?.name && !state.draft.customer.name) {
+      state.draft.customer.name = payload.profile.name;
+    }
+    persistDraft();
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
 async function submitOrder() {
   try {
     if (state.pendingPaymentUrl) {
@@ -502,6 +673,14 @@ async function submitOrder() {
 
     syncDraftFromForm();
     setCheckoutMessage("");
+    if (!state.draft.customer.phoneVerifiedAt) {
+      submitAfterLogin = true;
+      openWhatsappModal();
+      setCheckoutMessage("Please verify your WhatsApp number to continue checkout.", "success");
+      setSubmitButtonState("Submit Order", state.cart?.itemCount === 0);
+      return;
+    }
+
     setSubmitButtonState("Submitting...", true);
 
     const payload = {
@@ -564,6 +743,13 @@ async function submitOrder() {
         return;
       }
     }
+    if (String(error.message || "").toLowerCase().includes("verify your whatsapp")) {
+      submitAfterLogin = true;
+      openWhatsappModal();
+      setCheckoutMessage("Please verify your WhatsApp number to continue checkout.", "success");
+      setSubmitButtonState("Submit Order", false);
+      return;
+    }
     setCheckoutMessage(error.message || "Unable to submit the order.");
     setSubmitButtonState("Submit Order", false);
   }
@@ -581,6 +767,8 @@ async function bootstrap() {
   document.title = "Your Cart | Bakeaholic Online Shop";
   syncTopLinks();
   syncFooterLinks();
+  whatsappPrompt.textContent = state.store.whatsappPrompt || whatsappPrompt.textContent;
+  await syncSessionProfile();
   hydrateForm();
   locationPicker = window.BakeaholicLocationPicker?.createLocationPicker({
     rootId: "locationModal",
@@ -616,6 +804,9 @@ async function bootstrap() {
 ].forEach((field) => {
   field.addEventListener("input", () => {
     state.pendingPaymentUrl = "";
+    if (field === customerPhoneInput) {
+      state.draft.customer.phoneVerifiedAt = "";
+    }
     syncDraftFromForm();
     setCheckoutMessage("");
   });
@@ -632,7 +823,53 @@ applyVoucherButton.addEventListener("click", async () => {
 choosePaymentButton.addEventListener("click", () => openModal(paymentModal));
 selectedPaymentButton.addEventListener("click", () => openModal(paymentModal));
 closePaymentModal.addEventListener("click", () => closeModal(paymentModal));
+saveWhatsappButton.addEventListener("click", requestOtp);
+closeWhatsappModal.addEventListener("click", () => closeModal(whatsappModal));
+whatsappInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    requestOtp();
+  }
+});
+verifyOtpButton.addEventListener("click", verifyOtp);
+closeOtpModal.addEventListener("click", () => closeModal(otpModal));
+otpInput.addEventListener("input", () => {
+  otpInput.value = otpInput.value.replace(/[^\d]/g, "").slice(0, 6);
+});
+otpInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    verifyOtp();
+  }
+});
+resendOtpButton.addEventListener("click", async () => {
+  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
+  await requestOtp();
+});
+changePhoneButton.addEventListener("click", () => {
+  closeModal(otpModal);
+  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
+  openModal(whatsappModal);
+});
+copyOtpButton.addEventListener("click", async () => {
+  if (!testOtpCode.textContent) return;
+  try {
+    await navigator.clipboard.writeText(testOtpCode.textContent);
+    copyOtpButton.textContent = "Copied";
+    window.setTimeout(() => {
+      copyOtpButton.textContent = "Copy code";
+    }, 1400);
+  } catch (_error) {
+    otpInput.value = testOtpCode.textContent;
+  }
+});
 addressButton.addEventListener("click", () => {
+  openModal(locationModal);
+  locationPicker?.open();
+});
+footerAddressButton.addEventListener("click", () => {
+  openModal(locationModal);
+  locationPicker?.open();
+});
+changeAddressInlineButton.addEventListener("click", () => {
   openModal(locationModal);
   locationPicker?.open();
 });
@@ -652,6 +889,8 @@ saveDetailsButton.addEventListener("click", async () => {
 });
 modalScrim.addEventListener("click", () => {
   closeModal(paymentModal);
+  closeModal(whatsappModal);
+  closeModal(otpModal);
   closeModal(detailsModal);
   closeModal(locationModal);
 });

@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Your Cart | Bakeaholic Online Shop</title>
-    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260531-otp-modal-cleanup" />
-    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260531-otp-modal-cleanup" />
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-checkout-flow" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-checkout-flow" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260531-otp-modal-cleanup" />
+    <link rel="stylesheet" href="styles.css?v=20260601-checkout-flow" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -56,7 +56,8 @@
 
         <section class="cart-section" id="upsellSection" hidden>
           <div class="section-title-wrap">
-            <h2>Complete your order today!</h2>
+            <h2>You may also like</h2>
+            <p>Optional add-on if you want one more treat with this order.</p>
           </div>
           <div id="upsellCard"></div>
         </section>
@@ -81,8 +82,11 @@
             </label>
             <label class="modal-field" id="addressField">
               <span>Address</span>
-              <textarea id="customerAddressInput" placeholder="Pick a location from the map above" readonly></textarea>
+              <textarea id="customerAddressInput" placeholder="Choose delivery location or type your full address" rows="3"></textarea>
             </label>
+            <button class="secondary-button address-inline-button" id="changeAddressInlineButton" type="button">
+              Choose delivery location
+            </button>
           </div>
         </section>
 
@@ -183,9 +187,14 @@
         <span class="payment-logo small" id="footerPaymentLogo">QRIS</span>
         <div>
           <strong id="footerPaymentLabel">QRIS</strong>
+          <p id="footerCartMeta">0 items</p>
           <p id="footerTotalLabel">Rp 0</p>
         </div>
       </div>
+      <button class="footer-address-button" id="footerAddressButton" type="button">
+        <span>Delivery</span>
+        <strong id="footerAddressLabel">Set delivery address</strong>
+      </button>
       <button class="primary-button full-width" id="submitOrderButton" type="button">
         Submit Order
       </button>
@@ -200,6 +209,59 @@
         <button class="icon-close" id="closePaymentModal" type="button">×</button>
       </div>
       <div class="payment-method-list" id="paymentMethodList"></div>
+    </section>
+
+    <section class="modal-card compact-modal" id="whatsappModal" hidden>
+      <div class="modal-head">
+        <h2>Enter your WhatsApp Number</h2>
+        <button class="icon-close" id="closeWhatsappModal" type="button">×</button>
+      </div>
+      <p class="modal-copy" id="whatsappPrompt">
+        We will use your WhatsApp number for order confirmation.
+      </p>
+      <p class="modal-message" id="whatsappMessage" hidden></p>
+      <label class="modal-field">
+        <span>WhatsApp Number</span>
+        <div class="phone-input-row">
+          <span class="phone-prefix">+62</span>
+          <input id="whatsappInput" type="tel" placeholder="Enter your WhatsApp number" />
+        </div>
+      </label>
+      <button class="primary-button full-width" id="saveWhatsappButton" type="button">
+        Continue
+      </button>
+    </section>
+
+    <section class="modal-card compact-modal" id="otpModal" hidden>
+      <div class="modal-head">
+        <h2>Enter OTP Code</h2>
+        <button class="icon-close" id="closeOtpModal" type="button">×</button>
+      </div>
+      <p class="modal-copy" id="otpPrompt">
+        We have sent a verification code to your WhatsApp number.
+      </p>
+      <div class="test-otp-card" id="testOtpCard" hidden>
+        <span>Sandbox test code</span>
+        <strong id="testOtpCode"></strong>
+        <button class="text-action" id="copyOtpButton" type="button">Copy code</button>
+      </div>
+      <p class="modal-message" id="otpMessage" hidden></p>
+      <label class="modal-field">
+        <span>OTP Code</span>
+        <input id="otpInput" type="text" inputmode="numeric" maxlength="6" placeholder="6 digit code" />
+      </label>
+      <button class="primary-button full-width" id="verifyOtpButton" type="button">
+        Verify
+      </button>
+      <div class="otp-actions">
+        <button class="text-action otp-action-link" id="resendOtpButton" type="button">
+          Resend OTP
+        </button>
+        <p class="modal-copy" id="otpTimerText"></p>
+        <button class="text-action otp-action-link" id="changePhoneButton" type="button">
+          Change Phone Number
+        </button>
+      </div>
     </section>
 
     <section class="modal-card" id="detailsModal" hidden>
@@ -260,7 +322,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260531-otp-modal-cleanup"></script>
-    <script src="cart.js?v=20260531-otp-modal-cleanup"></script>
+    <script src="location-picker.js?v=20260601-checkout-flow"></script>
+    <script src="cart.js?v=20260601-checkout-flow"></script>
   </body>
 </html>

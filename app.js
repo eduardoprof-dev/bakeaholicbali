@@ -54,6 +54,7 @@ const stickyCartLabel = document.getElementById("stickyCartLabel");
 const stickyCartHint = document.getElementById("stickyCartHint");
 const stickyCartTotal = document.getElementById("stickyCartTotal");
 const cartLink = document.getElementById("cartLink");
+const cartCountBadge = document.getElementById("cartCountBadge");
 const loginButton = document.getElementById("loginButton");
 const accountMenu = document.getElementById("accountMenu");
 const accountMenuName = document.getElementById("accountMenuName");
@@ -548,7 +549,7 @@ function renderCatalog() {
   catalog.querySelectorAll("[data-item-id]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      addToCart(button.dataset.itemId);
+      openProductModal(button.dataset.itemId);
     });
   });
 
@@ -607,6 +608,8 @@ function renderCartSummary() {
     : "Add something delicious";
   stickyCartTotal.textContent = formatRupiah.format(state.cart?.total || 0);
   cartLink.href = `/cart.html${modeQuery}`;
+  cartCountBadge.hidden = itemCount <= 0;
+  cartCountBadge.textContent = itemCount > 99 ? "99+" : String(itemCount);
 }
 
 function openModal(modal) {
