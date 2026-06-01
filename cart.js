@@ -220,6 +220,14 @@ function normalizeWhatsAppPhone(input) {
   return digits.startsWith("62") ? digits : `62${digits.replace(/^0+/, "")}`;
 }
 
+function withVerificationPrompt(prompt) {
+  const basePrompt = String(prompt || "Enter your WhatsApp number to continue ordering.").trim();
+  const verificationCopy = "We will send you a verification code via WhatsApp.";
+  return basePrompt.toLowerCase().includes(verificationCopy.toLowerCase())
+    ? basePrompt
+    : `${basePrompt} ${verificationCopy}`;
+}
+
 function versionedAsset(path) {
   if (!path || !path.startsWith("/assets/")) {
     return path;
@@ -767,7 +775,7 @@ async function bootstrap() {
   document.title = "Your Cart | Bakeaholic Online Shop";
   syncTopLinks();
   syncFooterLinks();
-  whatsappPrompt.textContent = state.store.whatsappPrompt || whatsappPrompt.textContent;
+  whatsappPrompt.textContent = withVerificationPrompt(state.store.whatsappPrompt);
   await syncSessionProfile();
   hydrateForm();
   locationPicker = window.BakeaholicLocationPicker?.createLocationPicker({

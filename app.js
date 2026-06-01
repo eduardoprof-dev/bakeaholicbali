@@ -216,6 +216,14 @@ function formatWhatsAppPhone(input) {
   return phone ? `+${phone}` : "";
 }
 
+function withVerificationPrompt(prompt) {
+  const basePrompt = String(prompt || "Enter your WhatsApp number to continue ordering.").trim();
+  const verificationCopy = "We will send you a verification code via WhatsApp.";
+  return basePrompt.toLowerCase().includes(verificationCopy.toLowerCase())
+    ? basePrompt
+    : `${basePrompt} ${verificationCopy}`;
+}
+
 function customerFullName(customer = state.draft.customer) {
   return [customer.firstName, customer.lastName].filter(Boolean).join(" ").trim() || customer.name || "";
 }
@@ -549,6 +557,10 @@ function renderCatalog() {
   catalog.querySelectorAll("[data-item-id]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
+      if ((state.cart?.itemCount || 0) > 0) {
+        addToCart(button.dataset.itemId);
+        return;
+      }
       openProductModal(button.dataset.itemId);
     });
   });
@@ -1089,7 +1101,7 @@ async function bootstrap() {
     promoHeroPrice.textContent = promoItem?.price ? formatRupiah.format(promoItem.price) : "Rp 0";
   }
   renderBrandStory();
-  whatsappPrompt.textContent = state.store.whatsappPrompt;
+  whatsappPrompt.textContent = withVerificationPrompt(state.store.whatsappPrompt);
   modeBanner.hidden = appMode !== "test";
   modeBannerBody.textContent = state.store.testModeDescription;
   syncFooterLinks();
