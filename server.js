@@ -1407,6 +1407,9 @@ function buildShipmentItemsFromOrder(order) {
         category: "food_and_drink",
         value: item.price,
         quantity,
+        height: Number(item.heightCm || 5),
+        length: Number(item.lengthCm || 10),
+        width: Number(item.widthCm || 10),
         weight: defaultWeightGrams(item)
       };
     })
@@ -1534,13 +1537,17 @@ async function createBiteshipShipment(order) {
     origin_contact_name: store.name || "Bakeaholic Bali",
     origin_contact_phone: storePhone,
     origin_address: store.kitchenAddress,
-    origin_latitude: store.kitchenLat,
-    origin_longitude: store.kitchenLng,
+    origin_coordinate: {
+      latitude: store.kitchenLat,
+      longitude: store.kitchenLng
+    },
     destination_contact_name: order.customer?.name || "Bakeaholic customer",
     destination_contact_phone: customerPhone,
     destination_address: order.customer?.address || order.fulfillment?.address,
-    destination_latitude: destination.lat,
-    destination_longitude: destination.lng,
+    destination_coordinate: {
+      latitude: destination.lat,
+      longitude: destination.lng
+    },
     courier_company: shipping.courierCode,
     courier_type: shipping.courierServiceCode || shipping.serviceType || shipping.courierServiceName,
     delivery_type: "now",
