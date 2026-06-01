@@ -668,7 +668,7 @@ function showOtpModal(registration) {
   pendingOtpPhone = registration.phone;
   otpInput.value = "";
   otpPrompt.textContent = `We have sent a verification code to +${registration.phone}`;
-  testOtpCard.hidden = state.mode !== "test" || !registration.testCode;
+  testOtpCard.hidden = appMode !== "test" || !registration.testCode;
   testOtpCode.textContent = registration.testCode || "";
   setMessage(otpMessage, registration.message || "", "info");
   startOtpTimer(registration.resendInSeconds || 30);
