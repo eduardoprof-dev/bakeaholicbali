@@ -2623,9 +2623,9 @@ function handleApi(requestUrl, request, response) {
           await maybeSendWhatsappOrderStatus(order, previousStatus);
           saveOrders(ordersLivePath, stores.live.orders);
         }
-        sendJson(response, 200, { ok: true, matched: Boolean(order) });
+        sendPlainOk(response);
       })
-      .catch((error) => sendJson(response, 400, { error: error.message }));
+      .catch(() => sendPlainOk(response));
     return true;
   }
 
