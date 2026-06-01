@@ -1559,7 +1559,25 @@ async function getCartSummaryPayload(storeState, options = {}) {
   const summary = buildCartSummary(storeState, options);
   const destination = normalizeDestination(options.destination);
   if (summary.fulfillmentType !== "delivery" || destination.lat == null || destination.lng == null) {
-  return summary;
+    return summary;
+  }
+
+  try {
+    const liveQuote = await fetchBiteshipLiveQuote(storeState, destination);
+    if (!liveQuote) {
+      return summary;
+    }
+    return {
+      ...recalculateSummary(summary, {
+        deliveryFee: liveQuote.total,
+        shipping: liveQuote,
+        voucherCode: options.voucherCode
+      }),
+      quoteSource: "biteship"
+    };
+  } catch (_error) {
+    return summary;
+  }
 }
 
 async function createBiteshipShipment(order) {
@@ -1599,6 +1617,11 @@ async function createBiteshipShipment(order) {
     courier_type: shipping.courierServiceCode || shipping.serviceType || shipping.courierServiceName,
     delivery_type: "now",
     order_note: order.fulfillment?.deliveryNotes || order.orderNotes || "",
+    reference_id: order.id,
+    metadata: {
+      order_id: order.id,
+      source: "bakeaholic-online-shop"
+    },
     items
   };
 
@@ -1648,24 +1671,6 @@ async function maybeCreateBiteshipShipment(order) {
     delete order.fulfillment.shipmentError;
   } catch (error) {
     order.fulfillment.shipmentError = error.message;
-  }
-}
-
-  try {
-    const liveQuote = await fetchBiteshipLiveQuote(storeState, destination);
-    if (!liveQuote) {
-      return summary;
-    }
-    return {
-      ...recalculateSummary(summary, {
-        deliveryFee: liveQuote.total,
-        shipping: liveQuote,
-        voucherCode: options.voucherCode
-      }),
-      quoteSource: "biteship"
-    };
-  } catch (_error) {
-    return summary;
   }
 }
 
