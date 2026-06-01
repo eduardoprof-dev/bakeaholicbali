@@ -69,7 +69,7 @@ function renderCancelled() {
   paymentApp.innerHTML = `
     <section class="status-hero cancelled-hero">
       <div class="status-steps">
-        <span class="status-step">Prepare Food</span>
+        <span class="status-step">Preparing Order</span>
         <span class="status-step">On Deliver</span>
         <span class="status-step active">Order Complete</span>
       </div>
@@ -107,7 +107,7 @@ function renderPaid() {
   paymentApp.innerHTML = `
     <section class="status-hero">
       <div class="status-steps">
-        <span class="status-step active">Prepare Food</span>
+        <span class="status-step active">Preparing Order</span>
         <span class="status-step">On Deliver</span>
         <span class="status-step">Order Complete</span>
       </div>
@@ -136,7 +136,7 @@ function renderPaid() {
       <div class="purchase-summary">
         ${lineItemsMarkup()}
       </div>
-      <a class="secondary-link" href="${escapeHtml(state.order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">Send order summary to WhatsApp</a>
+      <a class="secondary-link" href="${escapeHtml(state.order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">Track your order</a>
     </section>
   `;
 }

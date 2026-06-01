@@ -384,8 +384,29 @@ function humanizeOrderStatus(order) {
   }
 }
 
-async function sendWhatsappOrderUpdate(order) {
+function defaultWhatsappOrderTemplateName(order) {
+  const statusTemplates = {
+    awaiting_payment: "payment_pending",
+    paid: "order_received",
+    preparing: "order_preparing",
+    on_delivery: "order_shipped",
+    shipped: "order_shipped",
+    delivered: "order_delivered",
+    complete: "order_delivered"
+  };
+  return statusTemplates[order.status] || "order_received";
+}
+
+function configuredWhatsappOrderTemplateName(order) {
   const templateName = String(process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "").trim();
+  if (!templateName || templateName === "order_status_update") {
+    return defaultWhatsappOrderTemplateName(order);
+  }
+  return templateName;
+}
+
+async function sendWhatsappOrderUpdate(order) {
+  const templateName = configuredWhatsappOrderTemplateName(order);
   if (!templateName) {
     throw new Error("WHATSAPP_ORDER_TEMPLATE_NAME is not configured");
   }
@@ -401,7 +422,7 @@ async function maybeSendWhatsappOrderStatus(order, previousStatus = "") {
   if (
     order.mode === "test" ||
     !isWhatsappCloudReady() ||
-    !process.env.WHATSAPP_ORDER_TEMPLATE_NAME ||
+    !configuredWhatsappOrderTemplateName(order) ||
     previousStatus === order.status ||
     order.whatsappNotifications?.lastStatusSent === order.status
   ) {
@@ -509,7 +530,9 @@ function saveIntegrationSettings(input = {}) {
     whatsappAppSecret: String(input.whatsappAppSecret || "").trim(),
     whatsappGraphVersion: String(input.whatsappGraphVersion || "v22.0").trim() || "v22.0",
     whatsappOtpTemplateName: String(input.whatsappOtpTemplateName || "").trim(),
-    whatsappOrderTemplateName: String(input.whatsappOrderTemplateName || "").trim(),
+    whatsappOrderTemplateName: String(input.whatsappOrderTemplateName || "").trim() === "order_status_update"
+      ? "order_received"
+      : String(input.whatsappOrderTemplateName || "").trim(),
     whatsappTemplateLanguage: String(input.whatsappTemplateLanguage || "en").trim() || "en"
   };
 
@@ -2287,6 +2310,7 @@ async function createOrder(mode, payload) {
     lastSentAt: ""
   };
 
+  await maybeCreateBiteshipShipment(order);
   await maybeSendWhatsappOrderStatus(order, "");
 
   storeState.orders.unshift(order);

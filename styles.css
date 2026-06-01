@@ -2957,6 +2957,10 @@ body::before {
   text-align: center;
 }
 
+.status-hero p {
+  color: rgba(255, 255, 255, 0.82);
+}
+
 .cancelled-hero {
   background: #5b351f;
 }
