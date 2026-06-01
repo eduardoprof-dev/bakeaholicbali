@@ -104,6 +104,11 @@ function renderCancelled() {
 
 function renderPaid() {
   document.title = `Order ${state.order.id} Paid`;
+  const shipmentMessage = state.order.fulfillment?.shipment?.orderId
+    ? `<p class="success-note">Delivery order sent to Biteship.</p>`
+    : state.order.fulfillment?.shipmentError
+      ? `<p class="payment-alert">${escapeHtml(state.order.fulfillment.shipmentError)}</p>`
+      : "";
   paymentApp.innerHTML = `
     <section class="status-hero">
       <div class="status-steps">
@@ -136,6 +141,7 @@ function renderPaid() {
       <div class="purchase-summary">
         ${lineItemsMarkup()}
       </div>
+      ${shipmentMessage}
       <a class="secondary-link" href="${escapeHtml(state.order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">Track your order</a>
     </section>
   `;

@@ -2908,6 +2908,12 @@ body::before {
   font-weight: 700;
 }
 
+.success-note {
+  margin: 12px 0 0;
+  color: #2f7d4a;
+  font-weight: 700;
+}
+
 .divider {
   height: 1px;
   background: rgba(107, 66, 38, 0.14);

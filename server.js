@@ -1468,6 +1468,14 @@ function localIndonesianPhone(phone) {
   return normalized ? normalized.replace(/^62/, "0") : "";
 }
 
+function preferredInstantCourier(couriers) {
+  const entries = String(couriers || "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  return entries.includes("grab") ? "grab" : entries[0] || "grab";
+}
+
 function recalculateSummary(summary, options = {}) {
   const store = getStoreConfig();
   const deliveryFee = Number(options.deliveryFee || 0);
@@ -1583,19 +1591,27 @@ async function getCartSummaryPayload(storeState, options = {}) {
 async function createBiteshipShipment(order) {
   const integrationConfig = getIntegrationConfig();
   if (!integrationConfig.biteshipApiKey) {
-    return null;
+    throw new Error("Biteship API key is not configured");
   }
 
   const shipping = order.pricing?.shipping || {};
   const destination = normalizeDestination(order.fulfillment?.location || {});
   const items = buildShipmentItemsFromOrder(order);
-  if (!items.length || !shipping.courierCode || destination.lat == null || destination.lng == null) {
-    return null;
+  if (!items.length) {
+    throw new Error("Biteship order was not created because the cart has no shippable items");
+  }
+  if (destination.lat == null || destination.lng == null) {
+    throw new Error("Biteship order was not created because the delivery coordinates are missing");
+  }
+  if (!order.customer?.address && !order.fulfillment?.address) {
+    throw new Error("Biteship order was not created because the delivery address is missing");
   }
 
   const store = getStoreConfig();
   const customerPhone = localIndonesianPhone(order.customer?.phone);
   const storePhone = localIndonesianPhone(store.orderWhatsapp || store.perkTitle);
+  const courierCompany = shipping.courierCode || preferredInstantCourier(integrationConfig.biteshipCouriers);
+  const courierType = shipping.courierServiceCode || shipping.serviceType || shipping.courierServiceName || "instant";
   const payload = {
     shipper_contact_name: store.name || "Bakeaholic Bali",
     shipper_contact_phone: storePhone,
@@ -1613,8 +1629,8 @@ async function createBiteshipShipment(order) {
       latitude: destination.lat,
       longitude: destination.lng
     },
-    courier_company: shipping.courierCode,
-    courier_type: shipping.courierServiceCode || shipping.serviceType || shipping.courierServiceName,
+    courier_company: courierCompany,
+    courier_type: courierType,
     delivery_type: "now",
     order_note: order.fulfillment?.deliveryNotes || order.orderNotes || "",
     reference_id: order.id,
