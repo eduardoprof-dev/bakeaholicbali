@@ -2533,7 +2533,13 @@ function handleApi(requestUrl, request, response) {
   const pathname = requestUrl.pathname;
   const mode = getAppMode(requestUrl, request);
   const storeState = getStoreState(mode);
-  const isBiteshipWebhookPath = pathname === "/api/webhooks/biteship" || pathname === "/api/biteship/webhook";
+  const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
+  const isBiteshipWebhookPath = [
+    "/api/webhooks/biteship",
+    "/api/biteship/webhook",
+    "/webhooks/biteship",
+    "/biteship-webhook"
+  ].includes(normalizedPathname);
   const mutatingRequest = new Set(["POST", "PUT", "PATCH", "DELETE"]).has(request.method);
 
   const externalWebhookPaths = new Set([
