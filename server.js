@@ -676,6 +676,14 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function sendPlainOk(response) {
+  response.writeHead(200, {
+    "Content-Type": "text/plain; charset=utf-8",
+    ...defaultSecurityHeaders()
+  });
+  response.end("ok");
+}
+
 function sendFile(response, targetPath) {
   const ext = path.extname(targetPath).toLowerCase();
   const contentType = contentTypes[ext] || "application/octet-stream";
@@ -2525,6 +2533,7 @@ function handleApi(requestUrl, request, response) {
   const pathname = requestUrl.pathname;
   const mode = getAppMode(requestUrl, request);
   const storeState = getStoreState(mode);
+  const isBiteshipWebhookPath = pathname === "/api/webhooks/biteship" || pathname === "/api/biteship/webhook";
   const mutatingRequest = new Set(["POST", "PUT", "PATCH", "DELETE"]).has(request.method);
 
   const externalWebhookPaths = new Set([
@@ -2567,11 +2576,16 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
-  if (request.method === "POST" && (pathname === "/api/webhooks/biteship" || pathname === "/api/biteship/webhook")) {
+  if (isBiteshipWebhookPath && request.method !== "POST") {
+    sendPlainOk(response);
+    return true;
+  }
+
+  if (request.method === "POST" && isBiteshipWebhookPath) {
     parseRawBody(request)
       .then(async (body) => {
         if (!String(body || "").trim()) {
-          sendJson(response, 200, { ok: true });
+          sendPlainOk(response);
           return;
         }
         body = parseJsonSafely(body, {});

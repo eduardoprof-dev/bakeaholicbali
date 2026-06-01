@@ -111,6 +111,11 @@ function renderPaid() {
     : state.order.fulfillment?.shipmentError
       ? `<p class="payment-alert">${escapeHtml(state.order.fulfillment.shipmentError)}</p>`
       : "";
+  const whatsappMessage = state.order.whatsappNotificationError
+    ? `<p class="payment-alert">${escapeHtml(state.order.whatsappNotificationError)}</p>`
+    : state.order.whatsappNotifications?.lastStatusSent
+      ? `<p class="success-note">WhatsApp order update sent.</p>`
+      : "";
   paymentApp.innerHTML = `
     <section class="status-hero">
       <div class="status-steps">
@@ -144,6 +149,7 @@ function renderPaid() {
         ${lineItemsMarkup()}
       </div>
       ${shipmentMessage}
+      ${whatsappMessage}
       <a class="secondary-link" href="${escapeHtml(trackingUrl)}" ${shipment.trackingLink ? 'target="_blank" rel="noreferrer"' : ""}>Track your order</a>
     </section>
   `;
