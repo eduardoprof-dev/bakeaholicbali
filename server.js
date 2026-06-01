@@ -679,6 +679,9 @@ function sendJson(response, statusCode, payload) {
 function sendPlainOk(response) {
   response.writeHead(200, {
     "Content-Type": "text/plain; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
     ...defaultSecurityHeaders()
   });
   response.end("ok");
