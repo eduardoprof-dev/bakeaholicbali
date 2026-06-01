@@ -2582,10 +2582,10 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && isBiteshipWebhookPath) {
+    sendPlainOk(response);
     parseRawBody(request)
       .then(async (body) => {
         if (!String(body || "").trim()) {
-          sendPlainOk(response);
           return;
         }
         body = parseJsonSafely(body, {});
@@ -2607,9 +2607,11 @@ function handleApi(requestUrl, request, response) {
               "",
             trackingLink:
               payload.courier?.link ||
+              payload.courier_link ||
               payload.tracking_link ||
               payload.tracking_url ||
               body.courier?.link ||
+              body.courier_link ||
               body.tracking_link ||
               body.tracking_url ||
               order.fulfillment.shipment.trackingLink ||
@@ -2623,9 +2625,10 @@ function handleApi(requestUrl, request, response) {
           await maybeSendWhatsappOrderStatus(order, previousStatus);
           saveOrders(ordersLivePath, stores.live.orders);
         }
-        sendPlainOk(response);
       })
-      .catch(() => sendPlainOk(response));
+      .catch((error) => {
+        console.warn("Unable to process Biteship webhook:", error.message);
+      });
     return true;
   }
 
