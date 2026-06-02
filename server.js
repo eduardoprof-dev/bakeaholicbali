@@ -564,27 +564,36 @@ function processWhatsappWebhook(payload) {
   saveOrders(ordersLivePath, stores.live.orders);
 }
 
+function isPlaceholderValue(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  return !normalized || normalized.startsWith("your_") || normalized === "order_status_update";
+}
+
+function configuredValue(...values) {
+  return values.find((value) => !isPlaceholderValue(value)) || "";
+}
+
 function readIntegrationSettings() {
   const envMap = loadEnvMap(envPath);
   const savedSettings = readJsonFileSafely(integrationsPath, {});
   const config = getIntegrationConfig();
   return {
-    googleMapsApiKey: savedSettings.googleMapsApiKey || envMap.GOOGLE_MAPS_API_KEY || config.googleMapsApiKey,
-    biteshipApiKey: savedSettings.biteshipApiKey || envMap.BITESHIP_API_KEY || config.biteshipApiKey,
-    biteshipCouriers: savedSettings.biteshipCouriers || envMap.BITESHIP_COURIERS || config.biteshipCouriers,
-    midtransServerKey: savedSettings.midtransServerKey || envMap.MIDTRANS_SERVER_KEY || config.midtransServerKey,
-    midtransClientKey: savedSettings.midtransClientKey || envMap.MIDTRANS_CLIENT_KEY || config.midtransClientKey,
-    midtransEnvironment: savedSettings.midtransEnvironment || envMap.MIDTRANS_ENVIRONMENT || config.midtransEnvironment,
-    whatsappAccessToken: savedSettings.whatsappAccessToken || envMap.WHATSAPP_ACCESS_TOKEN || config.whatsappAccessToken,
-    whatsappPhoneNumberId: savedSettings.whatsappPhoneNumberId || envMap.WHATSAPP_PHONE_NUMBER_ID || config.whatsappPhoneNumberId,
-    whatsappBusinessAccountId: savedSettings.whatsappBusinessAccountId || envMap.WHATSAPP_BUSINESS_ACCOUNT_ID || config.whatsappBusinessAccountId,
-    whatsappVerifyToken: savedSettings.whatsappVerifyToken || envMap.WHATSAPP_VERIFY_TOKEN || config.whatsappVerifyToken,
-    whatsappAppId: savedSettings.whatsappAppId || envMap.WHATSAPP_APP_ID || config.whatsappAppId,
-    whatsappAppSecret: savedSettings.whatsappAppSecret || envMap.WHATSAPP_APP_SECRET || config.whatsappAppSecret,
-    whatsappGraphVersion: savedSettings.whatsappGraphVersion || envMap.WHATSAPP_GRAPH_VERSION || config.whatsappGraphVersion,
-    whatsappOtpTemplateName: savedSettings.whatsappOtpTemplateName || envMap.WHATSAPP_OTP_TEMPLATE_NAME || config.whatsappOtpTemplateName,
-    whatsappOrderTemplateName: savedSettings.whatsappOrderTemplateName || envMap.WHATSAPP_ORDER_TEMPLATE_NAME || config.whatsappOrderTemplateName,
-    whatsappTemplateLanguage: savedSettings.whatsappTemplateLanguage || envMap.WHATSAPP_TEMPLATE_LANGUAGE || config.whatsappTemplateLanguage
+    googleMapsApiKey: configuredValue(savedSettings.googleMapsApiKey, envMap.GOOGLE_MAPS_API_KEY, config.googleMapsApiKey),
+    biteshipApiKey: configuredValue(savedSettings.biteshipApiKey, envMap.BITESHIP_API_KEY, config.biteshipApiKey),
+    biteshipCouriers: configuredValue(savedSettings.biteshipCouriers, envMap.BITESHIP_COURIERS, config.biteshipCouriers) || "gojek,grab",
+    midtransServerKey: configuredValue(savedSettings.midtransServerKey, envMap.MIDTRANS_SERVER_KEY, config.midtransServerKey),
+    midtransClientKey: configuredValue(savedSettings.midtransClientKey, envMap.MIDTRANS_CLIENT_KEY, config.midtransClientKey),
+    midtransEnvironment: configuredValue(savedSettings.midtransEnvironment, envMap.MIDTRANS_ENVIRONMENT, config.midtransEnvironment) || "sandbox",
+    whatsappAccessToken: configuredValue(savedSettings.whatsappAccessToken, envMap.WHATSAPP_ACCESS_TOKEN, config.whatsappAccessToken),
+    whatsappPhoneNumberId: configuredValue(savedSettings.whatsappPhoneNumberId, envMap.WHATSAPP_PHONE_NUMBER_ID, config.whatsappPhoneNumberId),
+    whatsappBusinessAccountId: configuredValue(savedSettings.whatsappBusinessAccountId, envMap.WHATSAPP_BUSINESS_ACCOUNT_ID, config.whatsappBusinessAccountId),
+    whatsappVerifyToken: configuredValue(savedSettings.whatsappVerifyToken, envMap.WHATSAPP_VERIFY_TOKEN, config.whatsappVerifyToken),
+    whatsappAppId: configuredValue(savedSettings.whatsappAppId, envMap.WHATSAPP_APP_ID, config.whatsappAppId),
+    whatsappAppSecret: configuredValue(savedSettings.whatsappAppSecret, envMap.WHATSAPP_APP_SECRET, config.whatsappAppSecret),
+    whatsappGraphVersion: configuredValue(savedSettings.whatsappGraphVersion, envMap.WHATSAPP_GRAPH_VERSION, config.whatsappGraphVersion) || "v22.0",
+    whatsappOtpTemplateName: configuredValue(savedSettings.whatsappOtpTemplateName, envMap.WHATSAPP_OTP_TEMPLATE_NAME, config.whatsappOtpTemplateName),
+    whatsappOrderTemplateName: configuredValue(savedSettings.whatsappOrderTemplateName, envMap.WHATSAPP_ORDER_TEMPLATE_NAME, config.whatsappOrderTemplateName),
+    whatsappTemplateLanguage: configuredValue(savedSettings.whatsappTemplateLanguage, envMap.WHATSAPP_TEMPLATE_LANGUAGE, config.whatsappTemplateLanguage) || "en"
   };
 }
 
@@ -593,7 +602,7 @@ function saveIntegrationSettings(input = {}) {
   const existingSettings = readIntegrationSettings();
   const secretValue = (key) => {
     const value = String(input[key] || "").trim();
-    return value || existingSettings[key] || "";
+    return isPlaceholderValue(value) ? existingSettings[key] || "" : value;
   };
   const nextSettings = {
     googleMapsApiKey: secretValue("googleMapsApiKey"),
