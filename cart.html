@@ -3,22 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Your Cart | Bakeaholic Online Shop</title>
-    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
+    <title>Checkout | Bakeaholic Online Shop</title>
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260602-refine-storefront" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260602-refine-storefront" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260601-hide-test-otp" />
+    <link rel="stylesheet" href="styles.css?v=20260602-refine-storefront" />
   </head>
   <body>
-    <div class="mobile-shell">
+    <div class="mobile-shell checkout-shell">
       <header class="page-header">
         <a class="back-link" id="backToStoreLink" href="/index.html">←</a>
-        <h1>Your Cart</h1>
+        <h1>Checkout</h1>
         <span></span>
       </header>
 
@@ -38,15 +38,15 @@
       <div class="delivery-fee-line" id="deliveryFeeLine"></div>
 
       <main class="cart-layout">
-        <section class="cart-section" id="deliveryNotesSection">
+        <section class="cart-section checkout-delivery-card" id="deliveryNotesSection">
           <div class="section-title-wrap">
-            <h2>Delivery Notes</h2>
+            <h2>Delivery details</h2>
             <p>The notes below will be sent to your driver with your order.</p>
           </div>
           <textarea id="deliveryNotesInput" class="large-textarea" placeholder="e.g. Leave food at the gate"></textarea>
         </section>
 
-        <section class="cart-section">
+        <section class="cart-section checkout-items-card">
           <div class="section-head-inline">
             <h2 id="selectedItemsTitle">Selected items</h2>
             <a class="secondary-link" id="addItemsLink" href="/index.html">+ Add Items</a>
@@ -54,7 +54,7 @@
           <div id="cartItems"></div>
         </section>
 
-        <section class="cart-section" id="upsellSection" hidden>
+        <section class="cart-section checkout-upsell-section" id="upsellSection" hidden>
           <div class="section-title-wrap">
             <h2>You may also like</h2>
             <p>Optional add-on if you want one more treat with this order.</p>
@@ -62,7 +62,7 @@
           <div id="upsellCard"></div>
         </section>
 
-        <section class="cart-section">
+        <section class="cart-section checkout-customer-card">
           <div class="section-title-wrap">
             <h2>Customer details</h2>
             <p>We use these details for order handoff and WhatsApp confirmation.</p>
@@ -90,7 +90,7 @@
           </div>
         </section>
 
-        <section class="cart-section">
+        <section class="cart-section checkout-notes-card">
           <div class="section-title-wrap">
             <h2>Order Notes</h2>
             <p>We’ll do our best to accommodate requests that don’t change pricing.</p>
@@ -98,7 +98,7 @@
           <textarea id="orderNotesInput" class="large-textarea" placeholder="e.g. Extra napkins, no plastic cutlery"></textarea>
         </section>
 
-        <section class="cart-section">
+        <section class="cart-section checkout-voucher-card">
           <div class="section-title-wrap">
             <h2>Discount voucher</h2>
           </div>
@@ -109,7 +109,7 @@
           <p class="helper-copy" id="voucherMessage">Try demo codes: SWEET10, FREESHIP, FULLTEST.</p>
         </section>
 
-        <section class="cart-section">
+        <section class="cart-section checkout-payment-card">
           <div class="section-head-inline">
             <h2>Payment method</h2>
             <button class="text-action" id="choosePaymentButton" type="button">Change</button>
@@ -124,13 +124,13 @@
           </button>
         </section>
 
-        <section class="cart-section" id="checkoutMessageSection" hidden>
+        <section class="cart-section checkout-message-card" id="checkoutMessageSection" hidden>
           <p class="checkout-message" id="checkoutMessage"></p>
         </section>
 
-        <section class="cart-section">
+        <section class="cart-section checkout-summary-card">
           <div class="section-title-wrap">
-            <h2>Payment summary</h2>
+            <h2>Order summary</h2>
           </div>
           <div class="summary-list">
             <div class="summary-row">
@@ -322,7 +322,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260601-hide-test-otp"></script>
-    <script src="cart.js?v=20260601-hide-test-otp"></script>
+    <script src="location-picker.js?v=20260602-refine-storefront"></script>
+    <script src="cart.js?v=20260602-refine-storefront"></script>
   </body>
 </html>

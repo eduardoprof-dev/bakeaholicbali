@@ -317,7 +317,9 @@ function syncFulfillmentUi() {
   addressField.hidden = false;
   detailsModalTitle.textContent = "Delivery details";
   modalAddressLabel.textContent = "Address";
-  addressTitle.textContent = state.store.addressLabel;
+  addressTitle.textContent = hasDeliveryDestination()
+    ? "Your delivery address"
+    : state.store.addressLabel;
   addressText.textContent =
     state.draft.destination.formattedAddress || "Add your address before placing the order.";
   footerAddressLabel.textContent = state.draft.destination.formattedAddress || "Set delivery address";
@@ -567,7 +569,10 @@ function renderCartItems() {
     .map(
       (entry) => `
         <article class="cart-line-card">
-          <img class="cart-line-thumb" src="${escapeHtml(versionedAsset(entry.item.imagePath))}" alt="${escapeHtml(entry.item.name)}" />
+          <div class="cart-thumb-wrap">
+            <img class="cart-line-thumb" src="${escapeHtml(versionedAsset(entry.item.imagePath))}" alt="${escapeHtml(entry.item.name)}" />
+            <span class="item-quantity-badge">${entry.quantity > 99 ? "99+" : entry.quantity}</span>
+          </div>
           <div class="cart-line-copy">
             <strong>${escapeHtml(entry.item.name)}</strong>
             <span>${formatRupiah.format(entry.item.price)}</span>
@@ -772,7 +777,7 @@ async function bootstrap() {
   state.vouchers = payload.vouchers;
 
   modeBanner.hidden = appMode !== "test";
-  document.title = "Your Cart | Bakeaholic Online Shop";
+  document.title = "Checkout | Bakeaholic Online Shop";
   syncTopLinks();
   syncFooterLinks();
   whatsappPrompt.textContent = withVerificationPrompt(state.store.whatsappPrompt);

@@ -125,6 +125,8 @@ let scrollSpyFrame = 0;
 let addressChromeFrame = 0;
 let addressIsHidden = false;
 let brandStorySlideIndex = 0;
+let brandStoryTimer = 0;
+let brandStoryPaused = false;
 let selectedProductId = "";
 let pendingOtpPhone = "";
 let otpResendAvailableAt = 0;
@@ -312,7 +314,9 @@ function syncFulfillmentUi() {
   if (!state.store) return;
 
   addressFieldLabel.textContent = "Address";
-  addressTitle.textContent = state.store.addressLabel;
+  addressTitle.textContent = hasDeliveryDestination()
+    ? "Your delivery address"
+    : state.store.addressLabel;
   addressText.textContent =
     state.draft.destination.formattedAddress || "Add your address and customer details before checkout.";
 
@@ -341,8 +345,9 @@ function renderOrderBanner() {
   orderBanner.hidden = false;
   orderBannerTitle.textContent = `Continue order ${latestOrderId}`;
   orderBannerBody.textContent =
-    "You already created an order. Open its payment page to finish, check, or cancel it.";
+    "Finish, check, or cancel this order.";
   orderBannerLink.hidden = false;
+  orderBannerLink.textContent = "Check out";
   orderBannerLink.href = `/pay.html${modeQuery ? `${modeQuery}&order=${latestOrderId}` : `?order=${latestOrderId}`}`;
 }
 
@@ -514,9 +519,14 @@ function renderCatalog() {
           <div class="product-stack">
             ${items
               .map(
-                (item) => `
+                (item) => {
+                  const quantity = cartQuantityForItem(item.id);
+                  return `
                   <article class="product-card" role="button" tabindex="0" data-product-id="${escapeHtml(item.id)}" aria-label="View ${escapeHtml(item.name)} details">
-                    <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" ${productImageStyle(item)} />
+                    <div class="product-thumb-wrap">
+                      <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" ${productImageStyle(item)} />
+                      ${quantity > 0 ? `<span class="item-quantity-badge">${quantity > 99 ? "99+" : quantity}</span>` : ""}
+                    </div>
                     <div class="product-copy">
                       <div class="product-topline">
                         <h3>${escapeHtml(item.name)}</h3>
@@ -536,7 +546,8 @@ function renderCatalog() {
                       </div>
                     </div>
                   </article>
-                `
+                `;
+                }
               )
               .join("")}
           </div>
@@ -576,6 +587,10 @@ function renderCatalog() {
   });
 }
 
+function cartQuantityForItem(itemId) {
+  return state.cart?.items?.find((entry) => entry.itemId === itemId)?.quantity || 0;
+}
+
 function currentPromoItem() {
   return state.items.find((item) => item.id === state.promo?.itemId) || null;
 }
@@ -613,12 +628,6 @@ function openProductModal(itemId) {
 
 function renderCartSummary() {
   const itemCount = state.cart?.itemCount || 0;
-  stickyCartButton.hidden = itemCount <= 0;
-  stickyCartLabel.textContent = `${itemCount} item${itemCount === 1 ? "" : "s"}`;
-  stickyCartHint.textContent = itemCount
-    ? "Delivery order ready for review"
-    : "Add something delicious";
-  stickyCartTotal.textContent = formatRupiah.format(state.cart?.total || 0);
   cartLink.href = `/cart.html${modeQuery}`;
   cartCountBadge.hidden = itemCount <= 0;
   cartCountBadge.textContent = itemCount > 99 ? "99+" : String(itemCount);
@@ -870,6 +879,7 @@ async function refreshCart() {
   state.draft.destination.courierServiceName = state.cart?.shipping?.courierServiceName || "";
   persistDraft();
   renderCartSummary();
+  renderCatalog();
   syncFulfillmentUi();
 }
 
@@ -983,7 +993,7 @@ function updateBrandStorySlide() {
   const slides = [...brandStoryTrack.querySelectorAll(".brand-story-slide")];
   if (!slides.length) return;
 
-  brandStorySlideIndex = Math.max(0, Math.min(brandStorySlideIndex, slides.length - 1));
+  brandStorySlideIndex = ((brandStorySlideIndex % slides.length) + slides.length) % slides.length;
   brandStoryTrack.style.transform = `translateX(-${brandStorySlideIndex * 100}%)`;
   slides.forEach((slide, index) => {
     slide.setAttribute("aria-hidden", String(index !== brandStorySlideIndex));
@@ -992,26 +1002,67 @@ function updateBrandStorySlide() {
     brandStoryCounter.textContent = `${brandStorySlideIndex + 1} / ${slides.length}`;
   }
   if (brandStoryPrev) {
-    brandStoryPrev.disabled = brandStorySlideIndex === 0;
+    brandStoryPrev.disabled = slides.length <= 1;
   }
   if (brandStoryNext) {
-    brandStoryNext.disabled = brandStorySlideIndex === slides.length - 1;
+    brandStoryNext.disabled = slides.length <= 1;
   }
 }
 
-function changeBrandStorySlide(direction) {
+function changeBrandStorySlide(direction, options = {}) {
   if (!brandStoryTrack) return;
   const slides = brandStoryTrack.querySelectorAll(".brand-story-slide");
   if (!slides.length) return;
-  brandStorySlideIndex = Math.max(0, Math.min(brandStorySlideIndex + direction, slides.length - 1));
+  brandStorySlideIndex = (brandStorySlideIndex + direction + slides.length) % slides.length;
   updateBrandStorySlide();
+  if (!options.auto) {
+    restartBrandStoryAutoplay();
+  }
   document.activeElement?.blur?.();
-  if (window.matchMedia("(max-width: 620px)").matches) {
+  if (!options.auto && window.matchMedia("(max-width: 620px)").matches) {
     const card = brandStoryTrack.closest(".brand-story-card");
     const headerHeight = document.querySelector(".app-header")?.offsetHeight || 0;
     const targetTop = (card?.getBoundingClientRect().top || 0) + window.scrollY - headerHeight - 10;
     window.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
   }
+}
+
+function startBrandStoryAutoplay() {
+  if (!brandStoryTrack || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const slides = brandStoryTrack.querySelectorAll(".brand-story-slide");
+  if (slides.length <= 1 || brandStoryTimer) return;
+  brandStoryTimer = window.setInterval(() => {
+    if (brandStoryPaused) return;
+    changeBrandStorySlide(1, { auto: true });
+  }, 5200);
+}
+
+function stopBrandStoryAutoplay() {
+  if (!brandStoryTimer) return;
+  window.clearInterval(brandStoryTimer);
+  brandStoryTimer = 0;
+}
+
+function restartBrandStoryAutoplay() {
+  stopBrandStoryAutoplay();
+  startBrandStoryAutoplay();
+}
+
+function enableBrandStoryAutoplayPause() {
+  const card = brandStoryTrack?.closest(".brand-story-card");
+  if (!card) return;
+  card.addEventListener("mouseenter", () => {
+    brandStoryPaused = true;
+  });
+  card.addEventListener("mouseleave", () => {
+    brandStoryPaused = false;
+  });
+  card.addEventListener("focusin", () => {
+    brandStoryPaused = true;
+  });
+  card.addEventListener("focusout", () => {
+    brandStoryPaused = false;
+  });
 }
 
 function enableBrandStorySwipe() {
@@ -1168,7 +1219,9 @@ promoAddButton.addEventListener("click", () => addToCart(state.promo.itemId));
 brandStoryPrev?.addEventListener("click", () => changeBrandStorySlide(-1));
 brandStoryNext?.addEventListener("click", () => changeBrandStorySlide(1));
 enableBrandStorySwipe();
-stickyCartButton.addEventListener("click", () => {
+enableBrandStoryAutoplayPause();
+startBrandStoryAutoplay();
+stickyCartButton?.addEventListener("click", () => {
   window.location.href = `/cart.html${modeQuery}`;
 });
 loginButton?.addEventListener("click", () => {

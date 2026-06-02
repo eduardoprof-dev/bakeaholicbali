@@ -178,6 +178,11 @@ function renderPaymentIssue() {
 
 function renderPending() {
   const payment = state.order.payment;
+  const orderDate = new Date(state.order.createdAt || Date.now()).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  });
   const qrisBlock = payment.kind === "qris"
     ? `
       <div class="qr-block">
@@ -211,46 +216,73 @@ function renderPending() {
 
   document.title = `Pay and Order ${state.order.id} | Bakeaholic Online Shop`;
   paymentApp.innerHTML = `
-    <section class="payment-page-card">
-      <h1>Pay and Order</h1>
-      <p class="payment-alert">${appMode === "test" ? formatRemainingTime(state.order.expiresAt) : "Please complete your payment so that we can process your order."}</p>
-
-      <div class="divider"></div>
-
-      <div class="section-title-wrap">
-        <h2>Payment Overview</h2>
+    <section class="payment-order-heading">
+      <a class="secondary-link" href="/index.html${appMode === "test" ? "?mode=test" : ""}">← Menu</a>
+      <div>
+        <strong>Order ${escapeHtml(state.order.id)}</strong>
+        <span>${escapeHtml(orderDate)}</span>
       </div>
-      <div class="payment-method-header">
-        <div>
-          <p class="muted-label">Payment method</p>
-          <strong>${escapeHtml(payment.label)}</strong>
+    </section>
+
+    <section class="waiting-payment-card">
+      <span class="waiting-icon" aria-hidden="true">!</span>
+      <div>
+        <h1>Waiting for payment</h1>
+        <p>Finish paying and we'll send your order to the kitchen.</p>
+        <button class="primary-button" id="checkStatusButton" type="button">Check Payment Status</button>
+      </div>
+    </section>
+
+    <section class="payment-detail-layout">
+      <div class="payment-page-card">
+        <div class="section-title-wrap">
+          <h2>Payment</h2>
+          <p class="payment-alert">${appMode === "test" ? formatRemainingTime(state.order.expiresAt) : "Please complete your payment so that we can process your order."}</p>
         </div>
-        <span class="payment-logo large">${escapeHtml(payment.logoText)}</span>
-      </div>
-
-      ${detailBlock}
-      ${qrisBlock}
-
-      <div class="payment-detail-row">
-        <span>Payment total</span>
-        <div class="copy-block">
-          <strong>${formatRupiah.format(state.order.pricing.total)}</strong>
-          <button class="copy-button" type="button" data-copy="${state.order.pricing.total}">Copy</button>
+        <div class="payment-method-header">
+          <div>
+            <p class="muted-label">Payment method</p>
+            <strong>${escapeHtml(payment.label)}</strong>
+          </div>
+          <span class="payment-logo large">${escapeHtml(payment.logoText)}</span>
         </div>
+        ${detailBlock}
+        ${qrisBlock}
+        <div class="instruction-box">
+          ${escapeHtml(payment.instructions)}
+          ${payment.provider === "midtrans" ? "<br />Payment is processed securely by Midtrans." : ""}
+        </div>
+        <button class="secondary-link link-button centered-link" id="cancelOrderButton" type="button">
+          Cancel your order
+        </button>
       </div>
 
-      <div class="instruction-box">
-        ${escapeHtml(payment.instructions)}
-        ${payment.provider === "midtrans" ? "<br />Payment is processed securely by Midtrans." : ""}
-      </div>
-
-      <button class="primary-button full-width" id="checkStatusButton" type="button">
-        Check Payment Status
-      </button>
-
-      <button class="secondary-link link-button centered-link" id="cancelOrderButton" type="button">
-        Cancel your order
-      </button>
+      <section class="payment-page-card order-total-card">
+        <div class="section-title-wrap">
+          <h2>Order summary</h2>
+        </div>
+        <div class="summary-list">
+          <div class="summary-row">
+            <span>Subtotal</span>
+            <strong>${formatRupiah.format(state.order.pricing.subtotal)}</strong>
+          </div>
+          <div class="summary-row">
+            <span>Delivery fee</span>
+            <strong>${formatRupiah.format(state.order.pricing.deliveryFee || 0)}</strong>
+          </div>
+          <div class="summary-row">
+            <span>Tax</span>
+            <strong>${formatRupiah.format(state.order.pricing.tax || 0)}</strong>
+          </div>
+          <div class="summary-row total-row">
+            <span>Total</span>
+            <strong>${formatRupiah.format(state.order.pricing.total)}</strong>
+          </div>
+        </div>
+        <div class="purchase-summary">
+          ${lineItemsMarkup()}
+        </div>
+      </section>
     </section>
   `;
 

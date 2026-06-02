@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bakeaholic Online Shop</title>
-    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260602-refine-storefront" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260602-refine-storefront" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260601-hide-test-otp" />
+    <link rel="stylesheet" href="styles.css?v=20260602-refine-storefront" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -100,6 +100,15 @@
       </header>
 
       <main class="storefront-content">
+        <section class="order-banner compact-order-banner" id="orderBanner" hidden>
+          <div>
+            <p class="feature-kicker">Latest order</p>
+            <h2 id="orderBannerTitle">Order created</h2>
+            <p id="orderBannerBody"></p>
+          </div>
+          <a class="secondary-link" id="orderBannerLink" href="#" hidden>Checkout</a>
+        </section>
+
         <section class="brand-story-card" aria-label="Bakeaholic story carousel">
           <div class="brand-story-track" id="brandStoryTrack">
             <article class="brand-story-slide" aria-labelledby="brandStoryTitle">
@@ -209,13 +218,6 @@
           <button class="primary-button" id="promoAddButton" type="button">Add Bestseller</button>
         </section>
 
-        <section class="order-banner" id="orderBanner" hidden>
-          <p class="feature-kicker">Latest order</p>
-          <h2 id="orderBannerTitle">Order created</h2>
-          <p id="orderBannerBody"></p>
-          <a class="secondary-link" id="orderBannerLink" href="#" hidden>Open payment page</a>
-        </section>
-
         <section class="catalog-list" id="catalog"></section>
       </main>
 
@@ -243,14 +245,6 @@
         </div>
       </footer>
     </div>
-
-    <button class="sticky-submit storefront-sticky" id="stickyCartButton" type="button" hidden>
-      <div>
-        <strong id="stickyCartLabel">0 items</strong>
-        <p id="stickyCartHint">Add something delicious</p>
-      </div>
-      <span id="stickyCartTotal">Rp 0</span>
-    </button>
 
     <div class="modal-scrim" id="modalScrim" hidden></div>
 
@@ -409,7 +403,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260601-hide-test-otp"></script>
-    <script src="app.js?v=20260601-hide-test-otp"></script>
+    <script src="location-picker.js?v=20260602-refine-storefront"></script>
+    <script src="app.js?v=20260602-refine-storefront"></script>
   </body>
 </html>
