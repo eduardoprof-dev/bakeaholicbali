@@ -520,25 +520,30 @@ function readIntegrationSettings() {
 
 function saveIntegrationSettings(input = {}) {
   const existingEnvMap = loadEnvMap(envPath);
+  const existingSettings = readIntegrationSettings();
+  const secretValue = (key) => {
+    const value = String(input[key] || "").trim();
+    return value || existingSettings[key] || "";
+  };
   const nextSettings = {
-    googleMapsApiKey: String(input.googleMapsApiKey || "").trim(),
-    biteshipApiKey: String(input.biteshipApiKey || "").trim(),
+    googleMapsApiKey: secretValue("googleMapsApiKey"),
+    biteshipApiKey: secretValue("biteshipApiKey"),
     biteshipCouriers: String(input.biteshipCouriers || "gojek,grab")
       .split(",")
       .map((entry) => entry.trim().toLowerCase())
       .filter(Boolean)
       .join(",") || "gojek,grab",
-    midtransServerKey: String(input.midtransServerKey || "").trim(),
-    midtransClientKey: String(input.midtransClientKey || "").trim(),
+    midtransServerKey: secretValue("midtransServerKey"),
+    midtransClientKey: secretValue("midtransClientKey"),
     midtransEnvironment: String(input.midtransEnvironment || "sandbox") === "production"
       ? "production"
       : "sandbox",
-    whatsappAccessToken: String(input.whatsappAccessToken || "").trim(),
+    whatsappAccessToken: secretValue("whatsappAccessToken"),
     whatsappPhoneNumberId: String(input.whatsappPhoneNumberId || "").trim(),
     whatsappBusinessAccountId: String(input.whatsappBusinessAccountId || "").trim(),
-    whatsappVerifyToken: String(input.whatsappVerifyToken || "").trim(),
+    whatsappVerifyToken: secretValue("whatsappVerifyToken"),
     whatsappAppId: String(input.whatsappAppId || "").trim(),
-    whatsappAppSecret: String(input.whatsappAppSecret || "").trim(),
+    whatsappAppSecret: secretValue("whatsappAppSecret"),
     whatsappGraphVersion: String(input.whatsappGraphVersion || "v22.0").trim() || "v22.0",
     whatsappOtpTemplateName: String(input.whatsappOtpTemplateName || "").trim(),
     whatsappOrderTemplateName: String(input.whatsappOrderTemplateName || "").trim() === "order_status_update"

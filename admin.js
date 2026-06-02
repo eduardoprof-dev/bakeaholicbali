@@ -58,6 +58,15 @@ const integrationFields = {
   whatsappOrderTemplateName: document.getElementById("whatsappOrderTemplateNameInput"),
   whatsappTemplateLanguage: document.getElementById("whatsappTemplateLanguageInput")
 };
+const secretIntegrationKeys = new Set([
+  "googleMapsApiKey",
+  "biteshipApiKey",
+  "midtransServerKey",
+  "midtransClientKey",
+  "whatsappAccessToken",
+  "whatsappVerifyToken",
+  "whatsappAppSecret"
+]);
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -118,6 +127,11 @@ function setStatus(message) {
 
 function renderIntegrations(integrations) {
   Object.entries(integrationFields).forEach(([key, field]) => {
+    if (secretIntegrationKeys.has(key)) {
+      field.value = "";
+      field.placeholder = integrations?.[key] ? "Saved. Leave blank to keep current value." : "";
+      return;
+    }
     field.value = integrations?.[key] || "";
   });
 }
