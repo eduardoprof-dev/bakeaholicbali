@@ -1886,7 +1886,7 @@ function findOrderByBiteshipWebhook(body = {}) {
 
 function shipmentStatusToOrderStatus(status = "") {
   const normalized = String(status || "").toLowerCase();
-  if (["confirmed", "allocated", "picking_up", "picking up", "picked", "picked_up", "picked up", "successfully_pickup", "successfully pickup"].includes(normalized)) {
+  if (["confirmed", "allocated", "picking_up", "picking up", "picked", "picked_up", "picked up", "successfully_pickup", "successfully pickup", "successfully_picked_up", "successfully picked up"].includes(normalized)) {
     return "on_delivery";
   }
   if (["dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalized)) {
