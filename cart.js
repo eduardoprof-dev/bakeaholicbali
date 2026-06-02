@@ -51,6 +51,11 @@ const paymentMethodLabel = document.getElementById("paymentMethodLabel");
 const paymentMethodHint = document.getElementById("paymentMethodHint");
 const checkoutMessageSection = document.getElementById("checkoutMessageSection");
 const checkoutMessage = document.getElementById("checkoutMessage");
+const checkoutSummaryCard = document.querySelector(".checkout-summary-card");
+const checkoutCustomerCard = document.querySelector(".checkout-customer-card");
+const checkoutNotesCard = document.querySelector(".checkout-notes-card");
+const checkoutVoucherCard = document.querySelector(".checkout-voucher-card");
+const checkoutPaymentCard = document.querySelector(".checkout-payment-card");
 const subtotalValue = document.getElementById("subtotalValue");
 const deliveryValue = document.getElementById("deliveryValue");
 const discountRow = document.getElementById("discountRow");
@@ -64,6 +69,7 @@ const footerCartMeta = document.getElementById("footerCartMeta");
 const footerTotalLabel = document.getElementById("footerTotalLabel");
 const footerAddressButton = document.getElementById("footerAddressButton");
 const footerAddressLabel = document.getElementById("footerAddressLabel");
+const paymentFooter = document.querySelector(".payment-footer");
 const footerWhatsappLink = document.getElementById("footerWhatsappLink");
 const footerInstagramLink = document.getElementById("footerInstagramLink");
 const footerTermsLink = document.getElementById("footerTermsLink");
@@ -271,6 +277,7 @@ function applyCartPayload(cartPayload) {
     setSubmitButtonState("Submit Order", state.cart.itemCount === 0);
   }
   syncFulfillmentUi();
+  syncCheckoutVisibility();
 }
 
 function syncTopLinks() {
@@ -337,6 +344,33 @@ function syncFulfillmentUi() {
   }
 
   deliveryFeeLine.textContent = `Estimated delivery fee: ${formatRupiah.format(feeAmount)}`;
+}
+
+function syncCheckoutVisibility() {
+  const hasItems = (state.cart?.itemCount || 0) > 0;
+  document.body.classList.toggle("cart-is-empty", !hasItems);
+
+  [
+    deliveryNotesSection,
+    upsellSection,
+    checkoutCustomerCard,
+    checkoutNotesCard,
+    checkoutVoucherCard,
+    checkoutPaymentCard,
+    checkoutSummaryCard
+  ].forEach((section) => {
+    if (section) {
+      section.hidden = !hasItems;
+    }
+  });
+
+  if (paymentFooter) {
+    paymentFooter.hidden = !hasItems;
+  }
+
+  if (!hasItems) {
+    checkoutMessageSection.hidden = true;
+  }
 }
 
 function hydrateForm() {
@@ -558,7 +592,8 @@ function renderCartItems() {
     cartItems.innerHTML = `
       <section class="empty-card">
         <strong>Your cart is empty.</strong>
-        <p>Add a few products from the store first.</p>
+        <p>Add a few products from the store first, then checkout will appear here.</p>
+        <a class="primary-button empty-cart-button" href="/index.html${modeQuery}">Browse products</a>
       </section>
     `;
     upsellSection.hidden = true;

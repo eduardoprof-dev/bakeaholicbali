@@ -49,10 +49,6 @@ const brandStoryTrack = document.getElementById("brandStoryTrack");
 const brandStoryPrev = document.getElementById("brandStoryPrev");
 const brandStoryNext = document.getElementById("brandStoryNext");
 const brandStoryCounter = document.getElementById("brandStoryCounter");
-const stickyCartButton = document.getElementById("stickyCartButton");
-const stickyCartLabel = document.getElementById("stickyCartLabel");
-const stickyCartHint = document.getElementById("stickyCartHint");
-const stickyCartTotal = document.getElementById("stickyCartTotal");
 const cartLink = document.getElementById("cartLink");
 const cartCountBadge = document.getElementById("cartCountBadge");
 const loginButton = document.getElementById("loginButton");
@@ -1221,9 +1217,6 @@ brandStoryNext?.addEventListener("click", () => changeBrandStorySlide(1));
 enableBrandStorySwipe();
 enableBrandStoryAutoplayPause();
 startBrandStoryAutoplay();
-stickyCartButton?.addEventListener("click", () => {
-  window.location.href = `/cart.html${modeQuery}`;
-});
 loginButton?.addEventListener("click", () => {
   openAccount();
 });
