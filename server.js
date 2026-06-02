@@ -482,11 +482,7 @@ async function sendWhatsappOrderUpdate(order) {
     throw new Error("WHATSAPP_ORDER_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, [
-    order.id,
-    humanizeOrderStatus(order),
-    `Rp ${order.pricing.total}`
-  ], { languageCode: "en" });
+  return sendWhatsappTemplateMessage(order.customer.phone, templateName, [], { languageCode: "en" });
 }
 
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
