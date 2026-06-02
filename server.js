@@ -694,6 +694,27 @@ function sendBareOk(response) {
   response.end("ok");
 }
 
+function sendBareUpperOk(response) {
+  response.writeHead(200, {
+    "Content-Type": "text/plain"
+  });
+  response.end("OK");
+}
+
+function sendBareJsonOk(response) {
+  response.writeHead(200, {
+    "Content-Type": "application/json"
+  });
+  response.end(JSON.stringify({ ok: true }));
+}
+
+function sendBareNoContent(response) {
+  response.writeHead(204, {
+    "Content-Type": "text/plain"
+  });
+  response.end();
+}
+
 function sendFile(response, targetPath) {
   const ext = path.extname(targetPath).toLowerCase();
   const contentType = contentTypes[ext] || "application/octet-stream";
@@ -3052,6 +3073,18 @@ const server = http.createServer((request, response) => {
 
   if (isBareBiteshipPingPath) {
     sendBareOk(response);
+    return;
+  }
+  if (normalizedPathname === "/biteship-OK") {
+    sendBareUpperOk(response);
+    return;
+  }
+  if (normalizedPathname === "/biteship-json-ok") {
+    sendBareJsonOk(response);
+    return;
+  }
+  if (normalizedPathname === "/biteship-204") {
+    sendBareNoContent(response);
     return;
   }
 
