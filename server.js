@@ -279,6 +279,54 @@ function whatsappMessagesUrl() {
   return `https://graph.facebook.com/${whatsappGraphVersion()}/${phoneNumberId}/messages`;
 }
 
+function describeToken(token = "") {
+  const value = String(token || "").trim();
+  return {
+    present: Boolean(value),
+    length: value.length,
+    prefix: value ? value.slice(0, 4) : "",
+    looksLikeMetaToken: value.startsWith("EAA")
+  };
+}
+
+async function checkWhatsappCloudConfig() {
+  const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+  const phoneNumberId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+  const result = {
+    token: describeToken(token),
+    phoneNumberId,
+    graphVersion: whatsappGraphVersion(),
+    templateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+    orderTemplateName: process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "",
+    otpTemplateName: process.env.WHATSAPP_OTP_TEMPLATE_NAME || "",
+    ok: false
+  };
+
+  if (!token || !phoneNumberId) {
+    result.error = "WhatsApp access token or phone number ID is missing";
+    return result;
+  }
+
+  const url = `https://graph.facebook.com/${whatsappGraphVersion()}/${encodeURIComponent(phoneNumberId)}?fields=id,display_phone_number,verified_name`;
+  const metaResponse = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const responseText = await metaResponse.text();
+  const parsed = parseJsonSafely(responseText, {});
+  result.ok = metaResponse.ok;
+  result.status = metaResponse.status;
+  result.meta = metaResponse.ok
+    ? parsed
+    : {
+        error: parsed?.error?.message || responseText,
+        code: parsed?.error?.code,
+        type: parsed?.error?.type
+      };
+  return result;
+}
+
 async function sendWhatsappTemplateMessage(to, templateName, parameters = [], options = {}) {
   if (!isWhatsappCloudReady()) {
     throw new Error("WhatsApp Cloud API is not configured");
@@ -2930,6 +2978,17 @@ function handleApi(requestUrl, request, response) {
     sendJson(response, 200, {
       events: loadJsonArray(biteshipWebhookLogPath)
     });
+    return true;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/whatsapp-health") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    checkWhatsappCloudConfig()
+      .then((payload) => sendJson(response, payload.ok ? 200 : 400, payload))
+      .catch((error) => sendJson(response, 400, { ok: false, error: error.message }));
     return true;
   }
 
