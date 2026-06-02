@@ -418,13 +418,15 @@ async function sendWhatsappOrderUpdate(order) {
   ]);
 }
 
-async function maybeSendWhatsappOrderStatus(order, previousStatus = "") {
+async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
+  const notificationKey = String(options.notificationKey || "").trim();
   if (
     order.mode === "test" ||
     !isWhatsappCloudReady() ||
     !configuredWhatsappOrderTemplateName(order) ||
-    previousStatus === order.status ||
-    order.whatsappNotifications?.lastStatusSent === order.status
+    (previousStatus === order.status && !notificationKey) ||
+    (notificationKey && order.whatsappNotifications?.lastNotificationKey === notificationKey) ||
+    (!notificationKey && order.whatsappNotifications?.lastStatusSent === order.status)
   ) {
     return;
   }
@@ -434,6 +436,7 @@ async function maybeSendWhatsappOrderStatus(order, previousStatus = "") {
     order.whatsappNotifications = {
       ...order.whatsappNotifications,
       lastStatusSent: order.status,
+      ...(notificationKey ? { lastNotificationKey: notificationKey } : {}),
       lastSentAt: new Date().toISOString(),
       messageId: messageResponse?.messages?.[0]?.id || order.whatsappNotifications?.messageId || ""
     };
@@ -2630,6 +2633,7 @@ function handleApi(requestUrl, request, response) {
         const order = findOrderByBiteshipWebhook(body);
         if (order) {
           const previousStatus = order.status;
+          const previousShipmentStatus = order.fulfillment?.shipment?.status || "";
           const shipmentStatus = payload.status || body.status || order.fulfillment.shipment.status || "";
           const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
           order.fulfillment.shipment = {
@@ -2659,7 +2663,14 @@ function handleApi(requestUrl, request, response) {
           if (nextOrderStatus) {
             order.status = nextOrderStatus;
           }
-          await maybeSendWhatsappOrderStatus(order, previousStatus);
+          const shipmentNotificationKey = [
+            "biteship",
+            order.fulfillment?.shipment?.orderId || payload.order_id || body.order_id || order.id,
+            String(shipmentStatus || "").toLowerCase()
+          ].filter(Boolean).join(":");
+          await maybeSendWhatsappOrderStatus(order, previousStatus, {
+            notificationKey: previousShipmentStatus === shipmentStatus ? "" : shipmentNotificationKey
+          });
           saveOrders(ordersLivePath, stores.live.orders);
         }
       })
