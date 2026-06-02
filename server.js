@@ -408,7 +408,7 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = [], op
     return parsed;
   };
 
-  const primaryLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en";
+  const primaryLanguage = options.languageCode || process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en";
   try {
     return await sendTemplate(primaryLanguage);
   } catch (error) {
@@ -418,8 +418,8 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = [], op
     }
     try {
       return await sendTemplate(fallbackLanguage);
-    } catch (_fallbackError) {
-      throw error;
+    } catch (fallbackError) {
+      throw fallbackError;
     }
   }
 }
@@ -430,7 +430,10 @@ async function sendWhatsappOtpCode(phone, code) {
     throw new Error("WHATSAPP_OTP_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(phone, templateName, [code], { authenticationCode: code });
+  return sendWhatsappTemplateMessage(phone, templateName, [code], {
+    authenticationCode: code,
+    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US"
+  });
 }
 
 function humanizeOrderStatus(order) {
@@ -483,7 +486,7 @@ async function sendWhatsappOrderUpdate(order) {
     order.id,
     humanizeOrderStatus(order),
     `Rp ${order.pricing.total}`
-  ]);
+  ], { languageCode: "en" });
 }
 
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
