@@ -687,6 +687,13 @@ function sendPlainOk(response) {
   response.end("ok");
 }
 
+function sendBareOk(response) {
+  response.writeHead(200, {
+    "Content-Type": "text/plain"
+  });
+  response.end("ok");
+}
+
 function sendFile(response, targetPath) {
   const ext = path.extname(targetPath).toLowerCase();
   const contentType = contentTypes[ext] || "application/octet-stream";
@@ -3041,6 +3048,12 @@ const server = http.createServer((request, response) => {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
   const normalizedPathname = requestUrl.pathname.replace(/\/+$/, "") || "/";
   const isPublicWebhookPath = normalizedPathname === "/webhooks/biteship" || normalizedPathname === "/biteship-webhook";
+  const isBareBiteshipPingPath = normalizedPathname === "/biteship-ok";
+
+  if (isBareBiteshipPingPath) {
+    sendBareOk(response);
+    return;
+  }
 
   if (requestUrl.pathname.startsWith("/api/") || isPublicWebhookPath) {
     const handled = handleApi(requestUrl, request, response);
