@@ -111,6 +111,7 @@ const DEFAULT_BRAND_STORY = {
 const customersPath = path.join(dataDir, "customers.json");
 const ordersLivePath = path.join(dataDir, "orders-live.json");
 const ordersTestPath = path.join(dataDir, "orders-test.json");
+const biteshipWebhookLogPath = path.join(dataDir, "biteship-webhook-log.json");
 const PAYMENT_METHODS = [
   { id: "qris", label: "QRIS", kind: "qris", logoText: "QRIS" },
   { id: "bca-va", label: "BCA Virtual Account", kind: "va", bankCode: "014", logoText: "BCA" }
@@ -420,15 +421,17 @@ async function sendWhatsappOrderUpdate(order) {
 
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
   const notificationKey = String(options.notificationKey || "").trim();
-  if (
-    order.mode === "test" ||
-    !isWhatsappCloudReady() ||
-    !configuredWhatsappOrderTemplateName(order) ||
-    (previousStatus === order.status && !notificationKey) ||
-    (notificationKey && order.whatsappNotifications?.lastNotificationKey === notificationKey) ||
-    (!notificationKey && order.whatsappNotifications?.lastStatusSent === order.status)
-  ) {
-    return;
+  const skipReason = (() => {
+    if (order.mode === "test") return "test_order";
+    if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
+    if (!configuredWhatsappOrderTemplateName(order)) return "template_not_configured";
+    if (previousStatus === order.status && !notificationKey) return "same_order_status";
+    if (notificationKey && order.whatsappNotifications?.lastNotificationKey === notificationKey) return "same_biteship_status";
+    if (!notificationKey && order.whatsappNotifications?.lastStatusSent === order.status) return "already_sent_status";
+    return "";
+  })();
+  if (skipReason) {
+    return { sent: false, skipped: true, reason: skipReason };
   }
 
   try {
@@ -441,8 +444,13 @@ async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options 
       messageId: messageResponse?.messages?.[0]?.id || order.whatsappNotifications?.messageId || ""
     };
     delete order.whatsappNotificationError;
+    return {
+      sent: true,
+      messageId: messageResponse?.messages?.[0]?.id || ""
+    };
   } catch (error) {
     order.whatsappNotificationError = error.message;
+    return { sent: false, skipped: false, error: error.message };
   }
 }
 
@@ -621,6 +629,29 @@ function loadOrders(targetPath) {
 function saveOrders(targetPath, orders) {
   ensureParentDir(targetPath);
   fs.writeFileSync(targetPath, `${JSON.stringify(orders, null, 2)}\n`, "utf8");
+}
+
+function loadJsonArray(targetPath) {
+  if (!fs.existsSync(targetPath)) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(targetPath, "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function recordBiteshipWebhookLog(entry) {
+  const log = loadJsonArray(biteshipWebhookLogPath);
+  log.unshift({
+    receivedAt: new Date().toISOString(),
+    ...entry
+  });
+  ensureParentDir(biteshipWebhookLogPath);
+  fs.writeFileSync(biteshipWebhookLogPath, `${JSON.stringify(log.slice(0, 50), null, 2)}\n`, "utf8");
 }
 
 function ordersPathForMode(mode) {
@@ -2631,50 +2662,76 @@ function handleApi(requestUrl, request, response) {
         body = parseJsonSafely(body, {});
         const payload = normalizeBiteshipWebhookPayload(body);
         const order = findOrderByBiteshipWebhook(body);
-        if (order) {
-          const previousStatus = order.status;
-          const previousShipmentStatus = order.fulfillment?.shipment?.status || "";
-          const shipmentStatus = payload.status || body.status || order.fulfillment.shipment.status || "";
-          const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
-          order.fulfillment.shipment = {
-            ...order.fulfillment.shipment,
-            status: shipmentStatus,
-            waybillId:
-              payload.waybill_id ||
-              payload.courier_waybill_id ||
-              body.waybill_id ||
-              body.courier_waybill_id ||
-              order.fulfillment.shipment.waybillId ||
-              "",
-            trackingLink:
-              payload.courier?.link ||
-              payload.courier_link ||
-              payload.tracking_link ||
-              payload.tracking_url ||
-              body.courier?.link ||
-              body.courier_link ||
-              body.tracking_link ||
-              body.tracking_url ||
-              order.fulfillment.shipment.trackingLink ||
-              "",
-            updatedAt: new Date().toISOString(),
-            lastWebhook: body
-          };
-          if (nextOrderStatus) {
-            order.status = nextOrderStatus;
-          }
-          const shipmentNotificationKey = [
-            "biteship",
-            order.fulfillment?.shipment?.orderId || payload.order_id || body.order_id || order.id,
-            String(shipmentStatus || "").toLowerCase()
-          ].filter(Boolean).join(":");
-          await maybeSendWhatsappOrderStatus(order, previousStatus, {
-            notificationKey: previousShipmentStatus === shipmentStatus ? "" : shipmentNotificationKey
+        if (!order) {
+          recordBiteshipWebhookLog({
+            matched: false,
+            event: payload.event || body.event || "",
+            identifiers: biteshipWebhookIdentifiers(body),
+            status: payload.status || body.status || "",
+            body
           });
-          saveOrders(ordersLivePath, stores.live.orders);
+          return;
         }
+
+        const previousStatus = order.status;
+        const previousShipmentStatus = order.fulfillment?.shipment?.status || "";
+        const shipmentStatus = payload.status || body.status || order.fulfillment.shipment.status || "";
+        const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
+        order.fulfillment.shipment = {
+          ...order.fulfillment.shipment,
+          status: shipmentStatus,
+          waybillId:
+            payload.waybill_id ||
+            payload.courier_waybill_id ||
+            body.waybill_id ||
+            body.courier_waybill_id ||
+            order.fulfillment.shipment.waybillId ||
+            "",
+          trackingLink:
+            payload.courier?.link ||
+            payload.courier_link ||
+            payload.tracking_link ||
+            payload.tracking_url ||
+            body.courier?.link ||
+            body.courier_link ||
+            body.tracking_link ||
+            body.tracking_url ||
+            order.fulfillment.shipment.trackingLink ||
+            "",
+          updatedAt: new Date().toISOString(),
+          lastWebhook: body
+        };
+        if (nextOrderStatus) {
+          order.status = nextOrderStatus;
+        }
+        const shipmentNotificationKey = [
+          "biteship",
+          order.fulfillment?.shipment?.orderId || payload.order_id || body.order_id || order.id,
+          String(shipmentStatus || "").toLowerCase()
+        ].filter(Boolean).join(":");
+        const whatsappResult = await maybeSendWhatsappOrderStatus(order, previousStatus, {
+          notificationKey: previousShipmentStatus === shipmentStatus ? "" : shipmentNotificationKey
+        });
+        recordBiteshipWebhookLog({
+          matched: true,
+          event: payload.event || body.event || "",
+          identifiers: biteshipWebhookIdentifiers(body),
+          orderId: order.id,
+          biteshipOrderId: order.fulfillment?.shipment?.orderId || "",
+          previousOrderStatus: previousStatus,
+          nextOrderStatus: order.status,
+          previousShipmentStatus,
+          shipmentStatus,
+          whatsappResult,
+          body
+        });
+        saveOrders(ordersLivePath, stores.live.orders);
       })
       .catch((error) => {
+        recordBiteshipWebhookLog({
+          matched: false,
+          error: error.message
+        });
         console.warn("Unable to process Biteship webhook:", error.message);
       });
     return true;
@@ -2838,6 +2895,17 @@ function handleApi(requestUrl, request, response) {
       return true;
     }
     sendJson(response, 200, readIntegrationSettings());
+    return true;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/biteship-webhook-log") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    sendJson(response, 200, {
+      events: loadJsonArray(biteshipWebhookLogPath)
+    });
     return true;
   }
 
