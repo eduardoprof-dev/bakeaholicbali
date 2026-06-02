@@ -351,7 +351,7 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = [], op
       const message =
         parsed?.error?.message ||
         `WhatsApp message failed with status ${response.status}`;
-      const error = new Error(message);
+      const error = new Error(`${message} (template: ${templateName}, language: ${languageCode})`);
       error.metaCode = parsed?.error?.code;
       error.languageCode = languageCode;
       throw error;
@@ -407,7 +407,7 @@ function humanizeOrderStatus(order) {
 function defaultWhatsappOrderTemplateName(order) {
   const statusTemplates = {
     awaiting_payment: "payment_pending",
-    paid: "order_received",
+    paid: "payment_confirmed",
     preparing: "order_preparing",
     on_delivery: "order_shipped",
     shipped: "order_shipped",
