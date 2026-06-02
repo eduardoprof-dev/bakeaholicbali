@@ -470,7 +470,7 @@ function defaultWhatsappOrderTemplateName(order) {
 
 function configuredWhatsappOrderTemplateName(order) {
   const templateName = String(process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "").trim();
-  if (!templateName || templateName === "order_status_update") {
+  if (order.status !== "paid" || !templateName || templateName === "order_status_update") {
     return defaultWhatsappOrderTemplateName(order);
   }
   return templateName;
@@ -1886,7 +1886,7 @@ function findOrderByBiteshipWebhook(body = {}) {
 
 function shipmentStatusToOrderStatus(status = "") {
   const normalized = String(status || "").toLowerCase();
-  if (["confirmed", "allocated", "picking_up", "picked", "picking up"].includes(normalized)) {
+  if (["confirmed", "allocated", "picking_up", "picking up", "picked", "picked_up", "picked up", "successfully_pickup", "successfully pickup"].includes(normalized)) {
     return "on_delivery";
   }
   if (["dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalized)) {
