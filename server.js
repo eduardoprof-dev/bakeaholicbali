@@ -300,30 +300,16 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = [], op
       text: String(value).trim()
     }));
 
-  const payload = {
-    messaging_product: "whatsapp",
-    to: recipient,
-    type: "template",
-    template: {
-      name: templateName,
-      language: {
-        code: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en"
-      }
-    }
-  };
-
+  const templateComponents = [];
   if (bodyParameters.length) {
-    payload.template.components = [
-      {
-        type: "body",
-        parameters: bodyParameters
-      }
-    ];
+    templateComponents.push({
+      type: "body",
+      parameters: bodyParameters
+    });
   }
 
   if (options.authenticationCode) {
-    payload.template.components = payload.template.components || [];
-    payload.template.components.push({
+    templateComponents.push({
       type: "button",
       sub_type: "url",
       index: "0",
@@ -336,25 +322,58 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = [], op
     });
   }
 
-  const response = await fetch(whatsappMessagesUrl(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`
-    },
-    body: JSON.stringify(payload)
+  const buildPayload = (languageCode) => ({
+    messaging_product: "whatsapp",
+    to: recipient,
+    type: "template",
+    template: {
+      name: templateName,
+      language: {
+        code: languageCode
+      },
+      ...(templateComponents.length ? { components: templateComponents } : {})
+    }
   });
 
-  const responseText = await response.text();
-  const parsed = parseJsonSafely(responseText, {});
-  if (!response.ok) {
-    const message =
-      parsed?.error?.message ||
-      `WhatsApp message failed with status ${response.status}`;
-    throw new Error(message);
-  }
+  const sendTemplate = async (languageCode) => {
+    const response = await fetch(whatsappMessagesUrl(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify(buildPayload(languageCode))
+    });
 
-  return parsed;
+    const responseText = await response.text();
+    const parsed = parseJsonSafely(responseText, {});
+    if (!response.ok) {
+      const message =
+        parsed?.error?.message ||
+        `WhatsApp message failed with status ${response.status}`;
+      const error = new Error(message);
+      error.metaCode = parsed?.error?.code;
+      error.languageCode = languageCode;
+      throw error;
+    }
+
+    return parsed;
+  };
+
+  const primaryLanguage = process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en";
+  try {
+    return await sendTemplate(primaryLanguage);
+  } catch (error) {
+    const fallbackLanguage = primaryLanguage === "en" ? "en_US" : primaryLanguage === "en_US" ? "en" : "";
+    if (error.metaCode !== 132001 || !fallbackLanguage) {
+      throw error;
+    }
+    try {
+      return await sendTemplate(fallbackLanguage);
+    } catch (_fallbackError) {
+      throw error;
+    }
+  }
 }
 
 async function sendWhatsappOtpCode(phone, code) {
