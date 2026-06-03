@@ -894,6 +894,7 @@ function renderBrandStory() {
     brandStoryTrack.innerHTML = slides.map((slide, index) => storySlideMarkup(slide, index)).join("");
   }
   updateBrandStorySlide();
+  restartBrandStoryAutoplay();
 }
 
 function normalizeStoryPoint(point, fallbackIcon = "leaf") {
@@ -1216,7 +1217,6 @@ brandStoryPrev?.addEventListener("click", () => changeBrandStorySlide(-1));
 brandStoryNext?.addEventListener("click", () => changeBrandStorySlide(1));
 enableBrandStorySwipe();
 enableBrandStoryAutoplayPause();
-startBrandStoryAutoplay();
 loginButton?.addEventListener("click", () => {
   openAccount();
 });
