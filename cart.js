@@ -334,7 +334,9 @@ function syncFulfillmentUi() {
     : state.store.addressLabel;
   addressText.textContent =
     state.draft.destination.formattedAddress || "Add your address before placing the order.";
-  footerAddressLabel.textContent = state.draft.destination.formattedAddress || "Set delivery address";
+  if (footerAddressLabel) {
+    footerAddressLabel.textContent = state.draft.destination.formattedAddress || "Set delivery address";
+  }
   syncDeliveryInstructionsUi();
 
   if (!hasDeliveryDestination()) {
@@ -393,7 +395,9 @@ function hydrateForm() {
   modalAddressInput.value = state.draft.destination.formattedAddress || state.draft.customer.address;
   deliveryNotesInput.value = state.draft.deliveryNotes;
   syncDeliveryInstructionsUi();
-  orderNotesInput.value = state.draft.orderNotes;
+  if (orderNotesInput) {
+    orderNotesInput.value = state.draft.orderNotes;
+  }
   voucherInput.value = state.draft.voucherCode;
 }
 
@@ -404,7 +408,7 @@ function syncDraftFromForm() {
   state.draft.customer.address = customerAddressInput.value.trim();
   state.draft.deliveryNotes = deliveryNotesInput.value.trim();
   syncDeliveryInstructionsUi();
-  state.draft.orderNotes = orderNotesInput.value.trim();
+  state.draft.orderNotes = orderNotesInput?.value.trim() || "";
   persistDraft();
 }
 
@@ -413,9 +417,10 @@ function syncDeliveryInstructionsUi() {
   deliveryInstructionsSummary.textContent = note
     ? note
     : "No special delivery instructions added.";
-  deliveryInstructionsButton.textContent = note
-    ? "Edit delivery instructions"
-    : "Add delivery instructions";
+  deliveryInstructionsButton.innerHTML = `
+    <span>${note ? "Edit delivery instructions" : "Add delivery instructions"}</span>
+    <span>⌄</span>
+  `;
 }
 
 function openModal(modal) {
@@ -565,8 +570,8 @@ function renderPaymentChoice() {
       ? "We will generate a virtual account number after submit."
       : "Use a placeholder card method for the prototype flow.";
 
-  footerPaymentLogo.textContent = payment.logoText;
-  footerPaymentLabel.textContent = payment.label;
+  if (footerPaymentLogo) footerPaymentLogo.textContent = payment.logoText;
+  if (footerPaymentLabel) footerPaymentLabel.textContent = payment.label;
 }
 
 function findUpsellItem() {
@@ -627,7 +632,6 @@ function renderCartItems() {
         <article class="cart-line-card">
           <div class="cart-thumb-wrap">
             <img class="cart-line-thumb" src="${escapeHtml(versionedAsset(entry.item.imagePath))}" alt="${escapeHtml(entry.item.name)}" />
-            <span class="item-quantity-badge">${entry.quantity > 99 ? "99+" : entry.quantity}</span>
           </div>
           <div class="cart-line-copy">
             <strong>${escapeHtml(entry.item.name)}</strong>
@@ -666,8 +670,8 @@ function renderSummary() {
   taxValue.textContent = formatRupiah.format(state.cart.tax);
   taxBreakdownValue.textContent = formatRupiah.format(state.cart.tax);
   totalValue.textContent = formatRupiah.format(state.cart.total);
-  footerCartMeta.textContent = `${state.cart.itemCount} item${state.cart.itemCount === 1 ? "" : "s"}`;
-  footerTotalLabel.textContent = formatRupiah.format(state.cart.total);
+  if (footerCartMeta) footerCartMeta.textContent = `${state.cart.itemCount} item${state.cart.itemCount === 1 ? "" : "s"}`;
+  if (footerTotalLabel) footerTotalLabel.textContent = formatRupiah.format(state.cart.total);
 
   const discountAmount = state.cart.discount?.amount || 0;
   discountRow.hidden = discountAmount <= 0;
@@ -762,7 +766,7 @@ async function submitOrder() {
       destination: state.draft.destination,
       fulfillmentType: state.draft.fulfillmentType,
       deliveryNotes: state.draft.deliveryNotes,
-      orderNotes: state.draft.orderNotes,
+      orderNotes: "",
       voucherCode: state.draft.voucherCode,
       paymentMethodId: state.draft.paymentMethodId
     };
@@ -875,7 +879,7 @@ async function bootstrap() {
   customerAddressInput,
   deliveryNotesInput,
   orderNotesInput
-].forEach((field) => {
+].filter(Boolean).forEach((field) => {
   field.addEventListener("input", () => {
     state.pendingPaymentUrl = "";
     if (field === customerPhoneInput) {
@@ -952,7 +956,7 @@ addressButton.addEventListener("click", () => {
   openModal(locationModal);
   locationPicker?.open();
 });
-footerAddressButton.addEventListener("click", () => {
+footerAddressButton?.addEventListener("click", () => {
   openModal(locationModal);
   locationPicker?.open();
 });

@@ -146,6 +146,7 @@
     const selectedAddress = root.querySelector("#selectedLocationAddress");
     const selectedFee = root.querySelector("#selectedLocationFee");
     const notesInput = root.querySelector("#locationNotesInput");
+    const notesToggle = root.querySelector("#locationNotesToggle");
     const currentLocationButton = root.querySelector("#useCurrentLocationButton");
     const saveButton = root.querySelector("#saveLocationButton");
 
@@ -262,6 +263,7 @@
         selectedAddress.textContent = "Search or tap the map to pin a delivery location.";
         selectedFee.textContent = "Delivery fee will be calculated after you pin the address.";
         notesInput.value = "";
+        notesInput.hidden = true;
         return;
       }
 
@@ -272,6 +274,7 @@
         : "Estimated delivery fee";
       selectedFee.textContent = `${feeLabel}: ${formatRupiah.format(value.deliveryFee || 0)} for ${value.routeDistanceKm || 0} km`;
       notesInput.value = value.locationNotes || "";
+      notesInput.hidden = !value.locationNotes;
     }
 
     async function setSelectedLocation(nextValue) {
@@ -402,6 +405,13 @@
       if (event.key === "Enter") {
         event.preventDefault();
         searchButton.click();
+      }
+    });
+
+    notesToggle?.addEventListener("click", () => {
+      notesInput.hidden = !notesInput.hidden;
+      if (!notesInput.hidden) {
+        notesInput.focus();
       }
     });
 

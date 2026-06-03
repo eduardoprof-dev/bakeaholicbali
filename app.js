@@ -574,7 +574,7 @@ function renderCatalog() {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       if ((state.cart?.itemCount || 0) > 0) {
-        addToCart(button.dataset.itemId);
+        addToCart(button.dataset.itemId, button);
         return;
       }
       openProductModal(button.dataset.itemId);
@@ -930,12 +930,34 @@ async function refreshCart() {
   syncFulfillmentUi();
 }
 
-async function addToCart(itemId) {
-  await request("/api/cart", {
-    method: "POST",
-    body: JSON.stringify({ itemId, quantity: 1 })
-  });
-  await refreshCart();
+async function addToCart(itemId, triggerButton = null) {
+  const idleText = triggerButton?.textContent;
+  if (triggerButton) {
+    const badge = triggerButton.querySelector(".add-quantity-badge") || document.createElement("span");
+    const currentQuantity = Number(badge.textContent || "0") || 0;
+    badge.className = "add-quantity-badge";
+    badge.textContent = currentQuantity + 1 > 99 ? "99+" : String(currentQuantity + 1);
+    if (!badge.isConnected) {
+      triggerButton.appendChild(badge);
+    }
+    triggerButton.disabled = true;
+    triggerButton.classList.add("is-updating");
+  }
+  try {
+    await request("/api/cart", {
+      method: "POST",
+      body: JSON.stringify({ itemId, quantity: 1 })
+    });
+    await refreshCart();
+  } finally {
+    if (triggerButton) {
+      triggerButton.disabled = false;
+      triggerButton.classList.remove("is-updating");
+      if (idleText) {
+        triggerButton.setAttribute("aria-live", "polite");
+      }
+    }
+  }
 }
 
 async function updateCartQuantity(itemId, quantity) {

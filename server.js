@@ -1639,7 +1639,7 @@ function recalculateSummary(summary, options = {}) {
     String(options.voucherCode || summary.discount?.code || "").trim().toUpperCase(),
     summary.fulfillmentType
   );
-  const taxableAmount = Math.max(0, summary.subtotal - discount.amount);
+  const taxableAmount = Math.max(0, summary.subtotal + deliveryFee - discount.amount);
   const tax = roundCurrency(taxableAmount * store.taxRate);
   const total = Math.max(0, summary.subtotal + deliveryFee + tax - discount.amount);
 
@@ -1992,7 +1992,7 @@ function buildCartSummary(storeState, options = {}) {
     String(options.voucherCode || "").trim().toUpperCase(),
     fulfillmentType
   );
-  const taxableAmount = Math.max(0, subtotal - discount.amount);
+  const taxableAmount = Math.max(0, subtotal + deliveryFee - discount.amount);
   const tax = roundCurrency(taxableAmount * store.taxRate);
   const total = Math.max(0, subtotal + deliveryFee + tax - discount.amount);
 

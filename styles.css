@@ -920,15 +920,15 @@ body::before {
 }
 
 .site-footer {
-  margin-top: 28px;
-  padding: 28px 18px 96px;
+  margin-top: 14px;
+  padding: 18px 18px 78px;
   border-top: 1px solid var(--line);
   color: var(--text);
 }
 
 .cart-site-footer {
-  margin-top: 18px;
-  padding-bottom: 112px;
+  margin-top: 10px;
+  padding-bottom: 84px;
 }
 
 .footer-tagline {
@@ -1165,8 +1165,8 @@ body::before {
 
 .brand-logo {
   display: block;
-  width: 126px;
-  max-width: 40vw;
+  width: 152px;
+  max-width: 46vw;
   height: auto;
   margin: 0 auto;
   mix-blend-mode: multiply;
@@ -1174,10 +1174,10 @@ body::before {
 
 .footer-logo {
   display: block;
-  width: 128px;
-  max-width: 42vw;
+  width: 152px;
+  max-width: 46vw;
   height: auto;
-  margin: 0 auto 12px;
+  margin: 0 auto 10px;
   mix-blend-mode: multiply;
 }
 
@@ -1210,7 +1210,8 @@ body::before {
 .brand-actions {
   position: absolute;
   right: 0;
-  bottom: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   gap: 10px;
   align-items: center;
@@ -1301,13 +1302,14 @@ body::before {
 
 .app-header.header-condensed .search-bar {
   position: absolute;
-  top: 15px;
+  top: 50%;
   left: 16px;
   width: 34px;
   min-width: 34px;
   height: 34px;
   margin: 0;
   padding: 0;
+  transform: translateY(-50%);
   justify-content: center;
   gap: 0;
   border-radius: 10px;
@@ -1852,6 +1854,10 @@ body::before {
   font-weight: 600;
   overflow: hidden;
   max-height: 48px;
+}
+
+.checkout-shell > .delivery-fee-line {
+  display: none;
 }
 
 .search-bar {
@@ -2563,18 +2569,18 @@ body::before {
 
 .add-quantity-badge {
   position: absolute;
-  left: -12px;
-  bottom: -12px;
-  min-width: 32px;
-  height: 32px;
-  padding: 0 9px;
+  right: -10px;
+  top: -10px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
   border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--accent);
   color: #fff;
-  font-size: 0.88rem;
+  font-size: 0.76rem;
   font-weight: 900;
   line-height: 1;
   box-shadow: 0 8px 16px rgba(77, 42, 12, 0.22), 0 0 0 3px #fff;
@@ -2602,12 +2608,12 @@ body::before {
 
 .payment-footer {
   width: min(calc(100% - 32px), 760px);
-  margin: 10px auto 28px;
-  border-radius: 18px;
-  background: rgba(255, 251, 247, 0.98);
-  border: 1px solid rgba(107, 66, 38, 0.12);
-  box-shadow: 0 20px 35px rgba(77, 42, 12, 0.12);
-  padding: 14px 16px;
+  margin: 8px auto 22px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
 }
 
 .sticky-submit[hidden] {
@@ -2697,7 +2703,7 @@ body.has-cart-items .storefront-content {
   height: auto;
   max-height: min(86vh, 760px);
   grid-template-rows: auto;
-  gap: 14px;
+  gap: 12px;
   padding: 22px;
   border: 0;
   border-radius: 26px 26px 0 0;
@@ -2748,6 +2754,12 @@ body.has-cart-items .storefront-content {
   color: var(--text);
   text-align: left;
   cursor: pointer;
+}
+
+.cart-drawer-address span:last-child {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: var(--accent);
 }
 
 .cart-drawer-address span {
@@ -3178,10 +3190,14 @@ body.has-cart-items .storefront-content {
   background: #fff;
   color: var(--accent);
   font: inherit;
-  font-weight: 900;
+  font-weight: 700;
   text-align: left;
   padding: 0 14px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .compact-instructions {
@@ -3203,9 +3219,35 @@ body.cart-is-empty .checkout-shell .cart-layout {
   bottom: auto;
   transform: none;
   grid-column: 1 / -1;
+  width: min(100%, 760px);
+  margin: 0 0 24px;
+  padding: 0;
+}
+
+.checkout-customer-card #addressField,
+.checkout-customer-card .address-inline-button {
+  display: none;
+}
+
+.location-notes-field {
+  gap: 8px;
+}
+
+.location-notes-toggle {
   width: 100%;
-  margin: 0 0 28px;
-  padding: 12px;
+  min-height: 46px;
+  border: 1px solid rgba(107, 66, 38, 0.14);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
 }
 
 .footer-address-button {
