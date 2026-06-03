@@ -14,7 +14,7 @@
     />
     <link rel="stylesheet" href="styles.css?v=20260603-mobile-checkout" />
   </head>
-  <body>
+  <body class="cart-is-empty">
     <div class="mobile-shell checkout-shell">
       <header class="page-header">
         <a class="back-link" id="backToStoreLink" href="/index.html">←</a>
@@ -48,7 +48,7 @@
 
         <section class="cart-section checkout-items-card">
           <div class="section-head-inline">
-            <h2 id="selectedItemsTitle">Selected items</h2>
+            <h2 id="selectedItemsTitle">Selected items (0)</h2>
             <a class="secondary-link" id="addItemsLink" href="/index.html">+ Add Items</a>
           </div>
           <div id="cartItems"></div>
@@ -182,7 +182,7 @@
       </footer>
     </div>
 
-    <section class="payment-footer">
+    <section class="payment-footer" hidden>
       <div class="payment-footer-meta">
         <span class="payment-logo small" id="footerPaymentLogo">QRIS</span>
         <div>

@@ -352,7 +352,6 @@ function syncCheckoutVisibility() {
 
   [
     deliveryNotesSection,
-    upsellSection,
     checkoutCustomerCard,
     checkoutNotesCard,
     checkoutVoucherCard,
@@ -366,6 +365,10 @@ function syncCheckoutVisibility() {
 
   if (paymentFooter) {
     paymentFooter.hidden = !hasItems;
+  }
+
+  if (upsellSection && !hasItems) {
+    upsellSection.hidden = true;
   }
 
   if (!hasItems) {
@@ -839,7 +842,7 @@ async function bootstrap() {
   renderPaymentModal();
   renderPaymentChoice();
   await refreshCart();
-  setSubmitButtonState("Submit Order", false);
+  setSubmitButtonState("Submit Order", (state.cart?.itemCount || 0) === 0);
 }
 
 [
