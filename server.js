@@ -1639,7 +1639,7 @@ function recalculateSummary(summary, options = {}) {
     String(options.voucherCode || summary.discount?.code || "").trim().toUpperCase(),
     summary.fulfillmentType
   );
-  const taxableAmount = Math.max(0, summary.subtotal + deliveryFee - discount.amount);
+  const taxableAmount = Math.max(0, summary.subtotal - discount.amount);
   const tax = roundCurrency(taxableAmount * store.taxRate);
   const total = Math.max(0, summary.subtotal + deliveryFee + tax - discount.amount);
 
@@ -1982,13 +1982,6 @@ function buildCartSummary(storeState, options = {}) {
           total: store.deliveryFee
         };
       }
-    } else {
-      shipping = {
-        distanceKm: 0,
-        bikeFare: 0,
-        serviceFee: store.deliveryFee,
-        total: store.deliveryFee
-      };
     }
   }
 
@@ -1999,7 +1992,7 @@ function buildCartSummary(storeState, options = {}) {
     String(options.voucherCode || "").trim().toUpperCase(),
     fulfillmentType
   );
-  const taxableAmount = Math.max(0, subtotal + deliveryFee - discount.amount);
+  const taxableAmount = Math.max(0, subtotal - discount.amount);
   const tax = roundCurrency(taxableAmount * store.taxRate);
   const total = Math.max(0, subtotal + deliveryFee + tax - discount.amount);
 
@@ -2095,8 +2088,8 @@ function buildMidtransItems(order) {
 
   if (order.pricing.tax > 0) {
     items.push({
-      id: "pb1-tax",
-      name: "PB1 Government Tax",
+      id: "government-tax",
+      name: "Government Tax",
       price: order.pricing.tax,
       quantity: 1
     });
@@ -2354,7 +2347,7 @@ function buildWhatsappUrl(order) {
   lines.push("");
   lines.push(`Subtotal: Rp ${order.pricing.subtotal}`);
   lines.push(`Delivery fee: Rp ${order.pricing.deliveryFee}`);
-  lines.push(`PB1 Tax: Rp ${order.pricing.tax}`);
+  lines.push(`Government tax: Rp ${order.pricing.tax}`);
   if (order.pricing.discount.amount > 0) {
     lines.push(`Discount (${order.pricing.discount.code}): -Rp ${order.pricing.discount.amount}`);
   }

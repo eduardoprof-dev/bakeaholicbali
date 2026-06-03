@@ -30,6 +30,8 @@ const addressTitle = document.getElementById("addressTitle");
 const addressText = document.getElementById("addressText");
 const deliveryFeeLine = document.getElementById("deliveryFeeLine");
 const deliveryNotesSection = document.getElementById("deliveryNotesSection");
+const deliveryInstructionsSummary = document.getElementById("deliveryInstructionsSummary");
+const deliveryInstructionsButton = document.getElementById("deliveryInstructionsButton");
 const deliveryNotesInput = document.getElementById("deliveryNotesInput");
 const selectedItemsTitle = document.getElementById("selectedItemsTitle");
 const cartItems = document.getElementById("cartItems");
@@ -62,6 +64,9 @@ const discountRow = document.getElementById("discountRow");
 const discountLabel = document.getElementById("discountLabel");
 const discountValue = document.getElementById("discountValue");
 const taxValue = document.getElementById("taxValue");
+const taxToggleButton = document.getElementById("taxToggleButton");
+const taxBreakdownRow = document.getElementById("taxBreakdownRow");
+const taxBreakdownValue = document.getElementById("taxBreakdownValue");
 const totalValue = document.getElementById("totalValue");
 const footerPaymentLogo = document.getElementById("footerPaymentLogo");
 const footerPaymentLabel = document.getElementById("footerPaymentLabel");
@@ -330,6 +335,7 @@ function syncFulfillmentUi() {
   addressText.textContent =
     state.draft.destination.formattedAddress || "Add your address before placing the order.";
   footerAddressLabel.textContent = state.draft.destination.formattedAddress || "Set delivery address";
+  syncDeliveryInstructionsUi();
 
   if (!hasDeliveryDestination()) {
     deliveryFeeLine.textContent = "Add your address to estimate delivery fee.";
@@ -386,6 +392,7 @@ function hydrateForm() {
   modalPhoneInput.value = state.draft.customer.phone;
   modalAddressInput.value = state.draft.destination.formattedAddress || state.draft.customer.address;
   deliveryNotesInput.value = state.draft.deliveryNotes;
+  syncDeliveryInstructionsUi();
   orderNotesInput.value = state.draft.orderNotes;
   voucherInput.value = state.draft.voucherCode;
 }
@@ -396,8 +403,19 @@ function syncDraftFromForm() {
   state.draft.customer.phone = customerPhoneInput.value.trim();
   state.draft.customer.address = customerAddressInput.value.trim();
   state.draft.deliveryNotes = deliveryNotesInput.value.trim();
+  syncDeliveryInstructionsUi();
   state.draft.orderNotes = orderNotesInput.value.trim();
   persistDraft();
+}
+
+function syncDeliveryInstructionsUi() {
+  const note = state.draft.deliveryNotes || deliveryNotesInput.value.trim();
+  deliveryInstructionsSummary.textContent = note
+    ? note
+    : "No special delivery instructions added.";
+  deliveryInstructionsButton.textContent = note
+    ? "Edit delivery instructions"
+    : "Add delivery instructions";
 }
 
 function openModal(modal) {
@@ -642,8 +660,11 @@ function renderCartItems() {
 
 function renderSummary() {
   subtotalValue.textContent = formatRupiah.format(state.cart.subtotal);
-  deliveryValue.textContent = formatRupiah.format(state.cart.deliveryFee);
+  deliveryValue.textContent = hasDeliveryDestination()
+    ? formatRupiah.format(state.cart.deliveryFee)
+    : "Set address";
   taxValue.textContent = formatRupiah.format(state.cart.tax);
+  taxBreakdownValue.textContent = formatRupiah.format(state.cart.tax);
   totalValue.textContent = formatRupiah.format(state.cart.total);
   footerCartMeta.textContent = `${state.cart.itemCount} item${state.cart.itemCount === 1 ? "" : "s"}`;
   footerTotalLabel.textContent = formatRupiah.format(state.cart.total);
@@ -654,10 +675,12 @@ function renderSummary() {
     discountLabel.textContent = `Discount (${state.cart.discount.code})`;
     discountValue.textContent = `-${formatRupiah.format(discountAmount)}`;
     voucherMessage.textContent = state.cart.discount.label;
+    voucherMessage.hidden = false;
   } else {
     voucherMessage.textContent = state.cart.discount?.code
       ? state.cart.discount.label || "Voucher saved. If it is valid, it will apply in the total."
-      : "Try demo codes: SWEET10, FREESHIP, FULLTEST.";
+      : "";
+    voucherMessage.hidden = !voucherMessage.textContent;
   }
 }
 
@@ -861,6 +884,19 @@ async function bootstrap() {
     syncDraftFromForm();
     setCheckoutMessage("");
   });
+});
+
+deliveryInstructionsButton.addEventListener("click", () => {
+  deliveryNotesInput.hidden = !deliveryNotesInput.hidden;
+  if (!deliveryNotesInput.hidden) {
+    deliveryNotesInput.focus();
+  }
+});
+
+taxToggleButton?.addEventListener("click", () => {
+  const expanded = taxToggleButton.getAttribute("aria-expanded") === "true";
+  taxToggleButton.setAttribute("aria-expanded", String(!expanded));
+  taxBreakdownRow.hidden = expanded;
 });
 
 applyVoucherButton.addEventListener("click", async () => {

@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Checkout | Bakeaholic Online Shop</title>
-    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260603-mobile-checkout" />
-    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260603-mobile-checkout" />
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260603-cart-refine" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260603-cart-refine" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260603-mobile-checkout" />
+    <link rel="stylesheet" href="styles.css?v=20260603-cart-refine" />
   </head>
   <body class="cart-is-empty">
     <div class="mobile-shell checkout-shell">
@@ -41,9 +41,12 @@
         <section class="cart-section checkout-delivery-card" id="deliveryNotesSection">
           <div class="section-title-wrap">
             <h2>Delivery instructions</h2>
-            <p>Add any note your courier should know before pickup.</p>
+            <p id="deliveryInstructionsSummary">No special delivery instructions added.</p>
           </div>
-          <textarea id="deliveryNotesInput" class="large-textarea" placeholder="e.g. Leave food at the gate"></textarea>
+          <button class="delivery-instructions-button" id="deliveryInstructionsButton" type="button">
+            Add delivery instructions
+          </button>
+          <textarea id="deliveryNotesInput" class="large-textarea compact-instructions" placeholder="Apt 4B, leave at front door, don't ring the bell..." hidden></textarea>
         </section>
 
         <section class="cart-section checkout-items-card">
@@ -106,7 +109,7 @@
             <input id="voucherInput" type="text" placeholder="Input voucher code" />
             <button class="primary-button compact-button" id="applyVoucherButton" type="button">Apply</button>
           </div>
-          <p class="helper-copy" id="voucherMessage">Try demo codes: SWEET10, FREESHIP, FULLTEST.</p>
+          <p class="helper-copy" id="voucherMessage" hidden></p>
         </section>
 
         <section class="cart-section checkout-payment-card">
@@ -138,7 +141,7 @@
               <strong id="subtotalValue">Rp 0</strong>
             </div>
             <div class="summary-row">
-              <span>Handling and delivery fee</span>
+              <span>Delivery fee</span>
               <strong id="deliveryValue">Rp 0</strong>
             </div>
             <div class="summary-row" id="discountRow" hidden>
@@ -146,8 +149,14 @@
               <strong id="discountValue">-Rp 0</strong>
             </div>
             <div class="summary-row">
-              <span>PB1 Government Tax</span>
+              <button class="summary-toggle" id="taxToggleButton" type="button" aria-expanded="false">
+                Tax & fees <span>⌄</span>
+              </button>
               <strong id="taxValue">Rp 0</strong>
+            </div>
+            <div class="summary-row summary-breakdown-row" id="taxBreakdownRow" hidden>
+              <span>Government tax</span>
+              <strong id="taxBreakdownValue">Rp 0</strong>
             </div>
             <div class="summary-row total-row">
               <span>Total payment</span>
@@ -322,7 +331,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260603-mobile-checkout"></script>
-    <script src="cart.js?v=20260603-mobile-checkout"></script>
+    <script src="location-picker.js?v=20260603-cart-refine"></script>
+    <script src="cart.js?v=20260603-cart-refine"></script>
   </body>
 </html>

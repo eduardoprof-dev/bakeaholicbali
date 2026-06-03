@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bakeaholic Online Shop</title>
-    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260603-mobile-checkout" />
-    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260603-mobile-checkout" />
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260603-cart-refine" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260603-cart-refine" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260603-mobile-checkout" />
+    <link rel="stylesheet" href="styles.css?v=20260603-cart-refine" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -246,7 +246,36 @@
       </footer>
     </div>
 
+    <button class="storefront-cart-bar" id="storefrontCartBar" type="button" hidden>
+      <span>View cart</span>
+      <strong id="storefrontCartCount">0 Items</strong>
+    </button>
+
     <div class="modal-scrim" id="modalScrim" hidden></div>
+
+    <section class="modal-card cart-drawer" id="cartDrawer" hidden>
+      <div class="modal-head">
+        <h2>Cart</h2>
+        <button class="icon-close" id="closeCartDrawer" type="button">×</button>
+      </div>
+      <div class="cart-drawer-switch" aria-label="Fulfillment type">
+        <button type="button" class="active">Delivery</button>
+        <button type="button" disabled>Pickup</button>
+      </div>
+      <button class="cart-drawer-address" id="cartDrawerAddressButton" type="button">
+        <span id="cartDrawerAddressText">Delivery address...</span>
+        <span>ASAP</span>
+      </button>
+      <div class="cart-drawer-items" id="cartDrawerItems"></div>
+      <div class="cart-drawer-total">
+        <span>Subtotal</span>
+        <strong id="cartDrawerSubtotal">Rp 0</strong>
+      </div>
+      <button class="primary-button full-width" id="cartDrawerCheckoutButton" type="button">
+        Go to checkout
+      </button>
+      <p class="cart-drawer-note">Delivery fees and taxes calculated at checkout</p>
+    </section>
 
     <section class="modal-card compact-modal" id="whatsappModal" hidden>
       <div class="modal-head">
@@ -403,7 +432,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260603-mobile-checkout"></script>
-    <script src="app.js?v=20260603-mobile-checkout"></script>
+    <script src="location-picker.js?v=20260603-cart-refine"></script>
+    <script src="app.js?v=20260603-cart-refine"></script>
   </body>
 </html>

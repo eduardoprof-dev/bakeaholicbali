@@ -51,6 +51,15 @@ const brandStoryNext = document.getElementById("brandStoryNext");
 const brandStoryCounter = document.getElementById("brandStoryCounter");
 const cartLink = document.getElementById("cartLink");
 const cartCountBadge = document.getElementById("cartCountBadge");
+const storefrontCartBar = document.getElementById("storefrontCartBar");
+const storefrontCartCount = document.getElementById("storefrontCartCount");
+const cartDrawer = document.getElementById("cartDrawer");
+const closeCartDrawer = document.getElementById("closeCartDrawer");
+const cartDrawerItems = document.getElementById("cartDrawerItems");
+const cartDrawerSubtotal = document.getElementById("cartDrawerSubtotal");
+const cartDrawerCheckoutButton = document.getElementById("cartDrawerCheckoutButton");
+const cartDrawerAddressButton = document.getElementById("cartDrawerAddressButton");
+const cartDrawerAddressText = document.getElementById("cartDrawerAddressText");
 const loginButton = document.getElementById("loginButton");
 const accountMenu = document.getElementById("accountMenu");
 const accountMenuName = document.getElementById("accountMenuName");
@@ -521,7 +530,6 @@ function renderCatalog() {
                   <article class="product-card" role="button" tabindex="0" data-product-id="${escapeHtml(item.id)}" aria-label="View ${escapeHtml(item.name)} details">
                     <div class="product-thumb-wrap">
                       <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" ${productImageStyle(item)} />
-                      ${quantity > 0 ? `<span class="item-quantity-badge">${quantity > 99 ? "99+" : quantity}</span>` : ""}
                     </div>
                     <div class="product-copy">
                       <div class="product-topline">
@@ -538,6 +546,7 @@ function renderCatalog() {
                         <strong>${formatRupiah.format(item.price)}</strong>
                         <button class="mini-add-button" type="button" data-item-id="${escapeHtml(item.id)}" aria-label="Add ${escapeHtml(item.name)} to cart" ${item.stock <= 0 ? "disabled" : ""}>
                           ${item.stock <= 0 ? "Sold out" : "+"}
+                          ${quantity > 0 ? `<span class="add-quantity-badge">${quantity > 99 ? "99+" : quantity}</span>` : ""}
                         </button>
                       </div>
                     </div>
@@ -625,8 +634,49 @@ function openProductModal(itemId) {
 function renderCartSummary() {
   const itemCount = state.cart?.itemCount || 0;
   cartLink.href = `/cart.html${modeQuery}`;
+  document.body.classList.toggle("has-cart-items", itemCount > 0);
   cartCountBadge.hidden = itemCount <= 0;
   cartCountBadge.textContent = itemCount > 99 ? "99+" : String(itemCount);
+  if (storefrontCartBar) {
+    storefrontCartBar.hidden = itemCount <= 0;
+  }
+  if (storefrontCartCount) {
+    storefrontCartCount.textContent = `${itemCount} Item${itemCount === 1 ? "" : "s"}`;
+  }
+  renderCartDrawer();
+}
+
+function renderCartDrawer() {
+  if (!cartDrawerItems || !state.cart) return;
+
+  const lineItems = Array.isArray(state.cart.lineItems) ? state.cart.lineItems : [];
+  cartDrawerAddressText.textContent = state.draft.destination.formattedAddress || "Delivery address...";
+  cartDrawerSubtotal.textContent = formatRupiah.format(state.cart.subtotal || 0);
+  cartDrawerItems.innerHTML = lineItems.map(({ item, itemId, quantity }) => `
+    <article class="cart-drawer-line">
+      <img src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" ${productImageStyle(item)} />
+      <div>
+        <strong>${escapeHtml(item.name)}</strong>
+        <div class="cart-drawer-qty" aria-label="${escapeHtml(item.name)} quantity">
+          <button type="button" data-drawer-action="decrease" data-item-id="${escapeHtml(itemId)}">−</button>
+          <span>${quantity}</span>
+          <button type="button" data-drawer-action="increase" data-item-id="${escapeHtml(itemId)}">+</button>
+        </div>
+      </div>
+      <strong>${formatRupiah.format(item.price * quantity)}</strong>
+    </article>
+  `).join("");
+
+  cartDrawerItems.querySelectorAll("[data-drawer-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const entry = state.cart.items.find((candidate) => candidate.itemId === button.dataset.itemId);
+      const currentQuantity = entry?.quantity || 0;
+      const nextQuantity = button.dataset.drawerAction === "increase"
+        ? currentQuantity + 1
+        : currentQuantity - 1;
+      await updateCartQuantity(button.dataset.itemId, nextQuantity);
+    });
+  });
 }
 
 function openModal(modal) {
@@ -643,6 +693,7 @@ function closeModal(modal) {
       && detailsModal.hidden
       && locationModal.hidden
       && productModal.hidden
+      && cartDrawer.hidden
   ) {
     modalScrim.hidden = true;
   }
@@ -885,6 +936,25 @@ async function addToCart(itemId) {
     body: JSON.stringify({ itemId, quantity: 1 })
   });
   await refreshCart();
+}
+
+async function updateCartQuantity(itemId, quantity) {
+  await request("/api/cart", {
+    method: "PATCH",
+    body: JSON.stringify({ itemId, quantity })
+  });
+  await refreshCart();
+  if ((state.cart?.itemCount || 0) <= 0) {
+    closeModal(cartDrawer);
+  }
+}
+
+function openCartDrawer() {
+  if ((state.cart?.itemCount || 0) <= 0) {
+    window.location.href = `/cart.html${modeQuery}`;
+    return;
+  }
+  openModal(cartDrawer);
 }
 
 function renderBrandStory() {
@@ -1213,6 +1283,19 @@ document.addEventListener("click", (event) => {
   closeAccountMenu();
 });
 promoAddButton.addEventListener("click", () => addToCart(state.promo.itemId));
+cartLink?.addEventListener("click", (event) => {
+  if ((state.cart?.itemCount || 0) <= 0) return;
+  event.preventDefault();
+  openCartDrawer();
+});
+storefrontCartBar?.addEventListener("click", openCartDrawer);
+cartDrawerCheckoutButton?.addEventListener("click", () => {
+  window.location.href = `/cart.html${modeQuery}`;
+});
+cartDrawerAddressButton?.addEventListener("click", () => {
+  closeModal(cartDrawer);
+  openModal(locationModal);
+});
 brandStoryPrev?.addEventListener("click", () => changeBrandStorySlide(-1));
 brandStoryNext?.addEventListener("click", () => changeBrandStorySlide(1));
 enableBrandStorySwipe();
@@ -1239,6 +1322,7 @@ closeOtpModal.addEventListener("click", () => closeModal(otpModal));
 closeProfileModal.addEventListener("click", () => closeModal(profileModal));
 closeDetailsModal.addEventListener("click", () => closeModal(detailsModal));
 closeProductModal.addEventListener("click", () => closeModal(productModal));
+closeCartDrawer?.addEventListener("click", () => closeModal(cartDrawer));
 document.getElementById("closeLocationModal")?.addEventListener("click", () => closeModal(locationModal));
 modalScrim.addEventListener("click", () => {
   closeAccountMenu();
@@ -1248,6 +1332,7 @@ modalScrim.addEventListener("click", () => {
   closeModal(detailsModal);
   closeModal(locationModal);
   closeModal(productModal);
+  closeModal(cartDrawer);
 });
 saveWhatsappButton.addEventListener("click", requestOtp);
 whatsappInput.addEventListener("keydown", (event) => {
