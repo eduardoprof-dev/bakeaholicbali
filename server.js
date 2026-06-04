@@ -741,11 +741,13 @@ function ordersPathForMode(mode) {
 const stores = {
   live: {
     cart: new Map(),
+    carts: new Map(),
     orders: loadOrders(ordersLivePath),
     registrations: new Map()
   },
   test: {
     cart: new Map(),
+    carts: new Map(),
     orders: loadOrders(ordersTestPath),
     registrations: new Map()
   }
@@ -763,6 +765,7 @@ const contentTypes = {
 
 const CUSTOMER_SESSION_COOKIE = "bakeaholic_customer_session";
 const ADMIN_SESSION_COOKIE = "bakeaholic_admin_session";
+const CART_SESSION_COOKIE = "bakeaholic_cart_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const ADMIN_SESSION_TTL_SECONDS = 60 * 15;
 const SESSION_SECRET = process.env.SESSION_SECRET
@@ -970,6 +973,36 @@ function clearSessionCookie(response, request, cookieName) {
     maxAge: 0,
     secure: isSecureRequest(request)
   }));
+}
+
+function ensureCartSession(request, response) {
+  const cookies = parseCookies(request);
+  const existingId = String(cookies[CART_SESSION_COOKIE] || "");
+  const sessionId = /^[a-f0-9]{32}$/i.test(existingId)
+    ? existingId.toLowerCase()
+    : crypto.randomBytes(16).toString("hex");
+
+  appendSetCookie(response, serializeCookie(CART_SESSION_COOKIE, sessionId, {
+    maxAge: SESSION_TTL_SECONDS,
+    secure: isSecureRequest(request),
+    httpOnly: false
+  }));
+  return sessionId;
+}
+
+function getSessionCartState(mode, request, response) {
+  const storeState = getStoreState(mode);
+  const sessionId = ensureCartSession(request, response);
+  if (!storeState.carts.has(sessionId)) {
+    storeState.carts.set(sessionId, new Map());
+  }
+  return {
+    storeState,
+    cartState: {
+      ...storeState,
+      cart: storeState.carts.get(sessionId)
+    }
+  };
 }
 
 function currentCustomerSession(request) {
@@ -1510,6 +1543,16 @@ function clampCartToStock(storeState) {
     if (quantity > item.stock) {
       storeState.cart.set(itemId, item.stock);
     }
+  }
+}
+
+function clampAllCartsToStock(storeState) {
+  clampCartToStock(storeState);
+  for (const cart of storeState.carts.values()) {
+    clampCartToStock({
+      ...storeState,
+      cart
+    });
   }
 }
 
@@ -2479,10 +2522,16 @@ function verifyRegistration(storeState, input = {}) {
   };
 }
 
-async function createOrder(mode, payload) {
+async function createOrder(mode, payload, cartOverride = null) {
   const draft = normalizeCheckoutDraft(payload);
   const storeState = getStoreState(mode);
-  const summary = await getCartSummaryPayload(storeState, {
+  const cartState = cartOverride
+    ? {
+      ...storeState,
+      cart: cartOverride
+    }
+    : storeState;
+  const summary = await getCartSummaryPayload(cartState, {
     fulfillmentType: draft.fulfillmentType,
     voucherCode: draft.voucherCode,
     destination: draft.destination
@@ -2540,11 +2589,11 @@ async function createOrder(mode, payload) {
 
   storeState.orders.unshift(order);
   saveOrders(ordersPathForMode(mode), storeState.orders);
-  storeState.cart.clear();
+  cartState.cart.clear();
   return enrichOrder(order);
 }
 
-async function createOrderForSession(mode, payload, session) {
+async function createOrderForSession(mode, payload, session, cartOverride = null) {
   if (!session?.phone) {
     throw new Error("Please log in again to continue");
   }
@@ -2556,7 +2605,7 @@ async function createOrderForSession(mode, payload, session) {
       phoneVerifiedAt: session.verifiedAt || new Date().toISOString()
     }
   };
-  return createOrder(mode, body);
+  return createOrder(mode, body, cartOverride);
 }
 
 function findOrder(mode, orderId) {
@@ -2628,6 +2677,7 @@ async function cancelOrderForSession(mode, orderId, session) {
 function resetStore(mode) {
   const storeState = getStoreState(mode);
   storeState.cart.clear();
+  storeState.carts.clear();
   storeState.orders.length = 0;
   storeState.registrations.clear();
   saveOrders(ordersPathForMode(mode), storeState.orders);
@@ -2893,6 +2943,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/cart") {
+    const { cartState } = getSessionCartState(mode, request, response);
     const destination = {
       lat: requestUrl.searchParams.get("lat"),
       lng: requestUrl.searchParams.get("lng"),
@@ -2900,7 +2951,7 @@ function handleApi(requestUrl, request, response) {
       formattedAddress: requestUrl.searchParams.get("address"),
       locationNotes: requestUrl.searchParams.get("location_notes")
     };
-    getCartSummaryPayload(storeState, {
+    getCartSummaryPayload(cartState, {
       fulfillmentType: requestUrl.searchParams.get("fulfillment"),
       voucherCode: requestUrl.searchParams.get("voucher"),
       destination
@@ -3001,7 +3052,7 @@ function handleApi(requestUrl, request, response) {
     parseBody(request)
       .then((body) => {
         const saved = saveCatalog(body);
-        Object.values(stores).forEach((entry) => clampCartToStock(entry));
+        Object.values(stores).forEach((entry) => clampAllCartsToStock(entry));
         sendJson(response, 200, { ok: true, catalog: saved });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -3023,10 +3074,11 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/cart") {
+    const { cartState } = getSessionCartState(mode, request, response);
     parseBody(request)
       .then((body) =>
-        handleCartUpsert(storeState, response, body, (item, quantity) =>
-          (storeState.cart.get(item.id) || 0) + quantity
+        handleCartUpsert(cartState, response, body, (item, quantity) =>
+          (cartState.cart.get(item.id) || 0) + quantity
         )
       )
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -3034,9 +3086,10 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "PATCH" && pathname === "/api/cart") {
+    const { cartState } = getSessionCartState(mode, request, response);
     parseBody(request)
       .then((body) =>
-        handleCartUpsert(storeState, response, body, (_item, quantity) => quantity)
+        handleCartUpsert(cartState, response, body, (_item, quantity) => quantity)
       )
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
@@ -3151,9 +3204,10 @@ function handleApi(requestUrl, request, response) {
     if (!session) {
       return true;
     }
+    const { cartState } = getSessionCartState(mode, request, response);
     parseBody(request)
       .then(async (body) => {
-        const order = await createOrderForSession(mode, body, session);
+        const order = await createOrderForSession(mode, body, session, cartState.cart);
         sendJson(response, 201, { order });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));

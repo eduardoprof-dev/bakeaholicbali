@@ -8,8 +8,9 @@ const params = new URLSearchParams(window.location.search);
 const appMode = params.get("mode") === "test" ? "test" : "live";
 const modeQuery = appMode === "test" ? "?mode=test" : "";
 const assetVersion = "20260422-bliss-lifestyle-photos";
-const draftKey = `bakeaholic-checkout-draft-${appMode}`;
-const latestOrderKey = `bakeaholic-latest-order-${appMode}`;
+const shopperStateVersion = "20260604-session-cart";
+const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
+const latestOrderKey = `bakeaholic-latest-order-${shopperStateVersion}-${appMode}`;
 
 const state = {
   appMode,
