@@ -1953,12 +1953,15 @@ body::before {
   grid-column: 1;
   display: grid;
   gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .checkout-delivery-details .address-strip {
   order: 0;
   margin-top: 0;
   padding: 0 0 12px;
+  width: 100%;
 }
 
 .checkout-delivery-details .delivery-fee-line {
@@ -3668,6 +3671,12 @@ body.cart-is-empty .checkout-shell .cart-layout {
     gap: 12px;
   }
 
+  .checkout-shell .cart-layout > .cart-section {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+  }
+
   .checkout-delivery-details {
     order: 1;
   }
@@ -3740,6 +3749,12 @@ body.cart-is-empty .checkout-shell .cart-layout {
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .checkout-shell .cart-layout > .cart-section {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
   }
 
   .payment-footer {
