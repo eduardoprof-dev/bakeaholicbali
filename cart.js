@@ -29,6 +29,7 @@ const addressButton = document.getElementById("addressButton");
 const addressTitle = document.getElementById("addressTitle");
 const addressText = document.getElementById("addressText");
 const deliveryFeeLine = document.getElementById("deliveryFeeLine");
+const deliveryDetailsSection = document.getElementById("deliveryDetailsSection");
 const deliveryNotesSection = document.getElementById("deliveryNotesSection");
 const deliveryInstructionsSummary = document.getElementById("deliveryInstructionsSummary");
 const deliveryInstructionsButton = document.getElementById("deliveryInstructionsButton");
@@ -187,9 +188,17 @@ function persistDraft() {
 }
 
 function hasDeliveryDestination(destination = state.draft.destination) {
+  const formattedAddress = String(destination.formattedAddress || "").trim();
+  const label = String(destination.label || "").trim();
+  const isPlaceholderAddress =
+    !formattedAddress
+    || /^Pinned/i.test(formattedAddress)
+    || /^Pinned/i.test(label);
+
   return Number.isFinite(Number(destination.lat))
     && Number.isFinite(Number(destination.lng))
-    && Boolean(String(destination.formattedAddress || "").trim());
+    && destination.locationConfirmed !== false
+    && !isPlaceholderAddress;
 }
 
 function request(path, options = {}) {
@@ -360,6 +369,7 @@ function syncCheckoutVisibility() {
 
   [
     deliveryNotesSection,
+    deliveryDetailsSection,
     checkoutCustomerCard,
     checkoutNotesCard,
     checkoutVoucherCard,

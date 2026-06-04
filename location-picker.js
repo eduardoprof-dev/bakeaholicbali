@@ -156,6 +156,23 @@
     let value = initialValue || null;
     let googleGeocoder = null;
 
+    function hasConfirmedLocation(nextValue = value) {
+      if (!nextValue) {
+        return false;
+      }
+
+      const lat = Number(nextValue.lat);
+      const lng = Number(nextValue.lng);
+      const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
+      const addressText = String(nextValue.formattedAddress || "").trim();
+      const labelText = String(nextValue.label || "").trim();
+      const isPlaceholderAddress =
+        !addressText
+        || /^Pinned/i.test(addressText)
+        || /^Pinned/i.test(labelText);
+      return hasCoordinates && nextValue.locationConfirmed !== false && !isPlaceholderAddress;
+    }
+
     function canUseGoogleMap() {
       return mapApi === "google" && map;
     }
@@ -237,11 +254,12 @@
             lng: typeof location.lng === "function" ? location.lng() : location.lng,
             label: place.name || place.formatted_address,
             formattedAddress: place.formatted_address || place.name || "",
+            locationConfirmed: true,
             locationNotes: notesInput.value.trim()
           });
         });
 
-        if (value?.lat != null && value?.lng != null) {
+        if (hasConfirmedLocation()) {
           setSelectedLocation(value).catch(() => {
             renderSelectedLocation();
           });
@@ -250,7 +268,7 @@
       .catch(() => {
         selectedFee.textContent = "Google Maps is unavailable. Falling back to OpenStreetMap.";
         initializeLeafletMap();
-        if (value?.lat != null && value?.lng != null) {
+        if (hasConfirmedLocation()) {
           setSelectedLocation(value).catch(() => {
             renderSelectedLocation();
           });
@@ -269,6 +287,13 @@
 
       selectedLabel.textContent = value.label || value.formattedAddress || "Pinned location";
       selectedAddress.textContent = value.formattedAddress || "Pinned map location";
+      if (!hasConfirmedLocation(value)) {
+        selectedFee.textContent = `Estimated delivery fee: ${formatRupiah.format(0)} for 0 km`;
+        notesInput.value = value.locationNotes || "";
+        notesInput.hidden = !value.locationNotes;
+        return;
+      }
+
       const feeLabel = value.quoteSource === "biteship"
         ? `Live ${value.courierName || "courier"} quote`
         : "Estimated delivery fee";
@@ -343,6 +368,7 @@
           lng,
           label: reverse.label || reverse.name || reverse.display_name,
           formattedAddress: reverse.formattedAddress || reverse.display_name,
+          locationConfirmed: true,
           locationNotes: notesInput.value.trim()
         });
       } catch (_error) {
@@ -351,6 +377,7 @@
           lng,
           label: "Pinned map location",
           formattedAddress: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+          locationConfirmed: true,
           locationNotes: notesInput.value.trim()
         });
       }
@@ -375,6 +402,7 @@
               lng: location.lng(),
               label: bestMatch.address_components?.[0]?.long_name || bestMatch.formatted_address,
               formattedAddress: bestMatch.formatted_address,
+              locationConfirmed: true,
               locationNotes: notesInput.value.trim()
             });
             return;
@@ -393,6 +421,7 @@
           lng: Number(bestMatch.lon),
           label: bestMatch.name || bestMatch.display_name,
           formattedAddress: bestMatch.display_name,
+          locationConfirmed: true,
           locationNotes: notesInput.value.trim()
         });
       } finally {
@@ -432,6 +461,7 @@
               lng: position.coords.longitude,
               label: reverse.name || reverse.display_name,
               formattedAddress: reverse.display_name,
+              locationConfirmed: true,
               locationNotes: notesInput.value.trim()
             });
           } finally {
@@ -448,7 +478,7 @@
     });
 
     saveButton.addEventListener("click", () => {
-      if (!value) {
+      if (!hasConfirmedLocation()) {
         selectedFee.textContent = "Please pin an address on the map before saving.";
         return;
       }
@@ -473,7 +503,7 @@
           }
           if (canUseGoogleMap()) {
             global.google.maps.event.trigger(map, "resize");
-            if (value?.lat != null && value?.lng != null) {
+            if (hasConfirmedLocation()) {
               map.setCenter({ lat: value.lat, lng: value.lng });
             }
           }
@@ -485,7 +515,7 @@
       setValue(nextValue) {
         value = nextValue;
         renderSelectedLocation();
-        if (value?.lat != null && value?.lng != null) {
+        if (hasConfirmedLocation(value)) {
           setSelectedLocation(value).catch(() => {
             renderSelectedLocation();
           });

@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Checkout | Bakeaholic Online Shop</title>
-    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260604-mobile" />
-    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260604-mobile" />
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260604-checkout-flow" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260604-checkout-flow" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260604-mobile" />
+    <link rel="stylesheet" href="styles.css?v=20260604-checkout-flow" />
   </head>
   <body class="cart-is-empty">
     <div class="mobile-shell checkout-shell">
@@ -27,23 +27,23 @@
         <p>This checkout is isolated, so you can test payment and cancel flows safely.</p>
       </section>
 
-      <button class="address-strip" id="addressButton" type="button">
-        <div>
-          <p class="address-title" id="addressTitle">Set your delivery address</p>
-          <p class="address-text" id="addressText"></p>
-        </div>
-        <span class="address-arrow">›</span>
-      </button>
-
-      <div class="delivery-fee-line" id="deliveryFeeLine"></div>
-
       <main class="cart-layout">
-        <section class="cart-section checkout-delivery-card" id="deliveryNotesSection">
-          <button class="delivery-instructions-button" id="deliveryInstructionsButton" type="button">
-            <span>Add delivery instructions</span>
-            <span>⌄</span>
+        <section class="cart-section checkout-delivery-details" id="deliveryDetailsSection">
+          <button class="address-strip" id="addressButton" type="button">
+            <div>
+              <p class="address-title" id="addressTitle">Set your delivery address</p>
+              <p class="address-text" id="addressText"></p>
+            </div>
+            <span class="address-arrow">›</span>
           </button>
-          <textarea id="deliveryNotesInput" class="large-textarea compact-instructions" placeholder="Apt 4B, leave at front door, don't ring the bell..." hidden></textarea>
+          <div class="delivery-fee-line" id="deliveryFeeLine"></div>
+          <div class="checkout-delivery-card" id="deliveryNotesSection">
+            <button class="delivery-instructions-button" id="deliveryInstructionsButton" type="button">
+              <span>Add delivery instructions</span>
+              <span>⌄</span>
+            </button>
+            <textarea id="deliveryNotesInput" class="large-textarea compact-instructions" placeholder="Apt 4B, leave at front door, don't ring the bell..." hidden></textarea>
+          </div>
         </section>
 
         <section class="cart-section checkout-items-card">
@@ -148,7 +148,7 @@
               <strong id="taxBreakdownValue">Rp 0</strong>
             </div>
             <div class="summary-row total-row">
-              <span>Total payment</span>
+              <span>Total</span>
               <strong id="totalValue">Rp 0</strong>
             </div>
           </div>
@@ -310,7 +310,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260604-mobile"></script>
-    <script src="cart.js?v=20260604-mobile"></script>
+    <script src="location-picker.js?v=20260604-checkout-flow"></script>
+    <script src="cart.js?v=20260604-checkout-flow"></script>
   </body>
 </html>

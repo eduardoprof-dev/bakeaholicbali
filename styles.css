@@ -694,10 +694,19 @@ body::before {
   font-size: 0.88rem;
 }
 
-.summary-row.total {
+.summary-row.total,
+.summary-row.total-row {
   margin-top: 8px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+  font-size: 1.22rem;
+  font-weight: 900;
+}
+
+.summary-row.total-row span,
+.summary-row.total-row strong {
+  font-size: inherit;
+  font-weight: 900;
 }
 
 .checkout-button {
@@ -1920,8 +1929,6 @@ body::before {
   margin: 0 auto;
 }
 
-.checkout-shell > .address-strip,
-.checkout-shell > .delivery-fee-line,
 .checkout-shell > .test-banner {
   width: min(calc(100% - 32px), 760px);
   margin-left: auto;
@@ -1940,6 +1947,32 @@ body::before {
   grid-row: 1 / span 4;
   position: sticky;
   top: 14px;
+}
+
+.checkout-delivery-details {
+  grid-column: 1;
+  display: grid;
+  gap: 10px;
+}
+
+.checkout-delivery-details .address-strip {
+  order: 0;
+  margin-top: 0;
+  padding: 0 0 12px;
+}
+
+.checkout-delivery-details .delivery-fee-line {
+  order: 1;
+  padding: 0;
+  max-height: none;
+}
+
+.checkout-delivery-details .checkout-delivery-card {
+  order: 2;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .checkout-delivery-card,
@@ -3624,6 +3657,56 @@ body.cart-is-empty .checkout-shell .cart-layout {
   padding-left: 20px;
 }
 
+@media (max-width: 1180px) and (min-width: 621px) {
+  .checkout-shell {
+    width: min(100%, 820px);
+  }
+
+  .checkout-shell .cart-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .checkout-delivery-details {
+    order: 1;
+  }
+
+  .checkout-summary-card {
+    position: static;
+    order: 2;
+    width: 100%;
+  }
+
+  .checkout-voucher-card {
+    order: 3;
+  }
+
+  .checkout-items-card {
+    order: 4;
+  }
+
+  .checkout-upsell-section {
+    order: 5;
+  }
+
+  .checkout-customer-card {
+    order: 6;
+  }
+
+  .checkout-notes-card {
+    order: 7;
+  }
+
+  .checkout-payment-card {
+    order: 8;
+  }
+
+  .checkout-message-card {
+    order: 9;
+  }
+}
+
 @media (max-width: 620px) {
   .payment-order-heading {
     padding: 4px 0 14px;
@@ -3686,40 +3769,40 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
   .checkout-summary-card {
     position: static;
-    order: -10;
+    order: 1;
     width: 100%;
   }
 
-  .checkout-items-card {
-    order: -8;
+  .checkout-voucher-card {
+    order: 2;
   }
 
-  .checkout-delivery-card {
-    order: -7;
+  .checkout-items-card {
+    order: 3;
+  }
+
+  .checkout-delivery-details {
+    order: 4;
   }
 
   .checkout-upsell-section {
-    order: -6;
+    order: 5;
   }
 
   .checkout-customer-card {
-    order: -5;
+    order: 6;
   }
 
   .checkout-notes-card {
-    order: -4;
-  }
-
-  .checkout-voucher-card {
-    order: -3;
+    order: 7;
   }
 
   .checkout-payment-card {
-    order: -2;
+    order: 8;
   }
 
   .checkout-message-card {
-    order: -1;
+    order: 9;
   }
 
   .compact-order-banner {
