@@ -414,9 +414,9 @@ function syncDraftFromForm() {
 
 function syncDeliveryInstructionsUi() {
   const note = state.draft.deliveryNotes || deliveryNotesInput.value.trim();
-  deliveryInstructionsSummary.textContent = note
-    ? note
-    : "No special delivery instructions added.";
+  if (deliveryInstructionsSummary) {
+    deliveryInstructionsSummary.textContent = note || "";
+  }
   deliveryInstructionsButton.innerHTML = `
     <span>${note ? "Edit delivery instructions" : "Add delivery instructions"}</span>
     <span>⌄</span>

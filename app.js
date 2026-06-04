@@ -322,8 +322,7 @@ function syncFulfillmentUi() {
   addressTitle.textContent = hasDeliveryDestination()
     ? "Your delivery address"
     : state.store.addressLabel;
-  addressText.textContent =
-    state.draft.destination.formattedAddress || "Add your address and customer details before checkout.";
+  addressText.textContent = state.draft.destination.formattedAddress || "";
 
   if (!hasDeliveryDestination()) {
     deliveryFeeLine.textContent = "Add your address to estimate delivery fee.";

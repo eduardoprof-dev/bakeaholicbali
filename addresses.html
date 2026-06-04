@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Your Addresses | Bakeaholic Online Shop</title>
-    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260604-mobile" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260604-mobile" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260601-hide-test-otp" />
+    <link rel="stylesheet" href="styles.css?v=20260604-mobile" />
   </head>
   <body>
     <div class="mobile-shell account-page-shell">
@@ -80,9 +80,12 @@
         <p id="selectedLocationAddress">Search or tap the map to pin a delivery location.</p>
         <p id="selectedLocationFee" class="location-fee-copy">Delivery fee will be calculated after you pin the address.</p>
       </div>
-      <label class="modal-field">
-        <span>Location Notes (Optional)</span>
-        <textarea id="locationNotesInput" placeholder="e.g. House/unit/floor number"></textarea>
+      <label class="modal-field location-notes-field">
+        <button class="location-notes-toggle" id="locationNotesToggle" type="button">
+          <span>Location notes (optional)</span>
+          <span>⌄</span>
+        </button>
+        <textarea id="locationNotesInput" placeholder="e.g. House/unit/floor number" hidden></textarea>
       </label>
       <div class="location-actions">
         <button class="secondary-button full-width" id="useCurrentLocationButton" type="button">Use Current Location</button>
@@ -95,8 +98,8 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="account-common.js?v=20260601-hide-test-otp"></script>
-    <script src="location-picker.js?v=20260601-hide-test-otp"></script>
-    <script src="addresses.js?v=20260601-hide-test-otp"></script>
+    <script src="account-common.js?v=20260604-mobile"></script>
+    <script src="location-picker.js?v=20260604-mobile"></script>
+    <script src="addresses.js?v=20260604-mobile"></script>
   </body>
 </html>

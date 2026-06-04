@@ -920,19 +920,19 @@ body::before {
 }
 
 .site-footer {
-  margin-top: 14px;
-  padding: 18px 18px 78px;
+  margin-top: 0;
+  padding: 6px 18px 72px;
   border-top: 1px solid var(--line);
   color: var(--text);
 }
 
 .cart-site-footer {
-  margin-top: 10px;
-  padding-bottom: 84px;
+  margin-top: 0;
+  padding-bottom: 78px;
 }
 
 .footer-tagline {
-  margin: 0 0 22px;
+  margin: 0 0 14px;
   color: var(--text);
   text-align: center;
 }
@@ -1302,14 +1302,14 @@ body::before {
 
 .app-header.header-condensed .search-bar {
   position: absolute;
-  top: 50%;
+  top: 30px;
   left: 16px;
   width: 34px;
   min-width: 34px;
   height: 34px;
   margin: 0;
   padding: 0;
-  transform: translateY(-50%);
+  transform: none;
   justify-content: center;
   gap: 0;
   border-radius: 10px;
@@ -1772,6 +1772,10 @@ body::before {
 .status-hero p {
   margin: 6px 0 0;
   color: var(--muted);
+}
+
+.address-text:empty {
+  display: none;
 }
 
 .text-action,
@@ -2396,6 +2400,10 @@ body::before {
   scroll-margin-top: 74px;
 }
 
+.catalog-section:last-child {
+  margin-bottom: 0;
+}
+
 .section-title-wrap h2,
 .section-head-inline h2 {
   margin: 0;
@@ -2691,7 +2699,7 @@ body::before {
 }
 
 body.has-cart-items .storefront-content {
-  padding-bottom: 98px;
+  padding-bottom: 28px;
 }
 
 .cart-drawer {
@@ -3190,7 +3198,8 @@ body.has-cart-items .storefront-content {
   background: #fff;
   color: var(--accent);
   font: inherit;
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 0.98rem;
   text-align: left;
   padding: 0 14px;
   cursor: pointer;
@@ -3495,6 +3504,8 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
 .location-modal {
   width: min(calc(100% - 24px), 720px);
+  max-height: min(92vh, 760px);
+  overflow: auto;
 }
 
 .location-search-row {
@@ -3942,6 +3953,76 @@ body.cart-is-empty .checkout-shell .cart-layout {
   .location-actions,
   .location-search-row {
     grid-template-columns: 1fr;
+  }
+
+  .location-modal {
+    inset: 10px;
+    left: 10px;
+    top: 10px;
+    width: auto;
+    max-height: calc(100dvh - 20px);
+    transform: none;
+    padding: 14px;
+    border-radius: 20px;
+    overflow-y: auto;
+  }
+
+  .location-modal .modal-head {
+    position: sticky;
+    top: -14px;
+    z-index: 2;
+    margin: -14px -14px 10px;
+    padding: 14px;
+    background: #fff;
+    border-bottom: 1px solid rgba(107, 66, 38, 0.1);
+  }
+
+  .location-modal .modal-head h2 {
+    font-size: 1.35rem;
+  }
+
+  .location-search-row {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .location-search-row input,
+  .location-search-row .compact-button {
+    min-height: 46px;
+    border-radius: 12px;
+  }
+
+  .location-map {
+    height: min(34vh, 250px);
+    margin-bottom: 10px;
+  }
+
+  .location-summary {
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+
+  .location-fee-copy {
+    font-size: 0.92rem;
+    line-height: 1.35;
+  }
+
+  .location-actions {
+    position: sticky;
+    bottom: -14px;
+    z-index: 2;
+    margin: 10px -14px -14px;
+    padding: 10px 14px 14px;
+    background: #fff;
+    border-top: 1px solid rgba(107, 66, 38, 0.1);
+  }
+
+  .location-actions .full-width {
+    min-height: 48px;
+  }
+
+  .checkout-delivery-card {
+    padding: 10px;
   }
 
   .secondary-button,
