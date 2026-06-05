@@ -46,13 +46,60 @@
           </div>
         </section>
 
-        <section class="cart-section checkout-items-card">
-          <div class="section-head-inline">
-            <h2 id="selectedItemsTitle">Selected items (0)</h2>
-            <a class="secondary-link" id="addItemsLink" href="/index.html">+ Add Items</a>
-          </div>
-          <div id="cartItems"></div>
-        </section>
+        <aside class="checkout-side" aria-label="Order checkout summary">
+          <section class="cart-section checkout-summary-card">
+            <div class="section-title-wrap">
+              <h2>Order summary</h2>
+            </div>
+            <div class="summary-list">
+              <div class="summary-row">
+                <span>Price</span>
+                <strong id="subtotalValue">Rp 0</strong>
+              </div>
+              <div class="summary-row">
+                <span>Delivery fee</span>
+                <strong id="deliveryValue">Rp 0</strong>
+              </div>
+              <div class="summary-row" id="discountRow" hidden>
+                <span id="discountLabel">Discount</span>
+                <strong id="discountValue">-Rp 0</strong>
+              </div>
+              <div class="summary-row">
+                <button class="summary-toggle" id="taxToggleButton" type="button" aria-expanded="false">
+                  Tax & fees <span>⌄</span>
+                </button>
+                <strong id="taxValue">Rp 0</strong>
+              </div>
+              <div class="summary-row summary-breakdown-row" id="taxBreakdownRow" hidden>
+                <span>Government tax (10%)</span>
+                <strong id="taxBreakdownValue">Rp 0</strong>
+              </div>
+              <div class="summary-row total-row">
+                <span>Total</span>
+                <strong id="totalValue">Rp 0</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="cart-section checkout-voucher-card">
+            <div class="section-title-wrap">
+              <h2>Discount voucher</h2>
+            </div>
+            <div class="voucher-row">
+              <input id="voucherInput" type="text" placeholder="Input voucher code" />
+              <button class="primary-button compact-button" id="applyVoucherButton" type="button">Apply</button>
+            </div>
+            <p class="helper-copy" id="voucherMessage" hidden></p>
+          </section>
+
+          <section class="cart-section checkout-items-card">
+            <div class="section-head-inline">
+              <h2 id="selectedItemsTitle">Selected items (0)</h2>
+              <a class="secondary-link" id="addItemsLink" href="/index.html">+ Add Items</a>
+            </div>
+            <div id="cartItems"></div>
+          </section>
+        </aside>
 
         <section class="cart-section checkout-upsell-section" id="upsellSection" hidden>
           <div class="section-title-wrap">
@@ -90,17 +137,6 @@
           </div>
         </section>
 
-        <section class="cart-section checkout-voucher-card">
-          <div class="section-title-wrap">
-            <h2>Discount voucher</h2>
-          </div>
-          <div class="voucher-row">
-            <input id="voucherInput" type="text" placeholder="Input voucher code" />
-            <button class="primary-button compact-button" id="applyVoucherButton" type="button">Apply</button>
-          </div>
-          <p class="helper-copy" id="voucherMessage" hidden></p>
-        </section>
-
         <section class="cart-section checkout-payment-card">
           <div class="section-head-inline">
             <h2>Payment method</h2>
@@ -120,39 +156,6 @@
           <p class="checkout-message" id="checkoutMessage"></p>
         </section>
 
-        <section class="cart-section checkout-summary-card">
-          <div class="section-title-wrap">
-            <h2>Order summary</h2>
-          </div>
-          <div class="summary-list">
-            <div class="summary-row">
-              <span>Price</span>
-              <strong id="subtotalValue">Rp 0</strong>
-            </div>
-            <div class="summary-row">
-              <span>Delivery fee</span>
-              <strong id="deliveryValue">Rp 0</strong>
-            </div>
-            <div class="summary-row" id="discountRow" hidden>
-              <span id="discountLabel">Discount</span>
-              <strong id="discountValue">-Rp 0</strong>
-            </div>
-            <div class="summary-row">
-              <button class="summary-toggle" id="taxToggleButton" type="button" aria-expanded="false">
-                Tax & fees <span>⌄</span>
-              </button>
-              <strong id="taxValue">Rp 0</strong>
-            </div>
-            <div class="summary-row summary-breakdown-row" id="taxBreakdownRow" hidden>
-              <span>Government tax (10%)</span>
-              <strong id="taxBreakdownValue">Rp 0</strong>
-            </div>
-            <div class="summary-row total-row">
-              <span>Total</span>
-              <strong id="totalValue">Rp 0</strong>
-            </div>
-          </div>
-        </section>
       </main>
 
       <footer class="site-footer cart-site-footer">

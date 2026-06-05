@@ -183,13 +183,20 @@ function renderPending() {
     day: "numeric",
     year: "numeric"
   });
-  const qrisBlock = payment.kind === "qris"
+  const qrisBlock = payment.kind === "qris" && payment.qrCodeData
     ? `
       <div class="qr-block">
         <p class="qr-label">Scan this QR code</p>
         <img class="qr-image" src="${escapeHtml(payment.qrCodeData)}" alt="QRIS code" />
         ${payment.deeplinkUrl ? `<a class="primary-button button-link full-width" href="${escapeHtml(payment.deeplinkUrl)}">Open payment app</a>` : ""}
       </div>
+    `
+    : "";
+  const paymentLinkBlock = payment.paymentUrl
+    ? `
+      <a class="primary-button button-link full-width" href="${escapeHtml(payment.paymentUrl)}" target="_blank" rel="noopener">
+        Open secure payment page
+      </a>
     `
     : "";
 
@@ -248,9 +255,10 @@ function renderPending() {
         </div>
         ${detailBlock}
         ${qrisBlock}
+        ${paymentLinkBlock}
         <div class="instruction-box">
           ${escapeHtml(payment.instructions)}
-          ${payment.provider === "midtrans" ? "<br />Payment is processed securely by Midtrans." : ""}
+          ${payment.provider === "xendit" ? "<br />Payment is processed securely by Xendit." : ""}
         </div>
         <button class="secondary-link link-button centered-link" id="cancelOrderButton" type="button">
           Cancel your order

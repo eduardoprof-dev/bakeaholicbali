@@ -1942,11 +1942,24 @@ body::before {
   align-items: start;
 }
 
-.checkout-summary-card {
+.checkout-side {
   grid-column: 2;
-  grid-row: 1 / span 4;
+  grid-row: 1 / span 6;
+  display: grid;
+  gap: 18px;
+  align-self: start;
   position: sticky;
   top: 14px;
+}
+
+.checkout-side > .cart-section {
+  width: 100%;
+  margin-bottom: 0;
+  box-sizing: border-box;
+}
+
+.checkout-summary-card {
+  position: static;
 }
 
 .checkout-delivery-details {
@@ -1979,14 +1992,22 @@ body::before {
 }
 
 .checkout-delivery-card,
-.checkout-items-card,
 .checkout-upsell-section,
 .checkout-customer-card,
 .checkout-notes-card,
-.checkout-voucher-card,
 .checkout-payment-card,
 .checkout-message-card {
   grid-column: 1;
+}
+
+.checkout-voucher-card {
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.checkout-items-card {
+  grid-column: auto;
+  grid-row: auto;
 }
 
 .feature-card,
@@ -3671,7 +3692,12 @@ body.cart-is-empty .checkout-shell .cart-layout {
     gap: 12px;
   }
 
-  .checkout-shell .cart-layout > .cart-section {
+  .checkout-side {
+    display: contents;
+  }
+
+  .checkout-shell .cart-layout > .cart-section,
+  .checkout-side > .cart-section {
     width: 100%;
     max-width: none;
     box-sizing: border-box;
@@ -3751,7 +3777,12 @@ body.cart-is-empty .checkout-shell .cart-layout {
     gap: 10px;
   }
 
-  .checkout-shell .cart-layout > .cart-section {
+  .checkout-side {
+    display: contents;
+  }
+
+  .checkout-shell .cart-layout > .cart-section,
+  .checkout-side > .cart-section {
     width: 100%;
     max-width: none;
     box-sizing: border-box;

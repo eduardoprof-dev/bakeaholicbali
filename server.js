@@ -179,9 +179,9 @@ function writeEnvMap(targetPath, envMap) {
     "GOOGLE_MAPS_API_KEY",
     "BITESHIP_API_KEY",
     "BITESHIP_COURIERS",
-    "MIDTRANS_SERVER_KEY",
-    "MIDTRANS_CLIENT_KEY",
-    "MIDTRANS_ENVIRONMENT",
+    "XENDIT_SECRET_KEY",
+    "XENDIT_CALLBACK_TOKEN",
+    "XENDIT_ENVIRONMENT",
     "WHATSAPP_ACCESS_TOKEN",
     "WHATSAPP_PHONE_NUMBER_ID",
     "WHATSAPP_BUSINESS_ACCOUNT_ID",
@@ -235,9 +235,9 @@ function getIntegrationConfig() {
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || "",
     biteshipApiKey: process.env.BITESHIP_API_KEY || "",
     biteshipCouriers: process.env.BITESHIP_COURIERS || "gojek,grab",
-    midtransServerKey: process.env.MIDTRANS_SERVER_KEY || "",
-    midtransClientKey: process.env.MIDTRANS_CLIENT_KEY || "",
-    midtransEnvironment: process.env.MIDTRANS_ENVIRONMENT === "production" ? "production" : "sandbox",
+    xenditSecretKey: process.env.XENDIT_SECRET_KEY || "",
+    xenditCallbackToken: process.env.XENDIT_CALLBACK_TOKEN || "",
+    xenditEnvironment: process.env.XENDIT_ENVIRONMENT === "live" ? "live" : "test",
     whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN || "",
     whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
     whatsappBusinessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "",
@@ -577,9 +577,9 @@ function readIntegrationSettings() {
     googleMapsApiKey: configuredValue(savedSettings.googleMapsApiKey, envMap.GOOGLE_MAPS_API_KEY, config.googleMapsApiKey),
     biteshipApiKey: configuredValue(savedSettings.biteshipApiKey, envMap.BITESHIP_API_KEY, config.biteshipApiKey),
     biteshipCouriers: configuredValue(savedSettings.biteshipCouriers, envMap.BITESHIP_COURIERS, config.biteshipCouriers) || "gojek,grab",
-    midtransServerKey: configuredValue(savedSettings.midtransServerKey, envMap.MIDTRANS_SERVER_KEY, config.midtransServerKey),
-    midtransClientKey: configuredValue(savedSettings.midtransClientKey, envMap.MIDTRANS_CLIENT_KEY, config.midtransClientKey),
-    midtransEnvironment: configuredValue(savedSettings.midtransEnvironment, envMap.MIDTRANS_ENVIRONMENT, config.midtransEnvironment) || "sandbox",
+    xenditSecretKey: configuredValue(savedSettings.xenditSecretKey, envMap.XENDIT_SECRET_KEY, config.xenditSecretKey),
+    xenditCallbackToken: configuredValue(savedSettings.xenditCallbackToken, envMap.XENDIT_CALLBACK_TOKEN, config.xenditCallbackToken),
+    xenditEnvironment: configuredValue(savedSettings.xenditEnvironment, envMap.XENDIT_ENVIRONMENT, config.xenditEnvironment) || "test",
     whatsappAccessToken: configuredValue(savedSettings.whatsappAccessToken, envMap.WHATSAPP_ACCESS_TOKEN, config.whatsappAccessToken),
     whatsappPhoneNumberId: configuredValue(savedSettings.whatsappPhoneNumberId, envMap.WHATSAPP_PHONE_NUMBER_ID, config.whatsappPhoneNumberId),
     whatsappBusinessAccountId: configuredValue(savedSettings.whatsappBusinessAccountId, envMap.WHATSAPP_BUSINESS_ACCOUNT_ID, config.whatsappBusinessAccountId),
@@ -608,11 +608,11 @@ function saveIntegrationSettings(input = {}) {
       .map((entry) => entry.trim().toLowerCase())
       .filter(Boolean)
       .join(",") || "gojek,grab",
-    midtransServerKey: secretValue("midtransServerKey"),
-    midtransClientKey: secretValue("midtransClientKey"),
-    midtransEnvironment: String(input.midtransEnvironment || "sandbox") === "production"
-      ? "production"
-      : "sandbox",
+    xenditSecretKey: secretValue("xenditSecretKey"),
+    xenditCallbackToken: secretValue("xenditCallbackToken"),
+    xenditEnvironment: String(input.xenditEnvironment || "test") === "live"
+      ? "live"
+      : "test",
     whatsappAccessToken: secretValue("whatsappAccessToken"),
     whatsappPhoneNumberId: String(input.whatsappPhoneNumberId || "").trim(),
     whatsappBusinessAccountId: String(input.whatsappBusinessAccountId || "").trim(),
@@ -634,9 +634,9 @@ function saveIntegrationSettings(input = {}) {
       GOOGLE_MAPS_API_KEY: nextSettings.googleMapsApiKey,
       BITESHIP_API_KEY: nextSettings.biteshipApiKey,
       BITESHIP_COURIERS: nextSettings.biteshipCouriers,
-      MIDTRANS_SERVER_KEY: nextSettings.midtransServerKey,
-      MIDTRANS_CLIENT_KEY: nextSettings.midtransClientKey,
-      MIDTRANS_ENVIRONMENT: nextSettings.midtransEnvironment,
+      XENDIT_SECRET_KEY: nextSettings.xenditSecretKey,
+      XENDIT_CALLBACK_TOKEN: nextSettings.xenditCallbackToken,
+      XENDIT_ENVIRONMENT: nextSettings.xenditEnvironment,
       WHATSAPP_ACCESS_TOKEN: nextSettings.whatsappAccessToken,
       WHATSAPP_PHONE_NUMBER_ID: nextSettings.whatsappPhoneNumberId,
       WHATSAPP_BUSINESS_ACCOUNT_ID: nextSettings.whatsappBusinessAccountId,
@@ -655,9 +655,9 @@ function saveIntegrationSettings(input = {}) {
   process.env.GOOGLE_MAPS_API_KEY = nextSettings.googleMapsApiKey;
   process.env.BITESHIP_API_KEY = nextSettings.biteshipApiKey;
   process.env.BITESHIP_COURIERS = nextSettings.biteshipCouriers;
-  process.env.MIDTRANS_SERVER_KEY = nextSettings.midtransServerKey;
-  process.env.MIDTRANS_CLIENT_KEY = nextSettings.midtransClientKey;
-  process.env.MIDTRANS_ENVIRONMENT = nextSettings.midtransEnvironment;
+  process.env.XENDIT_SECRET_KEY = nextSettings.xenditSecretKey;
+  process.env.XENDIT_CALLBACK_TOKEN = nextSettings.xenditCallbackToken;
+  process.env.XENDIT_ENVIRONMENT = nextSettings.xenditEnvironment;
   process.env.WHATSAPP_ACCESS_TOKEN = nextSettings.whatsappAccessToken;
   process.env.WHATSAPP_PHONE_NUMBER_ID = nextSettings.whatsappPhoneNumberId;
   process.env.WHATSAPP_BUSINESS_ACCOUNT_ID = nextSettings.whatsappBusinessAccountId;
@@ -770,7 +770,7 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const ADMIN_SESSION_TTL_SECONDS = 60 * 15;
 const SESSION_SECRET = process.env.SESSION_SECRET
   || process.env.WHATSAPP_APP_SECRET
-  || process.env.MIDTRANS_SERVER_KEY
+  || process.env.XENDIT_SECRET_KEY
   || crypto.randomBytes(32).toString("hex");
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
 const rateLimitBuckets = new Map();
@@ -1142,8 +1142,8 @@ function getStoreConfig() {
       biteshipEnabled: Boolean(integrationConfig.biteshipApiKey),
       biteshipCouriers: integrationConfig.biteshipCouriers,
       liveQuoteProvider: integrationConfig.biteshipApiKey ? "Biteship Rates API" : "",
-      midtransEnabled: Boolean(integrationConfig.midtransServerKey),
-      midtransEnvironment: integrationConfig.midtransEnvironment
+      xenditEnabled: Boolean(integrationConfig.xenditSecretKey),
+      xenditEnvironment: integrationConfig.xenditEnvironment
     }
   };
 }
@@ -2090,209 +2090,117 @@ function generateQrSvgData(orderId) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function midtransBaseUrl() {
-  const { midtransEnvironment } = getIntegrationConfig();
-  return midtransEnvironment === "production"
-    ? "https://api.midtrans.com"
-    : "https://api.sandbox.midtrans.com";
+function xenditAuthHeader() {
+  const { xenditSecretKey } = getIntegrationConfig();
+  return `Basic ${Buffer.from(`${xenditSecretKey}:`).toString("base64")}`;
 }
 
-function midtransAuthHeader() {
-  const { midtransServerKey } = getIntegrationConfig();
-  return `Basic ${Buffer.from(`${midtransServerKey}:`).toString("base64")}`;
+function isXenditReady() {
+  return Boolean(getIntegrationConfig().xenditSecretKey);
 }
 
-function isMidtransReady() {
-  return Boolean(getIntegrationConfig().midtransServerKey);
+function getPublicOrderUrl(order) {
+  const baseUrl = String(process.env.PUBLIC_SITE_URL || "https://bakeaholicbali.com").replace(/\/+$/, "");
+  const modeParam = order.mode === "test" ? "&mode=test" : "";
+  return `${baseUrl}/pay.html?order=${encodeURIComponent(order.id)}${modeParam}`;
 }
 
-function midtransPaymentType(methodId) {
-  if (methodId === "bca-va") return "bank_transfer";
-  if (methodId === "qris") return "qris";
-  return "";
-}
-
-function buildMidtransItems(order) {
-  const items = order.lineItems.map((entry) => ({
-    id: entry.itemId,
-    name: entry.item.name.slice(0, 50),
-    price: entry.item.price,
-    quantity: entry.quantity
-  }));
-
-  if (order.pricing.deliveryFee > 0) {
-    items.push({
-      id: "delivery",
-      name: "Delivery fee",
-      price: order.pricing.deliveryFee,
-      quantity: 1
-    });
-  }
-
-  if (order.pricing.tax > 0) {
-    items.push({
-      id: "government-tax",
-      name: "Government Tax",
-      price: order.pricing.tax,
-      quantity: 1
-    });
-  }
-
-  if (order.pricing.discount.amount > 0) {
-    items.push({
-      id: "discount",
-      name: `Discount ${order.pricing.discount.code || ""}`.trim(),
-      price: -order.pricing.discount.amount,
-      quantity: 1
-    });
-  }
-
-  return items;
-}
-
-async function createMidtransCharge(order) {
-  if (!isMidtransReady()) {
-    return null;
-  }
-
-  const paymentType = midtransPaymentType(order.payment.id);
-  if (!paymentType) {
-    return null;
-  }
-
-  const body = {
-    payment_type: paymentType,
-    transaction_details: {
-      order_id: order.id,
-      gross_amount: order.pricing.total
-    },
-    customer_details: {
-      first_name: order.customer.firstName || order.customer.name || "Bakeaholic customer",
-      last_name: order.customer.lastName || undefined,
-      phone: order.customer.phone || undefined,
-      email: order.customer.email || undefined,
-      shipping_address: {
-        first_name: order.customer.firstName || order.customer.name || "Bakeaholic customer",
-        last_name: order.customer.lastName || undefined,
-        phone: order.customer.phone || undefined,
-        address: order.fulfillment.address || undefined
-      }
-    },
-    item_details: buildMidtransItems(enrichOrder(order))
+function buildXenditInvoicePayload(order) {
+  const returnUrl = getPublicOrderUrl(order);
+  return {
+    external_id: order.id,
+    amount: order.pricing.total,
+    currency: "IDR",
+    description: `Bakeaholic Bali order ${order.id}`,
+    payer_email: order.customer.email || undefined,
+    success_redirect_url: returnUrl,
+    failure_redirect_url: returnUrl,
+    invoice_duration: 86400
   };
+}
 
-  if (order.payment.id === "bca-va") {
-    body.bank_transfer = {
-      bank: "bca"
-    };
+async function createXenditInvoice(order) {
+  if (order.pricing.total <= 0) {
+    return null;
+  }
+  if (!isXenditReady()) {
+    throw new Error("Xendit secret key is required before accepting paid orders.");
   }
 
-  if (order.payment.id === "qris") {
-    body.qris = {
-      acquirer: "gopay"
-    };
-  }
-
-  const response = await fetch(`${midtransBaseUrl()}/v2/charge`, {
+  const response = await fetch("https://api.xendit.co/v2/invoices", {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      Authorization: midtransAuthHeader()
+      Authorization: xenditAuthHeader()
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(buildXenditInvoicePayload(enrichOrder(order)))
   });
 
   const payload = await response.json().catch(async () => ({ raw: await response.text() }));
   if (!response.ok) {
-    throw new Error(payload.status_message || payload.error_messages?.join(", ") || "Midtrans charge failed");
+    throw new Error(payload.message || payload.error_code || "Xendit invoice creation failed");
   }
 
   return payload;
 }
 
-function applyMidtransChargeToPayment(payment, charge) {
-  if (!charge) {
+function applyXenditInvoiceToPayment(payment, invoice) {
+  if (!invoice) {
     return payment;
   }
 
-  const actions = Array.isArray(charge.actions) ? charge.actions : [];
-  const qrAction = actions.find((action) => action.name === "generate-qr-code")
-    || actions.find((action) => String(action.name || "").includes("qr"));
-  const deeplinkAction = actions.find((action) => action.name === "deeplink-redirect");
-  const vaNumber = charge.va_numbers?.[0]?.va_number || charge.permata_va_number || "";
-
   return {
     ...payment,
-    provider: "midtrans",
-    status: charge.transaction_status || "pending",
-    transactionId: charge.transaction_id || "",
-    fraudStatus: charge.fraud_status || "",
-    qrCodeData: qrAction?.url || payment.qrCodeData,
-    deeplinkUrl: deeplinkAction?.url || "",
-    accountNumber: vaNumber || payment.accountNumber,
-    rawStatus: charge.status_code || "",
-    instructions: payment.kind === "qris"
-      ? "Scan this dynamic QRIS code with any QRIS-compatible banking or e-wallet app."
-      : "Pay this BCA Virtual Account number from BCA mobile, KlikBCA, ATM, or supported transfer channels."
+    provider: "xendit",
+    status: String(invoice.status || "PENDING").toLowerCase(),
+    transactionId: invoice.id || "",
+    externalId: invoice.external_id || "",
+    invoiceUrl: invoice.invoice_url || "",
+    paymentUrl: invoice.invoice_url || "",
+    qrCodeData: "",
+    deeplinkUrl: "",
+    accountNumber: "",
+    rawStatus: invoice.status || "",
+    instructions: "Open the secure Xendit payment page to complete your payment."
   };
 }
 
-async function fetchMidtransStatus(order) {
-  if (!isMidtransReady() || order.payment.provider !== "midtrans") {
+async function fetchXenditInvoiceStatus(order) {
+  if (!isXenditReady() || order.payment.provider !== "xendit" || !order.payment.transactionId) {
     return null;
   }
 
-  const response = await fetch(`${midtransBaseUrl()}/v2/${encodeURIComponent(order.id)}/status`, {
+  const response = await fetch(`https://api.xendit.co/v2/invoices/${encodeURIComponent(order.payment.transactionId)}`, {
     method: "GET",
     headers: {
       Accept: "application/json",
-      Authorization: midtransAuthHeader()
+      Authorization: xenditAuthHeader()
     }
   });
 
   const payload = await response.json().catch(async () => ({ raw: await response.text() }));
   if (!response.ok) {
-    throw new Error(payload.status_message || payload.error_messages?.join(", ") || "Unable to check Midtrans status");
+    throw new Error(payload.message || payload.error_code || "Unable to check Xendit invoice status");
   }
 
   return payload;
 }
 
-function verifyMidtransSignature(payload) {
-  const { midtransServerKey } = getIntegrationConfig();
-  if (!midtransServerKey) {
-    return false;
-  }
+function applyXenditInvoiceStatusToOrder(order, invoice) {
+  order.payment = applyXenditInvoiceToPayment(order.payment, invoice);
+  const status = String(invoice.status || "").toUpperCase();
 
-  const signatureSource = [
-    payload.order_id,
-    payload.status_code,
-    payload.gross_amount,
-    midtransServerKey
-  ].join("");
-  const expectedSignature = crypto
-    .createHash("sha512")
-    .update(signatureSource)
-    .digest("hex");
-  return expectedSignature === payload.signature_key;
-}
-
-function applyMidtransStatusToOrder(order, payload) {
-  order.payment = applyMidtransChargeToPayment(order.payment, payload);
-  const successfulStatuses = new Set(["capture", "settlement"]);
-  const failedStatuses = new Set(["deny", "cancel", "expire", "failure"]);
-
-  if (successfulStatuses.has(payload.transaction_status)) {
+  if (status === "PAID" || status === "SETTLED") {
     order.status = "paid";
     order.payment.status = "paid";
-    order.paidAt = new Date().toISOString();
-  } else if (failedStatuses.has(payload.transaction_status)) {
-    order.status = payload.transaction_status === "expire" ? "expired" : "payment_failed";
-    order.payment.status = order.status;
+    order.paidAt = order.paidAt || new Date().toISOString();
+  } else if (status === "EXPIRED") {
+    order.status = "expired";
+    order.payment.status = "expired";
   } else {
     order.status = "awaiting_payment";
-    order.payment.status = payload.transaction_status || "pending";
+    order.payment.status = status.toLowerCase() || "pending";
   }
 
   order.whatsappUrl = buildWhatsappUrl(order);
@@ -2575,8 +2483,8 @@ async function createOrder(mode, payload, cartOverride = null) {
   };
 
   if (!isZeroTotalOrder) {
-    const midtransCharge = await createMidtransCharge(enrichOrder(order));
-    order.payment = applyMidtransChargeToPayment(order.payment, midtransCharge);
+    const xenditInvoice = await createXenditInvoice(enrichOrder(order));
+    order.payment = applyXenditInvoiceToPayment(order.payment, xenditInvoice);
   }
   order.whatsappUrl = buildWhatsappUrl(order);
   order.whatsappNotifications = {
@@ -2624,9 +2532,9 @@ async function updateOrderPaymentStatus(mode, orderId) {
 
   const previousStatus = order.status;
 
-  const midtransStatus = await fetchMidtransStatus(order);
-  if (midtransStatus) {
-    applyMidtransStatusToOrder(order, midtransStatus);
+  const xenditStatus = await fetchXenditInvoiceStatus(order);
+  if (xenditStatus) {
+    applyXenditInvoiceStatusToOrder(order, xenditStatus);
   } else {
     order.status = "paid";
     order.payment.status = "paid";
@@ -2731,7 +2639,7 @@ function handleApi(requestUrl, request, response) {
   const mutatingRequest = new Set(["POST", "PUT", "PATCH", "DELETE"]).has(request.method);
 
   const externalWebhookPaths = new Set([
-    "/api/midtrans/notification",
+    "/api/xendit/invoice-callback",
     "/api/webhooks/whatsapp",
     "/api/whatsapp/webhook",
     "/api/webhooks/biteship",
@@ -3242,15 +3150,17 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
-  if (request.method === "POST" && pathname === "/api/midtrans/notification") {
+  if (request.method === "POST" && pathname === "/api/xendit/invoice-callback") {
     parseBody(request)
       .then(async (body) => {
-        if (!verifyMidtransSignature(body)) {
-          sendJson(response, 403, { error: "Invalid Midtrans signature" });
+        const { xenditCallbackToken } = getIntegrationConfig();
+        const callbackToken = String(request.headers["x-callback-token"] || "");
+        if (xenditCallbackToken && callbackToken !== xenditCallbackToken) {
+          sendJson(response, 403, { error: "Invalid Xendit callback token" });
           return;
         }
 
-        const orderId = String(body.order_id || "").trim();
+        const orderId = String(body.external_id || "").trim();
         const order = findOrder("live", orderId) || findOrder("test", orderId);
         if (!order) {
           sendJson(response, 404, { error: "Order not found" });
@@ -3258,7 +3168,7 @@ function handleApi(requestUrl, request, response) {
         }
 
         const previousStatus = order.status;
-        applyMidtransStatusToOrder(order, body);
+        applyXenditInvoiceStatusToOrder(order, body);
         await maybeCreateBiteshipShipment(order);
         await maybeSendWhatsappOrderStatus(order, previousStatus);
         saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);

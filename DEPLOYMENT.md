@@ -27,9 +27,9 @@ At minimum:
 - `GOOGLE_MAPS_API_KEY=...`
 - `BITESHIP_API_KEY=...`
 - `BITESHIP_COURIERS=gojek,grab`
-- `MIDTRANS_ENVIRONMENT=sandbox` or `production`
-- `MIDTRANS_SERVER_KEY=...`
-- `MIDTRANS_CLIENT_KEY=...`
+- `XENDIT_ENVIRONMENT=test` or `live`
+- `XENDIT_SECRET_KEY=...`
+- `XENDIT_CALLBACK_TOKEN=...`
 
 Optional but recommended for live messaging:
 
@@ -66,9 +66,9 @@ This keeps these files persistent across deploys:
 6. Set the environment variables listed above.
 7. Add `bakeaholicbali.com` as a custom domain in Railway.
 8. In Namecheap, add the DNS records Railway provides.
-9. After the public URL is live, update your Midtrans notification URL to:
+9. After the public URL is live, set your Xendit invoice callback URL to:
 
-`https://your-domain/api/midtrans/notification`
+`https://your-domain/api/xendit/invoice-callback`
 
 ## Recommended production follow-up
 
