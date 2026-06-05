@@ -230,7 +230,7 @@ function writeJsonFile(targetPath, payload) {
   fs.writeFileSync(targetPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
-function getIntegrationConfig() {
+function getEnvironmentIntegrationConfig() {
   return {
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || "",
     biteshipApiKey: process.env.BITESHIP_API_KEY || "",
@@ -249,6 +249,10 @@ function getIntegrationConfig() {
     whatsappOrderTemplateName: process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "",
     whatsappTemplateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en"
   };
+}
+
+function getIntegrationConfig() {
+  return readIntegrationSettings();
 }
 
 function parseJsonSafely(value, fallback = {}) {
@@ -561,8 +565,12 @@ function processWhatsappWebhook(payload) {
 }
 
 function isPlaceholderValue(value = "") {
-  const normalized = String(value || "").trim().toLowerCase();
-  return !normalized || normalized.startsWith("your_") || normalized === "order_status_update";
+  const raw = String(value || "").trim();
+  const normalized = raw.toLowerCase();
+  return !normalized
+    || normalized.startsWith("your_")
+    || normalized === "order_status_update"
+    || /^[•*]+$/.test(raw);
 }
 
 function configuredValue(...values) {
@@ -572,8 +580,8 @@ function configuredValue(...values) {
 function readIntegrationSettings() {
   const envMap = loadEnvMap(envPath);
   const savedSettings = readJsonFileSafely(integrationsPath, {});
-  const config = getIntegrationConfig();
-  return {
+  const config = getEnvironmentIntegrationConfig();
+  const settings = {
     googleMapsApiKey: configuredValue(savedSettings.googleMapsApiKey, envMap.GOOGLE_MAPS_API_KEY, config.googleMapsApiKey),
     biteshipApiKey: configuredValue(savedSettings.biteshipApiKey, envMap.BITESHIP_API_KEY, config.biteshipApiKey),
     biteshipCouriers: configuredValue(savedSettings.biteshipCouriers, envMap.BITESHIP_COURIERS, config.biteshipCouriers) || "gojek,grab",
@@ -591,6 +599,8 @@ function readIntegrationSettings() {
     whatsappOrderTemplateName: configuredValue(savedSettings.whatsappOrderTemplateName, envMap.WHATSAPP_ORDER_TEMPLATE_NAME, config.whatsappOrderTemplateName),
     whatsappTemplateLanguage: configuredValue(savedSettings.whatsappTemplateLanguage, envMap.WHATSAPP_TEMPLATE_LANGUAGE, config.whatsappTemplateLanguage) || "en"
   };
+  settings.xenditEnvironment = settings.xenditEnvironment === "live" ? "live" : "test";
+  return settings;
 }
 
 function saveIntegrationSettings(input = {}) {
@@ -2949,6 +2959,25 @@ function handleApi(requestUrl, request, response) {
     checkWhatsappCloudConfig()
       .then((payload) => sendJson(response, payload.ok ? 200 : 400, payload))
       .catch((error) => sendJson(response, 400, { ok: false, error: error.message }));
+    return true;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/xendit-health") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    const settings = readIntegrationSettings();
+    const secretKey = String(settings.xenditSecretKey || "").trim();
+    sendJson(response, 200, {
+      ok: Boolean(secretKey),
+      present: Boolean(secretKey),
+      length: secretKey.length,
+      prefix: secretKey ? `${secretKey.slice(0, 14)}...` : "",
+      looksLikeXenditKey: secretKey.startsWith("xnd_"),
+      environment: settings.xenditEnvironment || "test",
+      callbackTokenPresent: Boolean(settings.xenditCallbackToken)
+    });
     return true;
   }
 
