@@ -3163,7 +3163,11 @@ function handleApi(requestUrl, request, response) {
         const orderId = String(body.external_id || "").trim();
         const order = findOrder("live", orderId) || findOrder("test", orderId);
         if (!order) {
-          sendJson(response, 404, { error: "Order not found" });
+          sendJson(response, 200, {
+            ok: true,
+            ignored: true,
+            reason: "No matching Bakeaholic order for this Xendit test callback."
+          });
           return;
         }
 
