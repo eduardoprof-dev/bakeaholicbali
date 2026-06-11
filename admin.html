@@ -9,34 +9,60 @@
     <link rel="stylesheet" href="styles.css?v=20260601-hide-test-otp" />
   </head>
   <body>
-    <div class="admin-shell">
-      <header class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Local Admin</p>
-          <h1>Update the storefront without editing JSON by hand.</h1>
-          <p class="hero-text">
-            This page saves directly into the local catalog file used by the storefront and test mode.
-          </p>
+    <div class="admin-app-shell">
+      <aside class="admin-sidebar">
+        <div class="admin-brand-lockup">
+          <img src="/assets/bakeaholic-logo.jpg" alt="Bakeaholic Bali" />
+          <div>
+            <strong>Bakeaholic Admin</strong>
+            <span>Storefront control</span>
+          </div>
         </div>
-        <div class="hero-card">
-          <p class="hero-label">Admin links</p>
-          <strong><a href="/index.html" style="color: inherit;">Open storefront</a></strong>
-          <span><a href="/index.html?mode=test" style="color: inherit;">Open test mode</a></span>
+        <nav class="admin-nav" aria-label="Admin sections">
+          <button class="admin-nav-button is-active" type="button" data-admin-target="store">Storefront</button>
+          <button class="admin-nav-button" type="button" data-admin-target="orders">Orders</button>
+          <button class="admin-nav-button" type="button" data-admin-target="story">Homepage</button>
+          <button class="admin-nav-button" type="button" data-admin-target="catalog">Catalog</button>
+          <button class="admin-nav-button" type="button" data-admin-target="integrations">Integrations</button>
+          <button class="admin-nav-button" type="button" data-admin-target="notifications">Notifications</button>
+          <button class="admin-nav-button" type="button" data-admin-target="advanced">Advanced</button>
+        </nav>
+        <div class="admin-sidebar-links">
+          <a href="/index.html">Open storefront</a>
+          <a href="/index.html?mode=test">Open test mode</a>
+          <button id="adminLogoutButton" type="button">Log out</button>
         </div>
-      </header>
+      </aside>
 
-      <main class="admin-layout">
-        <section class="admin-panel">
+      <main class="admin-main">
+        <header class="admin-topbar">
+          <div>
+            <p class="eyebrow">Local Admin</p>
+            <h1>Manage the storefront.</h1>
+          </div>
           <div class="admin-actions">
+            <select id="adminSectionSelect" class="admin-section-select" aria-label="Admin section">
+              <option value="store">Storefront</option>
+              <option value="orders">Orders</option>
+              <option value="story">Homepage</option>
+              <option value="catalog">Catalog</option>
+              <option value="integrations">Integrations</option>
+              <option value="notifications">Notifications</option>
+              <option value="advanced">Advanced</option>
+            </select>
             <button id="saveCatalogButton" class="admin-button" type="button">Save catalog</button>
             <button id="addProductButton" class="admin-button secondary" type="button">Add product</button>
-            <button id="adminLogoutButton" class="admin-button secondary" type="button">Admin Log Out</button>
-            <span id="adminStatus" class="admin-status">Loading catalog...</span>
           </div>
-        </section>
+          <span id="adminStatus" class="admin-status">Loading catalog...</span>
+        </header>
 
-        <section class="admin-panel">
-          <h2>Store Settings</h2>
+        <section class="admin-panel" data-admin-section="store">
+          <div class="admin-section-head">
+            <div>
+              <h2>Storefront Settings</h2>
+              <p class="helper-text">Edit text, contact links, delivery defaults, and storefront metadata.</p>
+            </div>
+          </div>
           <div class="admin-grid">
             <div class="admin-field">
               <label for="storeName">Store name</label>
@@ -62,10 +88,93 @@
               <label for="perkDescriptionInput">Contact note</label>
               <input id="perkDescriptionInput" type="text" />
             </div>
+            <div class="admin-field">
+              <label for="instagramUrlInput">Instagram URL</label>
+              <input id="instagramUrlInput" type="url" />
+            </div>
+            <div class="admin-field">
+              <label for="termsUrlInput">Terms URL</label>
+              <input id="termsUrlInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="privacyUrlInput">Privacy URL</label>
+              <input id="privacyUrlInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="deliveryFeeInput">Fallback delivery fee</label>
+              <input id="deliveryFeeInput" type="number" min="0" step="1" />
+            </div>
+            <div class="admin-field">
+              <label for="taxRateInput">Tax rate</label>
+              <input id="taxRateInput" type="number" min="0" step="0.01" />
+            </div>
+            <div class="admin-field">
+              <label for="addressLabelInput">Address prompt</label>
+              <input id="addressLabelInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="defaultAddressInput">Default delivery address</label>
+              <input id="defaultAddressInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="kitchenAddressInput">Kitchen address</label>
+              <input id="kitchenAddressInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="kitchenLatInput">Kitchen latitude</label>
+              <input id="kitchenLatInput" type="number" step="0.000001" />
+            </div>
+            <div class="admin-field">
+              <label for="kitchenLngInput">Kitchen longitude</label>
+              <input id="kitchenLngInput" type="number" step="0.000001" />
+            </div>
+            <div class="admin-field">
+              <label for="pickupAddressInput">Pickup address</label>
+              <input id="pickupAddressInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="pickupDescriptionInput">Pickup description</label>
+              <input id="pickupDescriptionInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappPromptInput">WhatsApp prompt</label>
+              <input id="whatsappPromptInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="testModeTitleInput">Test mode title</label>
+              <input id="testModeTitleInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="testModeDescriptionInput">Test mode message</label>
+              <input id="testModeDescriptionInput" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="businessHoursOpenInput">Ordering opens</label>
+              <input id="businessHoursOpenInput" type="time" />
+            </div>
+            <div class="admin-field">
+              <label for="businessHoursCloseInput">Ordering closes</label>
+              <input id="businessHoursCloseInput" type="time" />
+            </div>
+            <div class="admin-field">
+              <label for="businessHoursTimezoneInput">Ordering timezone</label>
+              <input id="businessHoursTimezoneInput" type="text" placeholder="Asia/Makassar" />
+            </div>
           </div>
         </section>
 
-        <section class="admin-panel">
+        <section class="admin-panel" data-admin-section="orders" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Orders</h2>
+              <p class="helper-text">Paid orders wait here until staff prepares, packages, prints the invoice, and approves delivery.</p>
+            </div>
+            <button id="refreshOrdersButton" class="admin-button secondary" type="button">Refresh orders</button>
+          </div>
+          <div id="adminOrderList" class="admin-order-list"></div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="integrations" hidden>
           <div class="admin-section-head">
             <div>
               <h2>Integrations</h2>
@@ -138,14 +247,88 @@
               <input id="whatsappOrderTemplateNameInput" type="text" placeholder="order_received" />
             </div>
             <div class="admin-field">
+              <label for="whatsappReceiptTemplateNameInput">Customer receipt template name</label>
+              <input id="whatsappReceiptTemplateNameInput" type="text" placeholder="payment_receipt" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappShippingTemplateNameInput">Customer shipping template name</label>
+              <input id="whatsappShippingTemplateNameInput" type="text" placeholder="shipping_update" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappAdminNumberInput">Admin WhatsApp number</label>
+              <input id="whatsappAdminNumberInput" type="text" placeholder="62812..." autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappAdminTemplateNameInput">Admin alert template name</label>
+              <input id="whatsappAdminTemplateNameInput" type="text" placeholder="admin_order_alert" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappAdminShippingTemplateNameInput">Admin shipping template name</label>
+              <input id="whatsappAdminShippingTemplateNameInput" type="text" placeholder="admin_shipping_update" autocomplete="off" />
+            </div>
+            <div class="admin-field">
               <label for="whatsappTemplateLanguageInput">Template language</label>
               <input id="whatsappTemplateLanguageInput" type="text" placeholder="en" />
             </div>
           </div>
-          <p class="helper-text">These values are stored locally in `order-demo/.env` and applied to the app immediately. WhatsApp template names should match templates already approved in Meta.</p>
+          <p class="helper-text">These values are stored locally in `order-demo/.env` and applied to the app immediately. WhatsApp template names should match templates already approved in Meta. The admin alert template should accept event, order id, customer name, customer phone, total, payment method, delivery status, and invoice URL. The customer receipt template should accept order id, total, and receipt URL.</p>
         </section>
 
-        <section class="admin-panel">
+        <section class="admin-panel" data-admin-section="notifications" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Notification Flow</h2>
+              <p class="helper-text">Current operational behavior for customer and admin WhatsApp messages.</p>
+            </div>
+          </div>
+          <div class="admin-flow-grid">
+            <article class="admin-flow-card">
+              <strong>Order created</strong>
+              <p>Customer can receive a pending-payment template if WhatsApp Cloud API and the template are configured.</p>
+            </article>
+            <article class="admin-flow-card">
+              <strong>Xendit paid</strong>
+              <p>Xendit invoice webhook marks the order paid, sends receipt links, and waits for staff approval before delivery is released.</p>
+            </article>
+            <article class="admin-flow-card">
+              <strong>Staff approval</strong>
+              <p>Staff prepares and prints the invoice, then approves delivery. Only then does the app create the Biteship courier request.</p>
+            </article>
+            <article class="admin-flow-card">
+              <strong>Admin alerts</strong>
+              <p>Automated admin WhatsApp alerts use the admin recipient and template from Integrations. Without those, admin watches the orders page and WhatsApp handoff link.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="advanced" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Advanced</h2>
+              <p class="helper-text">Developer map for operational code, webhook routes, and WhatsApp command behavior.</p>
+            </div>
+          </div>
+          <div class="admin-flow-grid">
+            <article class="admin-flow-card">
+              <strong>WhatsApp approval</strong>
+              <p>Admin replies APPROVE BAK-0001, READY BAK-0001, KIRIM BAK-0001, or SEND BAK-0001 from the configured admin WhatsApp number. Admin can reply CANCEL BAK-0001 if stock is empty.</p>
+            </article>
+            <article class="admin-flow-card">
+              <strong>Webhook routes</strong>
+              <p>Xendit: /api/xendit/invoice-callback. WhatsApp: /api/whatsapp/webhook. Biteship: /api/biteship/webhook.</p>
+            </article>
+            <article class="admin-flow-card">
+              <strong>Core files</strong>
+              <p>server.js controls payments, Biteship, WhatsApp, orders, and webhooks. cart.js controls checkout. admin.js controls this maintenance console.</p>
+            </article>
+            <article class="admin-flow-card">
+              <strong>Daily operations</strong>
+              <p>Daily paid-order approval should happen in WhatsApp. The Orders section is only a fallback/debug view for developers.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="store">
           <h2>Promo Spotlight</h2>
           <div class="admin-grid">
             <div class="admin-field">
@@ -163,19 +346,19 @@
           </div>
         </section>
 
-        <section class="admin-panel">
+        <section class="admin-panel" data-admin-section="story" hidden>
           <h2>Homepage Carousel</h2>
           <p class="helper-text">Edit the three story slides at the top of the storefront. Use existing image paths from the product image fields.</p>
           <div class="story-slide-editor-list" id="brandStorySlideList"></div>
         </section>
 
-        <section class="admin-panel">
+        <section class="admin-panel" data-admin-section="catalog" hidden>
           <h2>Categories</h2>
           <p class="helper-text">Keep category ids stable if products already use them.</p>
           <div id="categoryList" class="product-editor-list"></div>
         </section>
 
-        <section class="admin-panel">
+        <section class="admin-panel" data-admin-section="catalog" hidden>
           <h2>Products</h2>
           <p class="helper-text">Edit price, stock, image path, labels, and shelf details here.</p>
           <div id="productList" class="product-editor-list"></div>

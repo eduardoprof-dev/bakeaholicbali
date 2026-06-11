@@ -113,18 +113,22 @@ function renderPaid() {
       : "";
   const whatsappMessage = state.order.whatsappNotificationError
     ? `<p class="payment-alert">${escapeHtml(state.order.whatsappNotificationError)}</p>`
-    : state.order.whatsappNotifications?.lastStatusSent
-      ? `<p class="success-note">WhatsApp order update sent.</p>`
-      : "";
+      : state.order.whatsappNotifications?.lastStatusSent
+        ? `<p class="success-note">WhatsApp order update sent.</p>`
+        : "";
+  const documentLink = state.order.documentUrl
+    ? `<a class="secondary-link" href="${escapeHtml(state.order.documentUrl)}" target="_blank" rel="noreferrer">Open payment receipt</a>`
+    : "";
+  const isPreparing = state.order.status === "preparing";
   paymentApp.innerHTML = `
     <section class="status-hero">
       <div class="status-steps">
         <span class="status-step active">Preparing Order</span>
-        <span class="status-step">On Deliver</span>
+        <span class="status-step${shipment.orderId ? " active" : ""}">On Deliver</span>
         <span class="status-step">Order Complete</span>
       </div>
       <h1>Payment received</h1>
-      <p>Your order is confirmed and ready for the next fulfillment step.</p>
+      <p>${isPreparing ? "Your order is being prepared and delivery has been requested." : "Your order is confirmed. Our team will prepare, pack, print the invoice, and then request delivery."}</p>
     </section>
 
     <section class="payment-page-card">
@@ -150,6 +154,7 @@ function renderPaid() {
       </div>
       ${shipmentMessage}
       ${whatsappMessage}
+      ${documentLink}
       <a class="secondary-link" href="${escapeHtml(trackingUrl)}" ${shipment.trackingLink ? 'target="_blank" rel="noreferrer"' : ""}>Track your order</a>
     </section>
   `;
@@ -183,15 +188,6 @@ function renderPending() {
     day: "numeric",
     year: "numeric"
   });
-  const qrisBlock = payment.kind === "qris" && payment.qrCodeData
-    ? `
-      <div class="qr-block">
-        <p class="qr-label">Scan this QR code</p>
-        <img class="qr-image" src="${escapeHtml(payment.qrCodeData)}" alt="QRIS code" />
-        ${payment.deeplinkUrl ? `<a class="primary-button button-link full-width" href="${escapeHtml(payment.deeplinkUrl)}">Open payment app</a>` : ""}
-      </div>
-    `
-    : "";
   const paymentLinkBlock = payment.paymentUrl
     ? `
       <a class="primary-button button-link full-width" href="${escapeHtml(payment.paymentUrl)}" target="_blank" rel="noopener">
@@ -199,27 +195,6 @@ function renderPending() {
       </a>
     `
     : "";
-
-  const detailBlock = payment.kind === "va"
-    ? `
-      <div class="payment-detail-row">
-        <span>Virtual account number</span>
-        <div class="copy-block">
-          <strong>${escapeHtml(payment.accountNumber)}</strong>
-          <button class="copy-button" type="button" data-copy="${escapeHtml(payment.accountNumber)}">Copy</button>
-        </div>
-      </div>
-    `
-    : payment.kind === "card"
-      ? `
-        <div class="payment-detail-row">
-          <span>Saved card</span>
-          <div class="copy-block">
-            <strong>${escapeHtml(payment.maskedCard)}</strong>
-          </div>
-        </div>
-      `
-      : "";
 
   document.title = `Pay and Order ${state.order.id} | Bakeaholic Online Shop`;
   paymentApp.innerHTML = `
@@ -253,8 +228,6 @@ function renderPending() {
           </div>
           <span class="payment-logo large">${escapeHtml(payment.logoText)}</span>
         </div>
-        ${detailBlock}
-        ${qrisBlock}
         ${paymentLinkBlock}
         <div class="instruction-box">
           ${escapeHtml(payment.instructions)}
@@ -328,7 +301,7 @@ function render() {
     return;
   }
 
-  if (state.order.status === "paid") {
+  if (state.order.status === "paid" || state.order.status === "preparing") {
     renderPaid();
     return;
   }

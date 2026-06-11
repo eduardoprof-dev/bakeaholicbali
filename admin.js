@@ -1,6 +1,13 @@
 const state = {
-  catalog: null
+  catalog: null,
+  orders: []
 };
+
+const formatRupiah = new Intl.NumberFormat("id-ID", {
+  style: "currency",
+  currency: "IDR",
+  maximumFractionDigits: 0
+});
 
 const saveCatalogButton = document.getElementById("saveCatalogButton");
 const saveIntegrationsButton = document.getElementById("saveIntegrationsButton");
@@ -9,6 +16,11 @@ const adminLogoutButton = document.getElementById("adminLogoutButton");
 const adminStatus = document.getElementById("adminStatus");
 const categoryList = document.getElementById("categoryList");
 const productList = document.getElementById("productList");
+const adminOrderList = document.getElementById("adminOrderList");
+const refreshOrdersButton = document.getElementById("refreshOrdersButton");
+const adminSectionSelect = document.getElementById("adminSectionSelect");
+const adminNavButtons = document.querySelectorAll("[data-admin-target]");
+const adminSections = document.querySelectorAll("[data-admin-section]");
 
 const storeFields = {
   name: document.getElementById("storeName"),
@@ -16,8 +28,27 @@ const storeFields = {
   eyebrow: document.getElementById("storeEyebrowInput"),
   perkLabel: document.getElementById("perkLabelInput"),
   perkTitle: document.getElementById("perkTitleInput"),
-  perkDescription: document.getElementById("perkDescriptionInput")
+  perkDescription: document.getElementById("perkDescriptionInput"),
+  instagramUrl: document.getElementById("instagramUrlInput"),
+  termsUrl: document.getElementById("termsUrlInput"),
+  privacyUrl: document.getElementById("privacyUrlInput"),
+  deliveryFee: document.getElementById("deliveryFeeInput"),
+  taxRate: document.getElementById("taxRateInput"),
+  addressLabel: document.getElementById("addressLabelInput"),
+  defaultAddress: document.getElementById("defaultAddressInput"),
+  kitchenAddress: document.getElementById("kitchenAddressInput"),
+  kitchenLat: document.getElementById("kitchenLatInput"),
+  kitchenLng: document.getElementById("kitchenLngInput"),
+  pickupAddress: document.getElementById("pickupAddressInput"),
+  pickupDescription: document.getElementById("pickupDescriptionInput"),
+  whatsappPrompt: document.getElementById("whatsappPromptInput"),
+  testModeTitle: document.getElementById("testModeTitleInput"),
+  testModeDescription: document.getElementById("testModeDescriptionInput"),
+  businessHoursOpen: document.getElementById("businessHoursOpenInput"),
+  businessHoursClose: document.getElementById("businessHoursCloseInput"),
+  businessHoursTimezone: document.getElementById("businessHoursTimezoneInput")
 };
+const numericStoreFields = new Set(["deliveryFee", "taxRate", "kitchenLat", "kitchenLng"]);
 
 const promoFields = {
   itemId: document.getElementById("promoItemId"),
@@ -56,6 +87,11 @@ const integrationFields = {
   whatsappGraphVersion: document.getElementById("whatsappGraphVersionInput"),
   whatsappOtpTemplateName: document.getElementById("whatsappOtpTemplateNameInput"),
   whatsappOrderTemplateName: document.getElementById("whatsappOrderTemplateNameInput"),
+  whatsappReceiptTemplateName: document.getElementById("whatsappReceiptTemplateNameInput"),
+  whatsappShippingTemplateName: document.getElementById("whatsappShippingTemplateNameInput"),
+  whatsappAdminNumber: document.getElementById("whatsappAdminNumberInput"),
+  whatsappAdminTemplateName: document.getElementById("whatsappAdminTemplateNameInput"),
+  whatsappAdminShippingTemplateName: document.getElementById("whatsappAdminShippingTemplateNameInput"),
   whatsappTemplateLanguage: document.getElementById("whatsappTemplateLanguageInput")
 };
 const secretIntegrationKeys = new Set([
@@ -125,6 +161,21 @@ function setStatus(message) {
   adminStatus.textContent = message;
 }
 
+function showAdminSection(sectionName) {
+  adminSections.forEach((section) => {
+    section.hidden = section.dataset.adminSection !== sectionName;
+  });
+  adminNavButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.adminTarget === sectionName);
+  });
+  if (adminSectionSelect) {
+    adminSectionSelect.value = sectionName;
+  }
+  if (sectionName === "orders") {
+    loadOrders();
+  }
+}
+
 function renderIntegrations(integrations) {
   Object.entries(integrationFields).forEach(([key, field]) => {
     if (secretIntegrationKeys.has(key)) {
@@ -153,6 +204,78 @@ function renderPromo() {
   Object.entries(promoFields).forEach(([key, field]) => {
     field.value = state.catalog.promo[key] || "";
   });
+}
+
+function statusLabel(status = "") {
+  const labels = {
+    awaiting_payment: "Awaiting payment",
+    paid: "Paid - prepare order",
+    preparing: "Preparing / driver requested",
+    on_delivery: "On delivery",
+    shipped: "On delivery",
+    delivered: "Delivered",
+    complete: "Complete",
+    cancelled: "Cancelled",
+    expired: "Expired",
+    payment_failed: "Payment failed"
+  };
+  return labels[status] || String(status || "Order").replace(/[_-]+/g, " ");
+}
+
+function renderAdminOrders() {
+  if (!adminOrderList) return;
+  const orders = state.orders || [];
+  if (!orders.length) {
+    adminOrderList.innerHTML = `
+      <div class="empty-state">
+        <strong>No orders yet.</strong>
+        <p>Paid orders will appear here for staff approval before delivery.</p>
+      </div>
+    `;
+    return;
+  }
+
+  adminOrderList.innerHTML = orders.map((order) => {
+    const canApprove = order.status === "paid"
+      && order.fulfillment?.type === "delivery"
+      && !order.fulfillment?.shipment?.orderId;
+    const lineItems = (order.lineItems || []).map((entry) => `
+      <li>${entry.quantity}x ${escapeHtml(entry.item?.name || entry.itemId)} (${formatRupiah.format(entry.lineTotal || 0)})</li>
+    `).join("");
+    const shipmentText = order.fulfillment?.shipment?.orderId
+      ? `Biteship ${order.fulfillment.shipment.orderId}`
+      : order.fulfillment?.shipmentError
+        ? order.fulfillment.shipmentError
+        : "Not requested yet";
+    return `
+      <article class="admin-order-card" data-order-id="${escapeHtml(order.id)}">
+        <div class="admin-order-main">
+          <div>
+            <span class="status-pill ${order.status === "paid" ? "status-pending" : order.status === "preparing" ? "status-paid" : ""}">${escapeHtml(statusLabel(order.status))}</span>
+            <h3>${escapeHtml(order.id)}</h3>
+            <p>${escapeHtml(order.customer?.name || "Customer")} · ${escapeHtml(order.customer?.phone || "")}</p>
+          </div>
+          <strong>${formatRupiah.format(order.pricing?.total || 0)}</strong>
+        </div>
+        <div class="admin-order-grid">
+          <div>
+            <strong>Items</strong>
+            <ul>${lineItems}</ul>
+          </div>
+          <div>
+            <strong>Delivery</strong>
+            <p>${escapeHtml(order.fulfillment?.address || order.customer?.address || "-")}</p>
+            <small>${escapeHtml(shipmentText)}</small>
+          </div>
+        </div>
+        <div class="admin-order-actions">
+          <a class="admin-button secondary" href="${escapeHtml(order.documentUrl || "#")}" target="_blank" rel="noreferrer">Print invoice</a>
+          <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">WhatsApp handoff</a>
+          <button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}" ${canApprove ? "" : "disabled"}>Approve delivery</button>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function defaultBrandStory() {
@@ -542,13 +665,13 @@ function renderAll() {
 function collectStore() {
   const store = {};
   Object.entries(storeFields).forEach(([key, field]) => {
-    store[key] = field.value.trim();
+    store[key] = numericStoreFields.has(key)
+      ? Number(field.value || 0)
+      : field.value.trim();
   });
   return {
     ...state.catalog.store,
-    ...store,
-    testModeTitle: state.catalog.store.testModeTitle,
-    testModeDescription: state.catalog.store.testModeDescription
+    ...store
   };
 }
 
@@ -645,6 +768,11 @@ async function saveIntegrations() {
       whatsappGraphVersion: integrationFields.whatsappGraphVersion.value.trim(),
       whatsappOtpTemplateName: integrationFields.whatsappOtpTemplateName.value.trim(),
       whatsappOrderTemplateName: integrationFields.whatsappOrderTemplateName.value.trim(),
+      whatsappReceiptTemplateName: integrationFields.whatsappReceiptTemplateName.value.trim(),
+      whatsappShippingTemplateName: integrationFields.whatsappShippingTemplateName.value.trim(),
+      whatsappAdminNumber: integrationFields.whatsappAdminNumber.value.trim(),
+      whatsappAdminTemplateName: integrationFields.whatsappAdminTemplateName.value.trim(),
+      whatsappAdminShippingTemplateName: integrationFields.whatsappAdminShippingTemplateName.value.trim(),
       whatsappTemplateLanguage: integrationFields.whatsappTemplateLanguage.value.trim()
     };
     const response = await request("/api/admin/integrations", {
@@ -653,6 +781,37 @@ async function saveIntegrations() {
     });
     renderIntegrations(response.integrations);
     setStatus("Integrations saved to local .env.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function loadOrders() {
+  if (!adminOrderList) return;
+  try {
+    adminOrderList.innerHTML = `<div class="empty-state">Loading orders...</div>`;
+    const response = await request("/api/orders");
+    state.orders = Array.isArray(response.orders) ? response.orders : [];
+    renderAdminOrders();
+  } catch (error) {
+    adminOrderList.innerHTML = `
+      <div class="empty-state">
+        <strong>Unable to load orders.</strong>
+        <p>${escapeHtml(error.message)}</p>
+      </div>
+    `;
+  }
+}
+
+async function approveDelivery(orderId) {
+  try {
+    setStatus(`Approving delivery for ${orderId}...`);
+    await request(`/api/admin/orders/${encodeURIComponent(orderId)}/approve-delivery`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    await loadOrders();
+    setStatus(`Delivery approved for ${orderId}.`);
   } catch (error) {
     setStatus(error.message);
   }
@@ -692,6 +851,7 @@ async function bootstrap() {
   state.catalog = catalog;
   renderAll();
   renderIntegrations(integrations);
+  showAdminSection(adminSectionSelect?.value || "store");
   setStatus("Catalog loaded. Save after making changes.");
 }
 
@@ -699,6 +859,16 @@ saveCatalogButton.addEventListener("click", saveCatalog);
 saveIntegrationsButton.addEventListener("click", saveIntegrations);
 addProductButton.addEventListener("click", addProduct);
 adminLogoutButton.addEventListener("click", logoutAdmin);
+refreshOrdersButton?.addEventListener("click", loadOrders);
+adminOrderList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-approve-delivery]");
+  if (!button) return;
+  approveDelivery(button.dataset.approveDelivery);
+});
+adminNavButtons.forEach((button) => {
+  button.addEventListener("click", () => showAdminSection(button.dataset.adminTarget));
+});
+adminSectionSelect?.addEventListener("change", () => showAdminSection(adminSectionSelect.value));
 brandStorySlideList.addEventListener("input", (event) => {
   if (event.target.matches('[data-story-field="imagePath"]')) {
     syncBrandStoryPreview(event.target.closest("[data-story-slide-index]"));

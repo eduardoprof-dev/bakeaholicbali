@@ -113,8 +113,30 @@ const ordersLivePath = path.join(dataDir, "orders-live.json");
 const ordersTestPath = path.join(dataDir, "orders-test.json");
 const biteshipWebhookLogPath = path.join(dataDir, "biteship-webhook-log.json");
 const PAYMENT_METHODS = [
-  { id: "qris", label: "QRIS", kind: "qris", logoText: "QRIS" },
-  { id: "bca-va", label: "BCA Virtual Account", kind: "va", bankCode: "014", logoText: "BCA" }
+  {
+    id: "xendit-card",
+    label: "Credit / Debit Card",
+    kind: "card",
+    logoText: "CARD",
+    description: "Visa, Mastercard, JCB, Amex",
+    xenditPaymentMethods: ["CREDIT_CARD"]
+  },
+  {
+    id: "xendit-qris",
+    label: "QRIS",
+    kind: "qris",
+    logoText: "QRIS",
+    description: "Scan QRIS to pay from any e-wallet or banking app",
+    xenditPaymentMethods: ["QRIS"]
+  },
+  {
+    id: "xendit-va",
+    label: "Bank Transfer",
+    kind: "va",
+    logoText: "BANK",
+    description: "Mandiri, Permata, BNI, CIMB Niaga, BRI",
+    xenditPaymentMethods: ["MANDIRI", "PERMATA", "BNI", "CIMB", "BRI"]
+  }
 ];
 const MAX_DELIVERY_DISTANCE_KM = 100;
 
@@ -191,6 +213,11 @@ function writeEnvMap(targetPath, envMap) {
     "WHATSAPP_GRAPH_VERSION",
     "WHATSAPP_OTP_TEMPLATE_NAME",
     "WHATSAPP_ORDER_TEMPLATE_NAME",
+    "WHATSAPP_RECEIPT_TEMPLATE_NAME",
+    "WHATSAPP_SHIPPING_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_NUMBER",
+    "WHATSAPP_ADMIN_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME",
     "WHATSAPP_TEMPLATE_LANGUAGE"
   ];
   const writtenKeys = new Set();
@@ -247,6 +274,11 @@ function getEnvironmentIntegrationConfig() {
     whatsappGraphVersion: process.env.WHATSAPP_GRAPH_VERSION || "v22.0",
     whatsappOtpTemplateName: process.env.WHATSAPP_OTP_TEMPLATE_NAME || "",
     whatsappOrderTemplateName: process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "",
+    whatsappReceiptTemplateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME || "",
+    whatsappShippingTemplateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || "",
+    whatsappAdminNumber: process.env.WHATSAPP_ADMIN_NUMBER || "",
+    whatsappAdminTemplateName: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "",
+    whatsappAdminShippingTemplateName: process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || "",
     whatsappTemplateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en"
   };
 }
@@ -303,6 +335,11 @@ async function checkWhatsappCloudConfig() {
     templateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     orderTemplateName: process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "",
     otpTemplateName: process.env.WHATSAPP_OTP_TEMPLATE_NAME || "",
+    receiptTemplateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME || "",
+    shippingTemplateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || "",
+    adminTemplateName: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "",
+    adminShippingTemplateName: process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || "",
+    adminNumberConfigured: Boolean(process.env.WHATSAPP_ADMIN_NUMBER),
     ok: false
   };
 
@@ -353,6 +390,21 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = [], op
     }));
 
   const templateComponents = [];
+  if (options.headerDocumentUrl) {
+    templateComponents.push({
+      type: "header",
+      parameters: [
+        {
+          type: "document",
+          document: {
+            link: String(options.headerDocumentUrl).trim(),
+            filename: String(options.headerDocumentFilename || "document.pdf").trim()
+          }
+        }
+      ]
+    });
+  }
+
   if (bodyParameters.length) {
     templateComponents.push({
       type: "body",
@@ -445,7 +497,9 @@ function humanizeOrderStatus(order) {
     case "awaiting_payment":
       return "Awaiting payment";
     case "paid":
-      return "Payment received";
+      return "Payment received - awaiting staff approval";
+    case "preparing":
+      return "Preparing order";
     case "cancelled":
       return "Order cancelled";
     case "expired":
@@ -457,6 +511,42 @@ function humanizeOrderStatus(order) {
         .replace(/[_-]+/g, " ")
         .replace(/\b\w/g, (char) => char.toUpperCase());
   }
+}
+
+function ensureOrderReceiptToken(order) {
+  if (!order.receiptToken) {
+    order.receiptToken = crypto.randomBytes(18).toString("hex");
+  }
+  return order.receiptToken;
+}
+
+function getPublicDocumentUrl(order) {
+  const baseUrl = String(process.env.PUBLIC_SITE_URL || "https://bakeaholicbali.com").replace(/\/+$/, "");
+  const modeParam = order.mode === "test" ? "&mode=test" : "";
+  return `${baseUrl}/invoice.html?order=${encodeURIComponent(order.id)}&token=${encodeURIComponent(ensureOrderReceiptToken(order))}${modeParam}`;
+}
+
+function xenditInvoiceUrl(order) {
+  return order.payment?.invoiceUrl || order.payment?.paymentUrl || getPublicDocumentUrl(order);
+}
+
+function biteshipDocumentUrl(order) {
+  const shipment = order.fulfillment?.shipment || {};
+  return shipment.labelUrl ||
+    shipment.invoiceUrl ||
+    shipment.waybillUrl ||
+    shipment.trackingLink ||
+    shipment.raw?.label_url ||
+    shipment.raw?.invoice_url ||
+    shipment.raw?.waybill_url ||
+    shipment.raw?.courier?.link ||
+    "";
+}
+
+function whatsappDocumentAttachmentUrl(url = "") {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  return /\.(pdf|png|jpe?g|webp)(\?|#|$)/i.test(value) ? value : "";
 }
 
 function defaultWhatsappOrderTemplateName(order) {
@@ -487,6 +577,181 @@ async function sendWhatsappOrderUpdate(order) {
   }
 
   return sendWhatsappTemplateMessage(order.customer.phone, templateName, [], { languageCode: "en" });
+}
+
+function adminWhatsappParameters(order, eventLabel = "") {
+  const documentUrl = biteshipDocumentUrl(order) || xenditInvoiceUrl(order);
+  return [
+    eventLabel || humanizeOrderStatus(order),
+    order.id,
+    order.customer?.name || "Customer",
+    order.customer?.phone || "",
+    `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`,
+    order.payment?.label || "",
+    order.fulfillment?.shipment?.status || order.status || "",
+    documentUrl,
+    order.status === "paid" ? `Reply APPROVE ${order.id} when packed, or CANCEL ${order.id} if stock is empty.` : ""
+  ];
+}
+
+function receiptWhatsappParameters(order) {
+  return [
+    order.id,
+    `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`,
+    xenditInvoiceUrl(order)
+  ];
+}
+
+function shippingWhatsappParameters(order) {
+  const shipment = order.fulfillment?.shipment || {};
+  const courierName = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || shipment.raw?.courier?.name || "";
+  return [
+    order.id,
+    courierName || "Courier",
+    shipment.waybillId || "-",
+    shipment.trackingLink || biteshipDocumentUrl(order) || "-",
+    biteshipDocumentUrl(order) || shipment.trackingLink || "-"
+  ];
+}
+
+async function sendWhatsappAdminAlert(order, eventLabel = "") {
+  const adminNumber = String(process.env.WHATSAPP_ADMIN_NUMBER || "").trim();
+  const templateName = String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim();
+  if (!adminNumber || !templateName) {
+    throw new Error("Admin WhatsApp number or template name is missing");
+  }
+
+  return sendWhatsappTemplateMessage(adminNumber, templateName, adminWhatsappParameters(order, eventLabel), {
+    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+    headerDocumentUrl: whatsappDocumentAttachmentUrl(xenditInvoiceUrl(order)),
+    headerDocumentFilename: `${order.id}-xendit-invoice.pdf`
+  });
+}
+
+async function sendWhatsappPaymentReceipt(order) {
+  const templateName = String(process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME || "").trim();
+  if (!templateName) {
+    throw new Error("WHATSAPP_RECEIPT_TEMPLATE_NAME is not configured");
+  }
+
+  return sendWhatsappTemplateMessage(order.customer.phone, templateName, receiptWhatsappParameters(order), {
+    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+    headerDocumentUrl: whatsappDocumentAttachmentUrl(xenditInvoiceUrl(order)),
+    headerDocumentFilename: `${order.id}-payment-receipt.pdf`
+  });
+}
+
+async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
+  const skipReason = (() => {
+    if (order.mode === "test") return "test_order";
+    if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
+    if (!process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME) return "receipt_template_not_configured";
+    if (eventKey && order.whatsappReceiptNotification?.lastNotificationKey === eventKey) return "already_sent";
+    return "";
+  })();
+  if (skipReason) {
+    return { sent: false, skipped: true, reason: skipReason };
+  }
+
+  try {
+    const messageResponse = await sendWhatsappPaymentReceipt(order);
+    order.whatsappReceiptNotification = {
+      lastNotificationKey: eventKey,
+      lastSentAt: new Date().toISOString(),
+      messageId: messageResponse?.messages?.[0]?.id || ""
+    };
+    delete order.whatsappReceiptNotificationError;
+    return { sent: true, messageId: messageResponse?.messages?.[0]?.id || "" };
+  } catch (error) {
+    order.whatsappReceiptNotificationError = error.message;
+    return { sent: false, skipped: false, error: error.message };
+  }
+}
+
+async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
+  const templateName = String(admin
+    ? process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || ""
+    : process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || ""
+  ).trim();
+  if (!templateName) {
+    throw new Error(admin ? "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME is not configured" : "WHATSAPP_SHIPPING_TEMPLATE_NAME is not configured");
+  }
+  const recipient = admin ? process.env.WHATSAPP_ADMIN_NUMBER : order.customer.phone;
+  const documentUrl = whatsappDocumentAttachmentUrl(biteshipDocumentUrl(order));
+  return sendWhatsappTemplateMessage(recipient, templateName, shippingWhatsappParameters(order), {
+    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+    headerDocumentUrl: documentUrl,
+    headerDocumentFilename: `${order.id}-shipping.pdf`
+  });
+}
+
+async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = false } = {}) {
+  const skipReason = (() => {
+    if (order.mode === "test") return "test_order";
+    if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
+    if (admin && !process.env.WHATSAPP_ADMIN_NUMBER) return "admin_number_not_configured";
+    if (admin && !(process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME)) return "admin_shipping_template_not_configured";
+    if (!admin && !process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME) return "shipping_template_not_configured";
+    const bucket = admin ? order.adminWhatsappShippingNotification : order.whatsappShippingNotification;
+    if (eventKey && bucket?.lastNotificationKey === eventKey) return "already_sent";
+    return "";
+  })();
+  if (skipReason) {
+    return { sent: false, skipped: true, reason: skipReason };
+  }
+
+  try {
+    const messageResponse = await sendWhatsappShippingUpdate(order, { admin });
+    const record = {
+      lastNotificationKey: eventKey,
+      lastSentAt: new Date().toISOString(),
+      messageId: messageResponse?.messages?.[0]?.id || ""
+    };
+    if (admin) {
+      order.adminWhatsappShippingNotification = record;
+      delete order.adminWhatsappShippingNotificationError;
+    } else {
+      order.whatsappShippingNotification = record;
+      delete order.whatsappShippingNotificationError;
+    }
+    return { sent: true, messageId: record.messageId };
+  } catch (error) {
+    if (admin) {
+      order.adminWhatsappShippingNotificationError = error.message;
+    } else {
+      order.whatsappShippingNotificationError = error.message;
+    }
+    return { sent: false, skipped: false, error: error.message };
+  }
+}
+
+async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = "") {
+  const skipReason = (() => {
+    if (order.mode === "test") return "test_order";
+    if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
+    if (!process.env.WHATSAPP_ADMIN_NUMBER) return "admin_number_not_configured";
+    if (!process.env.WHATSAPP_ADMIN_TEMPLATE_NAME) return "admin_template_not_configured";
+    if (eventKey && order.adminWhatsappNotifications?.lastNotificationKey === eventKey) return "already_sent";
+    return "";
+  })();
+  if (skipReason) {
+    return { sent: false, skipped: true, reason: skipReason };
+  }
+
+  try {
+    const messageResponse = await sendWhatsappAdminAlert(order, eventLabel);
+    order.adminWhatsappNotifications = {
+      ...order.adminWhatsappNotifications,
+      lastNotificationKey: eventKey,
+      lastSentAt: new Date().toISOString(),
+      messageId: messageResponse?.messages?.[0]?.id || order.adminWhatsappNotifications?.messageId || ""
+    };
+    delete order.adminWhatsappNotificationError;
+    return { sent: true, messageId: messageResponse?.messages?.[0]?.id || "" };
+  } catch (error) {
+    order.adminWhatsappNotificationError = error.message;
+    return { sent: false, skipped: false, error: error.message };
+  }
 }
 
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
@@ -539,29 +804,110 @@ function verifyMetaWebhookSignature(request, rawBody) {
   return timingSafeEqualString(signatureHeader, expectedSignature);
 }
 
-function processWhatsappWebhook(payload) {
+function incomingWhatsappMessages(payload) {
+  const valueEntries = Array.isArray(payload?.entry)
+    ? payload.entry.flatMap((entry) => Array.isArray(entry.changes) ? entry.changes : [])
+    : [];
+  return valueEntries.flatMap((change) => Array.isArray(change?.value?.messages) ? change.value.messages : []);
+}
+
+function isConfiguredAdminWhatsapp(from = "") {
+  const adminNumber = formatIndonesianPhone(process.env.WHATSAPP_ADMIN_NUMBER || "");
+  const sender = formatIndonesianPhone(from);
+  return Boolean(adminNumber && sender && adminNumber === sender);
+}
+
+function parseAdminApproveCommand(text = "") {
+  const normalized = String(text || "").trim().toUpperCase();
+  const match = normalized.match(/^(APPROVE|READY|KIRIM|SEND)\s+([A-Z]+-\d+)/);
+  return match ? match[2] : "";
+}
+
+function parseAdminCancelCommand(text = "") {
+  const normalized = String(text || "").trim().toUpperCase();
+  const match = normalized.match(/^(CANCEL|REFUND|EMPTY|NO STOCK|OUT OF STOCK)\s+([A-Z]+-\d+)/);
+  return match ? match[2] : "";
+}
+
+async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by admin") {
+  const order = findOrder(mode, orderId);
+  if (!order) {
+    throw new Error("Order not found");
+  }
+  if (!["paid", "preparing"].includes(order.status)) {
+    throw new Error("Only paid or preparing orders can be cancelled from WhatsApp");
+  }
+  if (order.fulfillment?.shipment?.orderId) {
+    throw new Error("Delivery already requested. Cancel the shipment in Biteship before refunding.");
+  }
+
+  const previousStatus = order.status;
+  order.status = "cancelled";
+  order.cancelledAt = new Date().toISOString();
+  order.cancelReason = reason;
+  order.whatsappUrl = buildWhatsappUrl(order);
+  await attemptXenditRefund(order, reason);
+  await maybeSendWhatsappOrderStatus(order, previousStatus, { notificationKey: `order:${order.id}:cancelled` });
+  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:cancelled`, `Order cancelled - ${order.refund?.status || "refund pending"}`);
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return enrichOrder(order);
+}
+
+async function processWhatsappAdminCommand(message = {}) {
+  if (!isConfiguredAdminWhatsapp(message.from)) {
+    return { handled: false, reason: "not_admin" };
+  }
+  const text =
+    message.text?.body ||
+    message.button?.payload ||
+    message.button?.text ||
+    message.interactive?.button_reply?.id ||
+    message.interactive?.button_reply?.title ||
+    "";
+  const cancelOrderId = parseAdminCancelCommand(text);
+  if (cancelOrderId) {
+    const order = await cancelPaidOrderFromAdmin("live", cancelOrderId, "Cancelled from WhatsApp by admin");
+    return { handled: true, action: "cancel", orderId: order.id };
+  }
+  const orderId = parseAdminApproveCommand(text);
+  if (!orderId) {
+    return { handled: false, reason: "not_approve_command" };
+  }
+  const order = await approveOrderForDelivery("live", orderId, { role: "whatsapp_admin" });
+  return { handled: true, action: "approve", orderId: order.id };
+}
+
+async function processWhatsappWebhook(payload) {
   const valueEntries = Array.isArray(payload?.entry)
     ? payload.entry.flatMap((entry) => Array.isArray(entry.changes) ? entry.changes : [])
     : [];
   const statuses = valueEntries.flatMap((change) => Array.isArray(change?.value?.statuses) ? change.value.statuses : []);
-  if (!statuses.length) {
-    return;
+  const messages = incomingWhatsappMessages(payload);
+
+  if (statuses.length) {
+    stores.live.orders.forEach((order) => {
+      if (!order.whatsappNotifications?.messageId) {
+        return;
+      }
+      const status = statuses.find((entry) => entry.id === order.whatsappNotifications.messageId);
+      if (!status) {
+        return;
+      }
+      order.whatsappNotifications.lastDeliveryStatus = status.status || "";
+      order.whatsappNotifications.lastDeliveryAt = status.timestamp
+        ? new Date(Number(status.timestamp) * 1000).toISOString()
+        : new Date().toISOString();
+    });
+    saveOrders(ordersLivePath, stores.live.orders);
   }
 
-  stores.live.orders.forEach((order) => {
-    if (!order.whatsappNotifications?.messageId) {
-      return;
+  for (const message of messages) {
+    try {
+      await processWhatsappAdminCommand(message);
+    } catch (error) {
+      console.warn("Unable to process WhatsApp admin command:", error.message);
     }
-    const status = statuses.find((entry) => entry.id === order.whatsappNotifications.messageId);
-    if (!status) {
-      return;
-    }
-    order.whatsappNotifications.lastDeliveryStatus = status.status || "";
-    order.whatsappNotifications.lastDeliveryAt = status.timestamp
-      ? new Date(Number(status.timestamp) * 1000).toISOString()
-      : new Date().toISOString();
-  });
-  saveOrders(ordersLivePath, stores.live.orders);
+  }
 }
 
 function isPlaceholderValue(value = "") {
@@ -597,6 +943,11 @@ function readIntegrationSettings() {
     whatsappGraphVersion: configuredValue(savedSettings.whatsappGraphVersion, envMap.WHATSAPP_GRAPH_VERSION, config.whatsappGraphVersion) || "v22.0",
     whatsappOtpTemplateName: configuredValue(savedSettings.whatsappOtpTemplateName, envMap.WHATSAPP_OTP_TEMPLATE_NAME, config.whatsappOtpTemplateName),
     whatsappOrderTemplateName: configuredValue(savedSettings.whatsappOrderTemplateName, envMap.WHATSAPP_ORDER_TEMPLATE_NAME, config.whatsappOrderTemplateName),
+    whatsappReceiptTemplateName: configuredValue(savedSettings.whatsappReceiptTemplateName, envMap.WHATSAPP_RECEIPT_TEMPLATE_NAME, config.whatsappReceiptTemplateName),
+    whatsappShippingTemplateName: configuredValue(savedSettings.whatsappShippingTemplateName, envMap.WHATSAPP_SHIPPING_TEMPLATE_NAME, config.whatsappShippingTemplateName),
+    whatsappAdminNumber: configuredValue(savedSettings.whatsappAdminNumber, envMap.WHATSAPP_ADMIN_NUMBER, config.whatsappAdminNumber),
+    whatsappAdminTemplateName: configuredValue(savedSettings.whatsappAdminTemplateName, envMap.WHATSAPP_ADMIN_TEMPLATE_NAME, config.whatsappAdminTemplateName),
+    whatsappAdminShippingTemplateName: configuredValue(savedSettings.whatsappAdminShippingTemplateName, envMap.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME, config.whatsappAdminShippingTemplateName),
     whatsappTemplateLanguage: configuredValue(savedSettings.whatsappTemplateLanguage, envMap.WHATSAPP_TEMPLATE_LANGUAGE, config.whatsappTemplateLanguage) || "en"
   };
   settings.xenditEnvironment = settings.xenditEnvironment === "live" ? "live" : "test";
@@ -634,6 +985,11 @@ function saveIntegrationSettings(input = {}) {
     whatsappOrderTemplateName: String(input.whatsappOrderTemplateName || "").trim() === "order_status_update"
       ? "order_received"
       : String(input.whatsappOrderTemplateName || "").trim(),
+    whatsappReceiptTemplateName: String(input.whatsappReceiptTemplateName || "").trim(),
+    whatsappShippingTemplateName: String(input.whatsappShippingTemplateName || "").trim(),
+    whatsappAdminNumber: String(input.whatsappAdminNumber || "").trim(),
+    whatsappAdminTemplateName: String(input.whatsappAdminTemplateName || "").trim(),
+    whatsappAdminShippingTemplateName: String(input.whatsappAdminShippingTemplateName || "").trim(),
     whatsappTemplateLanguage: String(input.whatsappTemplateLanguage || "en").trim() || "en"
   };
 
@@ -656,6 +1012,11 @@ function saveIntegrationSettings(input = {}) {
       WHATSAPP_GRAPH_VERSION: nextSettings.whatsappGraphVersion,
       WHATSAPP_OTP_TEMPLATE_NAME: nextSettings.whatsappOtpTemplateName,
       WHATSAPP_ORDER_TEMPLATE_NAME: nextSettings.whatsappOrderTemplateName,
+      WHATSAPP_RECEIPT_TEMPLATE_NAME: nextSettings.whatsappReceiptTemplateName,
+      WHATSAPP_SHIPPING_TEMPLATE_NAME: nextSettings.whatsappShippingTemplateName,
+      WHATSAPP_ADMIN_NUMBER: nextSettings.whatsappAdminNumber,
+      WHATSAPP_ADMIN_TEMPLATE_NAME: nextSettings.whatsappAdminTemplateName,
+      WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: nextSettings.whatsappAdminShippingTemplateName,
       WHATSAPP_TEMPLATE_LANGUAGE: nextSettings.whatsappTemplateLanguage
     });
   } catch (error) {
@@ -677,6 +1038,11 @@ function saveIntegrationSettings(input = {}) {
   process.env.WHATSAPP_GRAPH_VERSION = nextSettings.whatsappGraphVersion;
   process.env.WHATSAPP_OTP_TEMPLATE_NAME = nextSettings.whatsappOtpTemplateName;
   process.env.WHATSAPP_ORDER_TEMPLATE_NAME = nextSettings.whatsappOrderTemplateName;
+  process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME = nextSettings.whatsappReceiptTemplateName;
+  process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME = nextSettings.whatsappShippingTemplateName;
+  process.env.WHATSAPP_ADMIN_NUMBER = nextSettings.whatsappAdminNumber;
+  process.env.WHATSAPP_ADMIN_TEMPLATE_NAME = nextSettings.whatsappAdminTemplateName;
+  process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME = nextSettings.whatsappAdminShippingTemplateName;
   process.env.WHATSAPP_TEMPLATE_LANGUAGE = nextSettings.whatsappTemplateLanguage;
 
   return nextSettings;
@@ -866,6 +1232,16 @@ function timingSafeEqualString(left, right) {
     return false;
   }
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function tokenDebug(value = "") {
+  const token = String(value || "").trim();
+  return {
+    present: Boolean(token),
+    length: token.length,
+    prefix: token ? `${token.slice(0, 6)}...` : "",
+    suffix: token ? `...${token.slice(-6)}` : ""
+  };
 }
 
 function encodeBase64Url(value) {
@@ -1124,6 +1500,15 @@ function getStoreState(mode) {
 
 function getStoreConfig() {
   const integrationConfig = getIntegrationConfig();
+  const businessHours = {
+    enabled: catalog.store.businessHoursEnabled !== false,
+    timezone: String(catalog.store.businessHoursTimezone || "Asia/Makassar"),
+    open: String(catalog.store.businessHoursOpen || "09:00"),
+    close: String(catalog.store.businessHoursClose || "17:00"),
+    days: Array.isArray(catalog.store.businessHoursDays) && catalog.store.businessHoursDays.length
+      ? catalog.store.businessHoursDays
+      : [1, 2, 3, 4, 5, 6, 0]
+  };
   return {
     ...catalog.store,
     deliveryFee: Number(catalog.store.deliveryFee || 21000),
@@ -1147,6 +1532,8 @@ function getStoreConfig() {
     whatsappPrompt: String(
       catalog.store.whatsappPrompt || "Enter your WhatsApp number to continue ordering."
     ),
+    businessHours,
+    isOpenNow: isStoreOpenNow(businessHours),
     integrations: {
       googleMapsApiKey: integrationConfig.googleMapsApiKey,
       biteshipEnabled: Boolean(integrationConfig.biteshipApiKey),
@@ -1156,6 +1543,46 @@ function getStoreConfig() {
       xenditEnvironment: integrationConfig.xenditEnvironment
     }
   };
+}
+
+function baliDateParts(date = new Date(), timeZone = "Asia/Makassar") {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  const dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    day: dayMap[parts.weekday] ?? 0,
+    minutes: Number(parts.hour || 0) * 60 + Number(parts.minute || 0)
+  };
+}
+
+function timeToMinutes(value = "00:00") {
+  const [hour, minute] = String(value).split(":").map((entry) => Number(entry || 0));
+  return hour * 60 + minute;
+}
+
+function isStoreOpenNow(hours = {}, date = new Date()) {
+  if (hours.enabled === false) return true;
+  const parts = baliDateParts(date, hours.timezone || "Asia/Makassar");
+  const days = Array.isArray(hours.days) ? hours.days.map(Number) : [1, 2, 3, 4, 5, 6, 0];
+  if (!days.includes(parts.day)) return false;
+  const open = timeToMinutes(hours.open || "09:00");
+  const close = timeToMinutes(hours.close || "17:00");
+  return parts.minutes >= open && parts.minutes < close;
+}
+
+function assertStoreIsOpen() {
+  const store = getStoreConfig();
+  if (!isStoreOpenNow(store.businessHours)) {
+    throw new Error(`Online ordering is open daily from ${store.businessHours.open} to ${store.businessHours.close} Bali time.`);
+  }
 }
 
 function findMenuItem(itemId) {
@@ -1357,7 +1784,7 @@ function hasCompleteDestination(destination) {
 function normalizeCheckoutDraft(input = {}) {
   const customer = normalizeCustomerDetails(input.customer);
   const fulfillmentType = "delivery";
-  const paymentMethodId = String(input.paymentMethodId || "qris").trim() || "qris";
+  const paymentMethodId = String(input.paymentMethodId || "xendit-card").trim() || "xendit-card";
 
   return {
     customer,
@@ -1867,8 +2294,11 @@ async function createBiteshipShipment(order) {
     orderId: parsed.id || parsed.order_id || "",
     status: parsed.status || "",
     waybillId: parsed.waybill_id || "",
+    labelUrl: parsed.label_url || parsed.shipping_label_url || parsed.courier?.label_url || "",
+    invoiceUrl: parsed.invoice_url || parsed.delivery_invoice_url || "",
+    waybillUrl: parsed.waybill_url || parsed.courier?.waybill_url || "",
     courier: parsed.courier || null,
-    trackingLink: parsed.courier?.link || parsed.tracking_link || "",
+    trackingLink: parsed.courier?.link || parsed.tracking_link || parsed.tracking_url || "",
     createdAt: new Date().toISOString(),
     raw: parsed
   };
@@ -1877,8 +2307,9 @@ async function createBiteshipShipment(order) {
 async function maybeCreateBiteshipShipment(order) {
   if (
     order.mode !== "live" ||
-    order.status !== "paid" ||
+    order.status !== "preparing" ||
     order.fulfillment?.type !== "delivery" ||
+    !order.fulfillment?.approval?.approvedAt ||
     order.fulfillment?.shipment?.orderId
   ) {
     return;
@@ -1894,6 +2325,41 @@ async function maybeCreateBiteshipShipment(order) {
   } catch (error) {
     order.fulfillment.shipmentError = error.message;
   }
+}
+
+async function approveOrderForDelivery(mode, orderId, session) {
+  const order = findOrder(mode, orderId);
+  if (!order) {
+    throw new Error("Order not found");
+  }
+  if (order.status !== "paid" && order.status !== "preparing") {
+    throw new Error("Only paid orders can be approved for delivery");
+  }
+  if (order.fulfillment?.type !== "delivery") {
+    throw new Error("Only delivery orders can be approved for Biteship");
+  }
+
+  const previousStatus = order.status;
+  order.status = "preparing";
+  order.fulfillment = {
+    ...order.fulfillment,
+    approval: {
+      status: "approved",
+      approvedAt: order.fulfillment?.approval?.approvedAt || new Date().toISOString(),
+      approvedBy: session?.role || "admin"
+    }
+  };
+  order.whatsappUrl = buildWhatsappUrl(order);
+
+  await maybeCreateBiteshipShipment(order);
+  await maybeSendWhatsappOrderStatus(order, previousStatus);
+  const shippingKey = `order:${order.id}:shipping:${order.fulfillment?.shipment?.orderId || "requested"}`;
+  await maybeSendWhatsappShippingUpdate(order, shippingKey);
+  await maybeSendWhatsappShippingUpdate(order, `${shippingKey}:admin`, { admin: true });
+  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-approved`, "Delivery approved - courier requested");
+
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return enrichOrder(order);
 }
 
 function normalizeBiteshipWebhookPayload(body = {}) {
@@ -2117,7 +2583,7 @@ function getPublicOrderUrl(order) {
 
 function buildXenditInvoicePayload(order) {
   const returnUrl = getPublicOrderUrl(order);
-  return {
+  const payload = {
     external_id: order.id,
     amount: order.pricing.total,
     currency: "IDR",
@@ -2127,6 +2593,12 @@ function buildXenditInvoicePayload(order) {
     failure_redirect_url: returnUrl,
     invoice_duration: 86400
   };
+
+  if (Array.isArray(order.payment?.xenditPaymentMethods) && order.payment.xenditPaymentMethods.length) {
+    payload.payment_methods = order.payment.xenditPaymentMethods;
+  }
+
+  return payload;
 }
 
 async function createXenditInvoice(order) {
@@ -2165,6 +2637,7 @@ function applyXenditInvoiceToPayment(payment, invoice) {
     provider: "xendit",
     status: String(invoice.status || "PENDING").toLowerCase(),
     transactionId: invoice.id || "",
+    paymentId: invoice.payment_id || invoice.charge_id || invoice.payment_request_id || payment.paymentId || "",
     externalId: invoice.external_id || "",
     invoiceUrl: invoice.invoice_url || "",
     paymentUrl: invoice.invoice_url || "",
@@ -2174,6 +2647,43 @@ function applyXenditInvoiceToPayment(payment, invoice) {
     rawStatus: invoice.status || "",
     instructions: "Open the secure Xendit payment page to complete your payment."
   };
+}
+
+async function attemptXenditRefund(order, reason = "Requested by admin") {
+  const paymentId = order.payment?.paymentId || order.payment?.chargeId || "";
+  if (!isXenditReady() || !paymentId) {
+    order.refund = {
+      status: "manual_required",
+      reason,
+      message: "No Xendit payment id was available. Refund from Xendit dashboard.",
+      requestedAt: new Date().toISOString()
+    };
+    return order.refund;
+  }
+
+  const response = await fetch("https://api.xendit.co/refunds", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: xenditAuthHeader()
+    },
+    body: JSON.stringify({
+      payment_id: paymentId,
+      amount: order.pricing?.total || 0,
+      reason,
+      reference_id: `${order.id}-refund`
+    })
+  });
+  const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+  order.refund = {
+    status: response.ok ? "requested" : "manual_required",
+    reason,
+    requestedAt: new Date().toISOString(),
+    response: payload,
+    message: response.ok ? "Refund requested in Xendit." : (payload.message || payload.error_code || "Refund request failed. Refund manually from Xendit dashboard.")
+  };
+  return order.refund;
 }
 
 async function fetchXenditInvoiceStatus(order) {
@@ -2229,32 +2739,11 @@ function buildPaymentDetails(orderId, methodId, total) {
     };
   }
 
-  const method = PAYMENT_METHODS.find((entry) => entry.id === methodId) || PAYMENT_METHODS[1];
-  if (method.kind === "qris") {
-    return {
-      ...method,
-      status: "pending",
-      qrCodeData: generateQrSvgData(`${orderId}:${total}`),
-      instructions:
-        "Scan the QR code with your mobile banking app or e-wallet to complete payment."
-    };
-  }
-
-  if (method.kind === "va") {
-    const base = `${method.bankCode}${String(makeNumericSeed(orderId)).padStart(13, "0")}`;
-    return {
-      ...method,
-      status: "pending",
-      accountNumber: base.slice(0, 16),
-      instructions: `Please only submit your virtual account payment directly from your account at ${method.logoText}.`
-    };
-  }
-
+  const method = PAYMENT_METHODS.find((entry) => entry.id === methodId) || PAYMENT_METHODS[0];
   return {
     ...method,
     status: "pending",
-    maskedCard: `•••• ${String(makeNumericSeed(orderId)).slice(-4).padStart(4, "0")}`,
-    instructions: "Use this placeholder card method in test mode to continue the ordering flow."
+    instructions: `${method.description} Payment is processed securely by Xendit.`
   };
 }
 
@@ -2262,6 +2751,7 @@ function enrichOrder(order) {
   if (!order) return null;
   return {
     ...order,
+    documentUrl: getPublicDocumentUrl(order),
     lineItems: order.items
       .map(({ itemId, quantity }) => {
         const item = findMenuItem(itemId);
@@ -2274,6 +2764,16 @@ function enrichOrder(order) {
         };
       })
       .filter(Boolean)
+  };
+}
+
+function buildOrderDocument(order) {
+  const enriched = enrichOrder(order);
+  if (!enriched) return null;
+  return {
+    store: getStoreConfig(),
+    order: enriched,
+    generatedAt: new Date().toISOString()
   };
 }
 
@@ -2326,6 +2826,8 @@ function customerOwnsOrder(session, order) {
 }
 
 function validateCheckoutDraft(draft, summary) {
+  assertStoreIsOpen();
+
   if (!summary.itemCount) {
     throw new Error("Your basket is empty");
   }
@@ -2471,6 +2973,7 @@ async function createOrder(mode, payload, cartOverride = null) {
     expiresAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
     status: isZeroTotalOrder ? "paid" : "awaiting_payment",
     paidAt: isZeroTotalOrder ? now.toISOString() : "",
+    receiptToken: crypto.randomBytes(18).toString("hex"),
     itemCount: summary.itemCount,
     items: summary.items,
     customer: draft.customer,
@@ -2502,8 +3005,11 @@ async function createOrder(mode, payload, cartOverride = null) {
     lastSentAt: ""
   };
 
-  await maybeCreateBiteshipShipment(order);
   await maybeSendWhatsappOrderStatus(order, "");
+  if (isZeroTotalOrder) {
+    await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
+  }
+  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:created`, "Order created");
 
   storeState.orders.unshift(order);
   saveOrders(ordersPathForMode(mode), storeState.orders);
@@ -2552,8 +3058,13 @@ async function updateOrderPaymentStatus(mode, orderId) {
     order.whatsappUrl = buildWhatsappUrl(order);
   }
 
-  await maybeCreateBiteshipShipment(order);
   await maybeSendWhatsappOrderStatus(order, previousStatus);
+  if (previousStatus !== order.status) {
+    if (order.status === "paid") {
+      await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
+    }
+    await maybeSendWhatsappAdminAlert(order, `order:${order.id}:status:${order.status}`, humanizeOrderStatus(order));
+  }
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
@@ -2675,13 +3186,13 @@ function handleApi(requestUrl, request, response) {
 
   if (request.method === "POST" && (pathname === "/api/webhooks/whatsapp" || pathname === "/api/whatsapp/webhook")) {
     parseRawBody(request)
-      .then((rawBody) => {
+      .then(async (rawBody) => {
         if (!verifyMetaWebhookSignature(request, rawBody)) {
           sendJson(response, 403, { error: "Invalid WhatsApp webhook signature" });
           return;
         }
         const payload = parseJsonSafely(rawBody, {});
-        processWhatsappWebhook(payload);
+        await processWhatsappWebhook(payload);
         sendJson(response, 200, { ok: true });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -2728,6 +3239,25 @@ function handleApi(requestUrl, request, response) {
             body.courier_waybill_id ||
             order.fulfillment.shipment.waybillId ||
             "",
+          labelUrl:
+            payload.label_url ||
+            payload.shipping_label_url ||
+            body.label_url ||
+            body.shipping_label_url ||
+            order.fulfillment.shipment.labelUrl ||
+            "",
+          invoiceUrl:
+            payload.invoice_url ||
+            payload.delivery_invoice_url ||
+            body.invoice_url ||
+            body.delivery_invoice_url ||
+            order.fulfillment.shipment.invoiceUrl ||
+            "",
+          waybillUrl:
+            payload.waybill_url ||
+            body.waybill_url ||
+            order.fulfillment.shipment.waybillUrl ||
+            "",
           trackingLink:
             payload.courier?.link ||
             payload.courier_link ||
@@ -2753,6 +3283,13 @@ function handleApi(requestUrl, request, response) {
         const whatsappResult = await maybeSendWhatsappOrderStatus(order, previousStatus, {
           notificationKey: previousShipmentStatus === shipmentStatus ? "" : shipmentNotificationKey
         });
+        const shippingWhatsappResult = await maybeSendWhatsappShippingUpdate(order, shipmentNotificationKey);
+        const adminShippingWhatsappResult = await maybeSendWhatsappShippingUpdate(order, `${shipmentNotificationKey}:admin`, { admin: true });
+        const adminWhatsappResult = await maybeSendWhatsappAdminAlert(
+          order,
+          previousShipmentStatus === shipmentStatus ? "" : shipmentNotificationKey,
+          `Biteship ${shipmentStatus || "delivery update"}`
+        );
         recordBiteshipWebhookLog({
           matched: true,
           event: payload.event || body.event || "",
@@ -2764,6 +3301,9 @@ function handleApi(requestUrl, request, response) {
           previousShipmentStatus,
           shipmentStatus,
           whatsappResult,
+          shippingWhatsappResult,
+          adminShippingWhatsappResult,
+          adminWhatsappResult,
           body
         });
         saveOrders(ordersLivePath, stores.live.orders);
@@ -2894,6 +3434,22 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "GET" && pathname === "/api/order/document") {
+    const orderId = String(requestUrl.searchParams.get("id") || "").trim();
+    const token = String(requestUrl.searchParams.get("token") || "").trim();
+    const order = findOrder(mode, orderId);
+    const adminSession = currentAdminSession(request);
+    const customerSession = currentCustomerSession(request);
+    const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
+    const customerOwnsDocument = customerSession && order && customerOwnsOrder(customerSession, order);
+    if (!order || (!tokenMatches && !adminSession && !customerOwnsDocument)) {
+      sendJson(response, 404, { error: "Order document not found" });
+      return true;
+    }
+    sendJson(response, 200, buildOrderDocument(order));
+    return true;
+  }
+
   if (request.method === "GET" && pathname === "/api/orders") {
     const session = requireAdminSession(request, response);
     if (!session) {
@@ -2903,6 +3459,18 @@ function handleApi(requestUrl, request, response) {
       mode,
       orders: storeState.orders.map((order) => enrichOrder(order))
     });
+    return true;
+  }
+
+  if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/approve-delivery")) {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/approve-delivery", ""));
+    approveOrderForDelivery(mode, orderId, session)
+      .then((order) => sendJson(response, 200, { ok: true, order }))
+      .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
   }
 
@@ -2976,7 +3544,8 @@ function handleApi(requestUrl, request, response) {
       prefix: secretKey ? `${secretKey.slice(0, 14)}...` : "",
       looksLikeXenditKey: secretKey.startsWith("xnd_"),
       environment: settings.xenditEnvironment || "test",
-      callbackTokenPresent: Boolean(settings.xenditCallbackToken)
+      callbackTokenPresent: Boolean(settings.xenditCallbackToken),
+      callbackToken: tokenDebug(settings.xenditCallbackToken)
     });
     return true;
   }
@@ -3183,9 +3752,14 @@ function handleApi(requestUrl, request, response) {
     parseBody(request)
       .then(async (body) => {
         const { xenditCallbackToken } = getIntegrationConfig();
-        const callbackToken = String(request.headers["x-callback-token"] || "");
-        if (xenditCallbackToken && callbackToken !== xenditCallbackToken) {
-          sendJson(response, 403, { error: "Invalid Xendit callback token" });
+        const expectedToken = String(xenditCallbackToken || "").trim();
+        const callbackToken = String(request.headers["x-callback-token"] || "").trim();
+        if (expectedToken && callbackToken !== expectedToken) {
+          sendJson(response, 403, {
+            error: "Invalid Xendit callback token",
+            received: tokenDebug(callbackToken),
+            expected: tokenDebug(expectedToken)
+          });
           return;
         }
 
@@ -3202,8 +3776,13 @@ function handleApi(requestUrl, request, response) {
 
         const previousStatus = order.status;
         applyXenditInvoiceStatusToOrder(order, body);
-        await maybeCreateBiteshipShipment(order);
         await maybeSendWhatsappOrderStatus(order, previousStatus);
+        if (previousStatus !== order.status) {
+          if (order.status === "paid") {
+            await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
+          }
+          await maybeSendWhatsappAdminAlert(order, `order:${order.id}:xendit:${order.status}`, humanizeOrderStatus(order));
+        }
         saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);
         sendJson(response, 200, { ok: true });
       })

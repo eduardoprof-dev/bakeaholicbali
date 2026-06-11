@@ -50,6 +50,7 @@ const applyVoucherButton = document.getElementById("applyVoucherButton");
 const voucherMessage = document.getElementById("voucherMessage");
 const choosePaymentButton = document.getElementById("choosePaymentButton");
 const selectedPaymentButton = document.getElementById("selectedPaymentButton");
+const inlinePaymentMethodList = document.getElementById("inlinePaymentMethodList");
 const paymentLogo = document.getElementById("paymentLogo");
 const paymentMethodLabel = document.getElementById("paymentMethodLabel");
 const paymentMethodHint = document.getElementById("paymentMethodHint");
@@ -140,7 +141,7 @@ const instagramIcon = `
 function loadDraft() {
   const fallback = {
     fulfillmentType: "delivery",
-    paymentMethodId: "qris",
+    paymentMethodId: "xendit-card",
     voucherCode: "",
     deliveryNotes: "",
     orderNotes: "",
@@ -259,8 +260,13 @@ function versionedAsset(path) {
 
 function currentPaymentMethod() {
   return state.paymentMethods.find((method) => method.id === state.draft.paymentMethodId)
-    || state.paymentMethods.find((method) => method.id === "qris")
+    || state.paymentMethods.find((method) => method.id === "xendit-card")
     || state.paymentMethods[0];
+}
+
+function paymentUrlForOrder(order) {
+  const localPaymentUrl = `/pay.html${modeQuery ? `${modeQuery}&order=${order.id}` : `?order=${order.id}`}`;
+  return order.payment?.paymentUrl || localPaymentUrl;
 }
 
 function setCheckoutMessage(message = "", tone = "error") {
@@ -575,14 +581,17 @@ function renderPaymentChoice() {
 
   paymentLogo.textContent = payment.logoText;
   paymentMethodLabel.textContent = payment.label;
-  paymentMethodHint.textContent = payment.kind === "qris"
-    ? "Scan a QR code on the next screen to finish payment."
-    : payment.kind === "va"
-      ? "We will generate a virtual account number after submit."
-      : "Use a placeholder card method for the prototype flow.";
+  paymentMethodHint.textContent = payment.description
+    || "Pay securely through Xendit.";
 
   if (footerPaymentLogo) footerPaymentLogo.textContent = payment.logoText;
   if (footerPaymentLabel) footerPaymentLabel.textContent = payment.label;
+
+  document.querySelectorAll("[data-method-id]").forEach((button) => {
+    const selected = button.dataset.methodId === payment.id;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-pressed", selected ? "true" : "false");
+  });
 }
 
 function findUpsellItem() {
@@ -699,20 +708,23 @@ function renderSummary() {
   }
 }
 
-function renderPaymentModal() {
-  paymentMethodList.innerHTML = state.paymentMethods
-    .map(
-      (method) => `
-        <button class="payment-method-option" type="button" data-method-id="${escapeHtml(method.id)}">
-          <span class="payment-logo">${escapeHtml(method.logoText)}</span>
-          <span>${escapeHtml(method.label)}</span>
-          <span class="address-arrow">›</span>
-        </button>
-      `
-    )
-    .join("");
+function paymentMethodMarkup(method) {
+  const selected = method.id === currentPaymentMethod()?.id;
+  return `
+    <button class="payment-method-option${selected ? " is-selected" : ""}" type="button" data-method-id="${escapeHtml(method.id)}" aria-pressed="${selected ? "true" : "false"}">
+      <span class="payment-logo">${escapeHtml(method.logoText)}</span>
+      <span>
+        <strong>${escapeHtml(method.label)}</strong>
+        ${method.description ? `<small>${escapeHtml(method.description)}</small>` : ""}
+      </span>
+      <span class="payment-check" aria-hidden="true">✓</span>
+    </button>
+  `;
+}
 
-  paymentMethodList.querySelectorAll("[data-method-id]").forEach((button) => {
+function bindPaymentMethodButtons(container) {
+  if (!container) return;
+  container.querySelectorAll("[data-method-id]").forEach((button) => {
     button.addEventListener("click", () => {
       state.draft.paymentMethodId = button.dataset.methodId;
       state.pendingPaymentUrl = "";
@@ -723,6 +735,24 @@ function renderPaymentModal() {
       closeModal(paymentModal);
     });
   });
+}
+
+function renderPaymentModal() {
+  const methodHtml = state.paymentMethods
+    .map(
+      (method) => paymentMethodMarkup(method)
+    )
+    .join("");
+
+  if (inlinePaymentMethodList) {
+    inlinePaymentMethodList.innerHTML = methodHtml;
+    bindPaymentMethodButtons(inlinePaymentMethodList);
+  }
+
+  if (paymentMethodList) {
+    paymentMethodList.innerHTML = methodHtml;
+    bindPaymentMethodButtons(paymentMethodList);
+  }
 }
 
 async function refreshCart() {
@@ -762,6 +792,12 @@ async function submitOrder() {
 
     syncDraftFromForm();
     setCheckoutMessage("");
+    if (state.store?.businessHours?.enabled !== false && state.store?.isOpenNow === false) {
+      const hours = state.store.businessHours;
+      setCheckoutMessage(`Online ordering is open daily from ${hours.open} to ${hours.close} Bali time.`);
+      setSubmitButtonState("Submit Order", state.cart?.itemCount === 0);
+      return;
+    }
     if (!state.draft.customer.phoneVerifiedAt) {
       submitAfterLogin = true;
       openWhatsappModal();
@@ -788,7 +824,7 @@ async function submitOrder() {
     });
 
     localStorage.setItem(latestOrderKey, response.order.id);
-    state.pendingPaymentUrl = `/pay.html${modeQuery ? `${modeQuery}&order=${response.order.id}` : `?order=${response.order.id}`}`;
+    state.pendingPaymentUrl = paymentUrlForOrder(response.order);
     applyCartPayload({
       items: [],
       lineItems: [],
@@ -856,6 +892,10 @@ async function bootstrap() {
   document.title = "Checkout | Bakeaholic Online Shop";
   syncTopLinks();
   syncFooterLinks();
+  if (state.store?.businessHours?.enabled !== false && state.store?.isOpenNow === false) {
+    const hours = state.store.businessHours;
+    setCheckoutMessage(`Online ordering is open daily from ${hours.open} to ${hours.close} Bali time.`);
+  }
   whatsappPrompt.textContent = withVerificationPrompt(state.store.whatsappPrompt);
   await syncSessionProfile();
   hydrateForm();

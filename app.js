@@ -156,7 +156,7 @@ const instagramIcon = `
 function loadDraft() {
   const fallback = {
     fulfillmentType: "delivery",
-    paymentMethodId: "qris",
+    paymentMethodId: "xendit-card",
     voucherCode: "",
     deliveryNotes: "",
     orderNotes: "",

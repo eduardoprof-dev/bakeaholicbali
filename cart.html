@@ -140,16 +140,17 @@
         <section class="cart-section checkout-payment-card">
           <div class="section-head-inline">
             <h2>Payment method</h2>
-            <button class="text-action" id="choosePaymentButton" type="button">Change</button>
+            <button class="text-action" id="choosePaymentButton" type="button" hidden>Change</button>
           </div>
-          <button class="payment-method-card" id="selectedPaymentButton" type="button">
-            <span class="payment-logo" id="paymentLogo">QRIS</span>
+          <button class="payment-method-card" id="selectedPaymentButton" type="button" hidden>
+            <span class="payment-logo" id="paymentLogo">CARD</span>
             <div>
-              <strong id="paymentMethodLabel">QRIS</strong>
-              <p id="paymentMethodHint">Tap to choose how the customer will pay.</p>
+              <strong id="paymentMethodLabel">Credit / Debit Card</strong>
+              <p id="paymentMethodHint">Visa, Mastercard, JCB, Amex</p>
             </div>
             <span class="address-arrow">›</span>
           </button>
+          <div class="payment-method-list inline-payment-method-list" id="inlinePaymentMethodList"></div>
         </section>
 
         <section class="cart-section checkout-message-card" id="checkoutMessageSection" hidden>

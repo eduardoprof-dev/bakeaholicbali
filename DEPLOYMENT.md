@@ -24,12 +24,15 @@ At minimum:
 - `HOST=0.0.0.0`
 - `PORT=4173`
 - `DATA_DIR=/app/data`
+- `PUBLIC_SITE_URL=https://bakeaholicbali.com`
 - `GOOGLE_MAPS_API_KEY=...`
 - `BITESHIP_API_KEY=...`
 - `BITESHIP_COURIERS=gojek,grab`
 - `XENDIT_ENVIRONMENT=test` or `live`
 - `XENDIT_SECRET_KEY=...`
 - `XENDIT_CALLBACK_TOKEN=...`
+
+Activate the customer-facing payment channels in the Xendit dashboard. The storefront offers card, QRIS, and virtual-account choices, then Xendit handles the secure payment flow for the selected channel.
 
 Optional but recommended for live messaging:
 
@@ -41,7 +44,24 @@ Optional but recommended for live messaging:
 - `WHATSAPP_APP_SECRET=...`
 - `WHATSAPP_OTP_TEMPLATE_NAME=...`
 - `WHATSAPP_ORDER_TEMPLATE_NAME=...`
+- `WHATSAPP_RECEIPT_TEMPLATE_NAME=...`
+- `WHATSAPP_SHIPPING_TEMPLATE_NAME=...`
+- `WHATSAPP_ADMIN_NUMBER=...`
+- `WHATSAPP_ADMIN_TEMPLATE_NAME=...`
+- `WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME=...`
 - `WHATSAPP_TEMPLATE_LANGUAGE=en`
+
+For admin alerts, use a Meta-approved template whose body variables match the values the app sends: event/status, order id, customer name, customer phone, total, payment method, delivery status, and invoice URL.
+
+For customer receipts, use a Meta-approved template whose body variables match the values the app sends: order id, total, and receipt URL.
+
+For shipping updates, use a Meta-approved template whose body variables match the values the app sends: order id, courier name, waybill/tracking number, tracking link, and Biteship document/link.
+
+Daily delivery approval can happen from WhatsApp. The configured admin number can reply `APPROVE BAK-0001`, `READY BAK-0001`, `KIRIM BAK-0001`, or `SEND BAK-0001`; the app will then create the Biteship delivery order. If stock is empty, admin can reply `CANCEL BAK-0001`; the app cancels the order and attempts a Xendit refund when a payment id is available, otherwise it marks the refund as manual-required for the Xendit dashboard.
+
+The admin WhatsApp template can also use quick-reply buttons if Meta approves them. Use button payloads/text like `APPROVE {{order_id}}` and `CANCEL {{order_id}}`.
+
+Online checkout is blocked outside store hours. Default hours are daily, 09:00-17:00 Bali time (`Asia/Makassar`).
 
 ## Persistent storage
 

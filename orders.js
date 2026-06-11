@@ -34,7 +34,12 @@ function formatOrderDate(value) {
 function statusMarkup(status) {
   const normalized = String(status || "").toLowerCase();
   const statusLabels = {
-    paid: "Paid",
+    paid: "Paid - preparing soon",
+    preparing: "Preparing",
+    on_delivery: "On delivery",
+    shipped: "On delivery",
+    delivered: "Delivered",
+    complete: "Complete",
     awaiting_payment: "Awaiting payment",
     pending_payment: "Pending payment",
     cancelled: "Cancelled",
@@ -42,7 +47,7 @@ function statusMarkup(status) {
     payment_failed: "Payment failed"
   };
   const label = statusLabels[normalized] || normalized.replaceAll("_", " ");
-  const modifier = normalized === "paid"
+  const modifier = normalized === "paid" || normalized === "preparing" || normalized === "delivered" || normalized === "complete"
     ? " status-paid"
     : normalized === "awaiting_payment" || normalized === "pending_payment"
       ? " status-pending"
