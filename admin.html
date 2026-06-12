@@ -19,17 +19,42 @@
           </div>
         </div>
         <nav class="admin-nav" aria-label="Admin sections">
-          <button class="admin-nav-button is-active" type="button" data-admin-target="store">Storefront</button>
+          <div class="admin-nav-group">
+            <button class="admin-nav-button is-active" type="button" data-admin-target="store">Storefront</button>
+            <div class="admin-subnav">
+              <button type="button" data-admin-target="store">Storefront settings</button>
+              <button type="button" data-admin-target="promo">Promo spotlight</button>
+            </div>
+          </div>
           <button class="admin-nav-button" type="button" data-admin-target="orders">Orders</button>
-          <button class="admin-nav-button" type="button" data-admin-target="story">Homepage</button>
-          <button class="admin-nav-button" type="button" data-admin-target="catalog">Catalog</button>
-          <button class="admin-nav-button" type="button" data-admin-target="integrations">Integrations</button>
-          <button class="admin-nav-button" type="button" data-admin-target="notifications">Notifications</button>
-          <button class="admin-nav-button" type="button" data-admin-target="advanced">Advanced</button>
+          <div class="admin-nav-group">
+            <button class="admin-nav-button" type="button" data-admin-target="story">Homepage</button>
+            <div class="admin-subnav">
+              <button type="button" data-admin-target="story">Story carousel</button>
+            </div>
+          </div>
+          <div class="admin-nav-group">
+            <button class="admin-nav-button" type="button" data-admin-target="catalog">Catalog</button>
+            <div class="admin-subnav">
+              <button type="button" data-admin-target="categories">Categories</button>
+              <button type="button" data-admin-target="catalog">Products</button>
+            </div>
+          </div>
+          <div class="admin-nav-group">
+            <button class="admin-nav-button" type="button" data-admin-target="integrations">Integrations</button>
+            <div class="admin-subnav">
+              <button type="button" data-admin-target="integrations">Google Maps</button>
+              <button type="button" data-admin-target="integrations">Biteship</button>
+              <button type="button" data-admin-target="integrations">Xendit</button>
+              <button type="button" data-admin-target="integrations">WhatsApp</button>
+            </div>
+          </div>
+          <button class="admin-nav-button" type="button" data-admin-target="notifications">Notification flow</button>
+          <button class="admin-nav-button" type="button" data-admin-target="advanced">Developer tools</button>
         </nav>
         <div class="admin-sidebar-links">
-          <a href="/index.html">Open storefront</a>
-          <a href="/index.html?mode=test">Open test mode</a>
+          <a href="/index.html" target="_blank" rel="noreferrer">Open storefront</a>
+          <a href="/index.html?mode=test" target="_blank" rel="noreferrer">Open test mode</a>
           <button id="adminLogoutButton" type="button">Log out</button>
         </div>
       </aside>
@@ -43,15 +68,17 @@
           <div class="admin-actions">
             <select id="adminSectionSelect" class="admin-section-select" aria-label="Admin section">
               <option value="store">Storefront</option>
+              <option value="promo">Promo Spotlight</option>
               <option value="orders">Orders</option>
               <option value="story">Homepage</option>
+              <option value="categories">Categories</option>
               <option value="catalog">Catalog</option>
               <option value="integrations">Integrations</option>
               <option value="notifications">Notifications</option>
               <option value="advanced">Advanced</option>
             </select>
-            <button id="saveCatalogButton" class="admin-button" type="button">Save catalog</button>
-            <button id="addProductButton" class="admin-button secondary" type="button">Add product</button>
+            <button id="saveCatalogButton" class="admin-button" type="button" hidden>Save catalog</button>
+            <button id="addProductButton" class="admin-button secondary" type="button" hidden>Add product</button>
           </div>
           <span id="adminStatus" class="admin-status">Loading catalog...</span>
         </header>
@@ -271,7 +298,7 @@
               <input id="whatsappTemplateLanguageInput" type="text" placeholder="en" />
             </div>
           </div>
-          <p class="helper-text">These values are stored locally in `order-demo/.env` and applied to the app immediately. WhatsApp template names should match templates already approved in Meta. The admin alert template should accept event, order id, customer name, customer phone, total, payment method, delivery status, and invoice URL. The customer receipt template should accept order id, total, and receipt URL.</p>
+          <p class="helper-text">These values are stored locally in `order-demo/.env` and applied to the app immediately. WhatsApp template names should match templates already approved in Meta. The admin alert template should accept event, order id, customer name, customer phone, total, payment method, delivery status, invoice URL, and action text. Receipt and shipping templates use dynamic website buttons for receipt/tracking links.</p>
         </section>
 
         <section class="admin-panel" data-admin-section="notifications" hidden>
@@ -281,7 +308,7 @@
               <p class="helper-text">Current operational behavior for customer and admin WhatsApp messages.</p>
             </div>
           </div>
-          <div class="admin-flow-grid">
+          <div class="admin-flow-grid read-only">
             <article class="admin-flow-card">
               <strong>Order created</strong>
               <p>Customer can receive a pending-payment template if WhatsApp Cloud API and the template are configured.</p>
@@ -299,6 +326,79 @@
               <p>Automated admin WhatsApp alerts use the admin recipient and template from Integrations. Without those, admin watches the orders page and WhatsApp handoff link.</p>
             </article>
           </div>
+          <div class="admin-diagram-stack">
+            <article class="admin-diagram-card">
+              <h3>Customer Order Workflow</h3>
+              <pre class="mermaid">
+flowchart TD
+  A["Customer visits website"] --> B["Selects products"]
+  B --> C["Checkout: address, WhatsApp OTP, payment method"]
+  C --> D["Google Maps validates delivery location"]
+  D --> E["Biteship quote estimates Grab/Gojek delivery fee"]
+  E --> F["Customer pays with Xendit"]
+  F --> G["Xendit sends paid webhook to Bakeaholic app"]
+  G --> H["Customer receives WhatsApp payment receipt"]
+  G --> I["Admin receives WhatsApp order alert"]
+  I --> J{"Admin decision"}
+  J -->|Approve| K["60 second undo window"]
+  J -->|Cancel| L["60 second undo window"]
+  K --> M["Biteship delivery order created"]
+  L --> N["Order cancelled and Xendit refund attempted"]
+  M --> O["Admin receives shipping/print link"]
+  M --> P["Customer receives tracking link"]
+  P --> Q["Driver delivers order"]
+              </pre>
+            </article>
+            <article class="admin-diagram-card">
+              <h3>Provider Handoff Sequence</h3>
+              <pre class="mermaid">
+sequenceDiagram
+  participant Customer
+  participant Website
+  participant GoogleMaps as Google Maps API
+  participant Xendit
+  participant WhatsApp as Meta WhatsApp
+  participant Admin
+  participant Biteship
+  participant Driver
+
+  Customer->>Website: Add products and checkout
+  Website->>GoogleMaps: Validate address and route
+  Website->>Biteship: Request delivery quote
+  Website->>Xendit: Create payment invoice
+  Customer->>Xendit: Pay by QRIS, VA, or card
+  Xendit->>Website: Invoice paid webhook
+  Website->>WhatsApp: Send customer receipt
+  Website->>WhatsApp: Send admin approve/cancel alert
+  Admin->>WhatsApp: Tap Approve
+  WhatsApp->>Website: Approve payload
+  Website->>WhatsApp: Send Undo button
+  Website->>Biteship: Create shipment after 60 seconds
+  Biteship->>Website: Shipment/tracking webhook
+  Website->>WhatsApp: Send tracking to customer/admin
+  Biteship->>Driver: Assign pickup/delivery
+  Driver->>Customer: Deliver order
+              </pre>
+            </article>
+            <article class="admin-diagram-card">
+              <h3>WhatsApp Template Flow</h3>
+              <pre class="mermaid">
+flowchart TD
+  A["Customer verifies phone"] --> B["otp_verification"]
+  C["Order created and awaiting payment"] --> D["payment_pending or Xendit payment page"]
+  E["Xendit confirms paid invoice"] --> F["payment_receipt to customer"]
+  E --> G["admin_order_alert_v2 to admin"]
+  G --> H{"Admin taps button"}
+  H -->|Approve| I["Undo button sent to admin"]
+  H -->|Cancel| J["Undo button sent to admin"]
+  I -->|No undo after 60 seconds| K["Create Biteship delivery"]
+  J -->|No undo after 60 seconds| L["Cancel order and attempt refund"]
+  K --> M["shipping_update to customer"]
+  K --> N["admin_shipping_update to admin"]
+  O["Biteship status changes"] --> P["order_shipped or order_delivered to customer"]
+              </pre>
+            </article>
+          </div>
         </section>
 
         <section class="admin-panel" data-admin-section="advanced" hidden>
@@ -308,10 +408,10 @@
               <p class="helper-text">Developer map for operational code, webhook routes, and WhatsApp command behavior.</p>
             </div>
           </div>
-          <div class="admin-flow-grid">
+          <div class="admin-flow-grid read-only">
             <article class="admin-flow-card">
               <strong>WhatsApp approval</strong>
-              <p>Admin replies APPROVE BAK-0001, READY BAK-0001, KIRIM BAK-0001, or SEND BAK-0001 from the configured admin WhatsApp number. Admin can reply CANCEL BAK-0001 if stock is empty.</p>
+              <p>Admin can tap Approve or Cancel from WhatsApp. The app waits 60 seconds and sends an Undo button before creating the Biteship delivery or starting the cancellation/refund flow. Text commands still work: APPROVE, CANCEL, or APPROVE BAK-0001 when several orders are waiting.</p>
             </article>
             <article class="admin-flow-card">
               <strong>Webhook routes</strong>
@@ -321,6 +421,23 @@
               <strong>Core files</strong>
               <p>server.js controls payments, Biteship, WhatsApp, orders, and webhooks. cart.js controls checkout. admin.js controls this maintenance console.</p>
             </article>
+            <article class="admin-flow-card code-map">
+              <strong>Developer source map</strong>
+              <pre><code>server.js
+  payments, Xendit callbacks, WhatsApp webhooks, Biteship requests
+
+cart.js
+  checkout, customer details, payment method selection
+
+admin.js
+  admin forms, catalog editing, order fallback controls
+
+invoice.js
+  printable receipt, shipping document, tracking links
+
+DATA_DIR
+  persistent JSON storage, expected Railway mount: /app/data</code></pre>
+            </article>
             <article class="admin-flow-card">
               <strong>Daily operations</strong>
               <p>Daily paid-order approval should happen in WhatsApp. The Orders section is only a fallback/debug view for developers.</p>
@@ -328,7 +445,7 @@
           </div>
         </section>
 
-        <section class="admin-panel" data-admin-section="store">
+        <section class="admin-panel" data-admin-section="promo" hidden>
           <h2>Promo Spotlight</h2>
           <div class="admin-grid">
             <div class="admin-field">
@@ -352,7 +469,7 @@
           <div class="story-slide-editor-list" id="brandStorySlideList"></div>
         </section>
 
-        <section class="admin-panel" data-admin-section="catalog" hidden>
+        <section class="admin-panel" data-admin-section="categories" hidden>
           <h2>Categories</h2>
           <p class="helper-text">Keep category ids stable if products already use them.</p>
           <div id="categoryList" class="product-editor-list"></div>
@@ -366,6 +483,7 @@
       </main>
     </div>
 
-    <script src="admin.js?v=20260601-hide-test-otp"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="admin.js?v=20260612-admin-diagrams"></script>
   </body>
 </html>

@@ -51,6 +51,31 @@ function lineItemRows(order) {
   `).join("");
 }
 
+function shipmentDetails(order) {
+  const shipment = order.fulfillment?.shipment || {};
+  const courierName = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || shipment.raw?.courier?.name || "";
+  const trackingLink = shipment.trackingLink || shipment.raw?.courier?.link || "";
+  const documentLink = shipment.labelUrl || shipment.invoiceUrl || shipment.waybillUrl || shipment.raw?.label_url || shipment.raw?.invoice_url || shipment.raw?.waybill_url || "";
+  if (!shipment.orderId && !shipment.status && !courierName && !trackingLink && !documentLink) {
+    return "";
+  }
+
+  return `
+    <section class="invoice-delivery">
+      <div>
+        <p class="eyebrow">Delivery tracking</p>
+        <h2>${escapeHtml(courierName || "Delivery partner")}</h2>
+        <p>Status: ${escapeHtml(shipment.status || order.status || "-")}</p>
+        <p>Waybill: ${escapeHtml(shipment.waybillId || "-")}</p>
+      </div>
+      <div class="invoice-delivery-actions">
+        ${trackingLink ? `<a class="admin-button" href="${escapeHtml(trackingLink)}" target="_blank" rel="noreferrer">Track driver</a>` : ""}
+        ${documentLink ? `<a class="admin-button secondary" href="${escapeHtml(documentLink)}" target="_blank" rel="noreferrer">Open shipping document</a>` : ""}
+      </div>
+    </section>
+  `;
+}
+
 function renderDocument(payload) {
   const { store, order } = payload;
   document.title = `Invoice ${order.id} | Bakeaholic Bali`;
@@ -101,6 +126,8 @@ function renderDocument(payload) {
           <p>Items: ${order.itemCount || 0}</p>
         </div>
       </section>
+
+      ${shipmentDetails(order)}
 
       <table class="invoice-table">
         <thead>

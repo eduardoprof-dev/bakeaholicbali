@@ -21,6 +21,7 @@ const refreshOrdersButton = document.getElementById("refreshOrdersButton");
 const adminSectionSelect = document.getElementById("adminSectionSelect");
 const adminNavButtons = document.querySelectorAll("[data-admin-target]");
 const adminSections = document.querySelectorAll("[data-admin-section]");
+const catalogActionSections = new Set(["store", "promo", "story", "categories", "catalog"]);
 
 const storeFields = {
   name: document.getElementById("storeName"),
@@ -168,6 +169,8 @@ function showAdminSection(sectionName) {
   adminNavButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.adminTarget === sectionName);
   });
+  saveCatalogButton.hidden = !catalogActionSections.has(sectionName);
+  addProductButton.hidden = sectionName !== "catalog";
   if (adminSectionSelect) {
     adminSectionSelect.value = sectionName;
   }
@@ -852,6 +855,20 @@ async function bootstrap() {
   renderAll();
   renderIntegrations(integrations);
   showAdminSection(adminSectionSelect?.value || "store");
+  if (window.mermaid) {
+    window.mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        primaryColor: "#fffaf4",
+        primaryTextColor: "#2e211b",
+        primaryBorderColor: "#d8c7b6",
+        lineColor: "#7a4a2b",
+        secondaryColor: "#f4eadf",
+        tertiaryColor: "#ffffff"
+      }
+    });
+  }
   setStatus("Catalog loaded. Save after making changes.");
 }
 

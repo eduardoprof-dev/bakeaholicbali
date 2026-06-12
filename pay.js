@@ -55,8 +55,12 @@ function lineItemsMarkup() {
   return state.order.lineItems
     .map(
       (entry) => `
-        <div class="purchase-row">
-          <span>${entry.quantity}x ${escapeHtml(entry.item.name)}</span>
+        <div class="purchase-row purchase-row-product">
+          <img class="purchase-row-image" src="${escapeHtml(entry.item.imagePath || "/assets/bakeaholic-logo.jpg")}" alt="${escapeHtml(entry.item.name || "Bakeaholic product")}" />
+          <div class="purchase-row-copy">
+            <span>${entry.quantity}x ${escapeHtml(entry.item.name)}</span>
+            <small>${escapeHtml(entry.item.tagline || entry.item.category || "")}</small>
+          </div>
           <strong>${formatRupiah.format(entry.lineTotal)}</strong>
         </div>
       `

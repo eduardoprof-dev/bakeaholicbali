@@ -53,13 +53,13 @@ Optional but recommended for live messaging:
 
 For admin alerts, use a Meta-approved template whose body variables match the values the app sends: event/status, order id, customer name, customer phone, total, payment method, delivery status, and invoice URL.
 
-For customer receipts, use a Meta-approved template whose body variables match the values the app sends: order id, total, and receipt URL.
+For customer receipts, use a Meta-approved template whose body variables match the values the app sends: order id and total. Add a dynamic website button with base URL `https://checkout.xendit.co/{{1}}`; the app sends the Xendit receipt path into that button.
 
-For shipping updates, use a Meta-approved template whose body variables match the values the app sends: order id, courier name, waybill/tracking number, tracking link, and Biteship document/link.
+For shipping updates, use a Meta-approved template whose body variables match the values the app sends: order id, courier name, waybill/tracking number, tracking link, and Biteship document/link. Add a dynamic website button with base URL `https://bakeaholicbali.com/invoice.html?{{1}}`; the app sends the order document query into that button so customer/admin can open tracking, invoice, and print details.
 
-Daily delivery approval can happen from WhatsApp. The configured admin number can reply `APPROVE BAK-0001`, `READY BAK-0001`, `KIRIM BAK-0001`, or `SEND BAK-0001`; the app will then create the Biteship delivery order. If stock is empty, admin can reply `CANCEL BAK-0001`; the app cancels the order and attempts a Xendit refund when a payment id is available, otherwise it marks the refund as manual-required for the Xendit dashboard.
+Daily delivery approval can happen from WhatsApp. The admin alert template should include quick-reply buttons named `Approve` and `Cancel`; the app sends hidden payloads like `APPROVE BAK-0001` and `CANCEL BAK-0001`. After admin taps a button, the app waits 60 seconds and sends an `Undo` button. If admin does not undo, approve creates the Biteship delivery order; cancel cancels the order and attempts a Xendit refund when a payment id is available, otherwise it marks the refund as manual-required for the Xendit dashboard.
 
-The admin WhatsApp template can also use quick-reply buttons if Meta approves them. Use button payloads/text like `APPROVE {{order_id}}` and `CANCEL {{order_id}}`.
+Text commands also work from the configured admin number: `APPROVE`, `READY`, `KIRIM`, `SEND`, `CANCEL`, or `REFUND`. If several orders are waiting, include the order number, for example `APPROVE BAK-0001`.
 
 Online checkout is blocked outside store hours. Default hours are daily, 09:00-17:00 Bali time (`Asia/Makassar`).
 

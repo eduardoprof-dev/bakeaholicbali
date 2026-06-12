@@ -709,6 +709,32 @@ body::before {
   font-weight: 900;
 }
 
+.purchase-row-product {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.purchase-row-image {
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f2ebe2;
+}
+
+.purchase-row-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.purchase-row-copy small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .checkout-button {
   width: 100%;
   margin-top: 14px;
@@ -794,6 +820,11 @@ body::before {
   gap: 6px;
 }
 
+.admin-nav-group {
+  display: grid;
+  gap: 4px;
+}
+
 .admin-nav-button,
 .admin-sidebar-links button,
 .admin-sidebar-links a {
@@ -813,6 +844,30 @@ body::before {
 .admin-nav-button.is-active {
   background: var(--accent);
   color: #fff;
+}
+
+.admin-subnav {
+  display: grid;
+  gap: 2px;
+  padding-left: 12px;
+}
+
+.admin-subnav button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.admin-subnav button.is-active {
+  color: var(--accent);
+  background: rgba(107, 66, 38, 0.08);
 }
 
 .admin-sidebar-links {
@@ -863,6 +918,54 @@ body::before {
   box-shadow: 0 14px 36px rgba(77, 42, 12, 0.08);
   border-radius: 8px;
   padding: 22px;
+}
+
+.admin-flow-grid.read-only .admin-flow-card {
+  cursor: default;
+}
+
+.admin-flow-card pre {
+  margin: 12px 0 0;
+  padding: 14px;
+  border-radius: 8px;
+  background: rgba(45, 32, 25, 0.06);
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.admin-flow-card code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.86rem;
+  color: var(--text);
+}
+
+.code-map {
+  grid-column: 1 / -1;
+}
+
+.admin-diagram-stack {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.admin-diagram-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 16px;
+  overflow: auto;
+}
+
+.admin-diagram-card h3 {
+  margin-bottom: 10px;
+}
+
+.admin-diagram-card .mermaid {
+  min-width: 680px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 12px;
 }
 
 .admin-panel h2,
@@ -1099,6 +1202,32 @@ body::before {
 
 .invoice-grid p {
   margin: 3px 0;
+}
+
+.invoice-delivery {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 0 0 20px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+}
+
+.invoice-delivery h2 {
+  margin: 4px 0 8px;
+}
+
+.invoice-delivery p {
+  margin: 3px 0;
+}
+
+.invoice-delivery-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .invoice-table {

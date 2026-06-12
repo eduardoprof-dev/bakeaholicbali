@@ -794,9 +794,7 @@ async function submitOrder() {
     setCheckoutMessage("");
     if (state.store?.businessHours?.enabled !== false && state.store?.isOpenNow === false) {
       const hours = state.store.businessHours;
-      setCheckoutMessage(`Online ordering is open daily from ${hours.open} to ${hours.close} Bali time.`);
-      setSubmitButtonState("Submit Order", state.cart?.itemCount === 0);
-      return;
+      setCheckoutMessage(`Online ordering is open 24 hours. Orders placed now will be prepared and sent during working hours, ${hours.open} to ${hours.close} Bali time.`, "success");
     }
     if (!state.draft.customer.phoneVerifiedAt) {
       submitAfterLogin = true;
@@ -894,7 +892,7 @@ async function bootstrap() {
   syncFooterLinks();
   if (state.store?.businessHours?.enabled !== false && state.store?.isOpenNow === false) {
     const hours = state.store.businessHours;
-    setCheckoutMessage(`Online ordering is open daily from ${hours.open} to ${hours.close} Bali time.`);
+    setCheckoutMessage(`Online ordering is open 24 hours. Orders placed now will be prepared and sent during working hours, ${hours.open} to ${hours.close} Bali time.`, "success");
   }
   whatsappPrompt.textContent = withVerificationPrompt(state.store.whatsappPrompt);
   await syncSessionProfile();

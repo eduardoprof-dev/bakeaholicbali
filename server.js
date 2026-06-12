@@ -426,6 +426,42 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = [], op
     });
   }
 
+  if (Array.isArray(options.urlButtonParameters)) {
+    options.urlButtonParameters.forEach((button) => {
+      const text = String(button?.text || "").trim();
+      if (!text) return;
+      templateComponents.push({
+        type: "button",
+        sub_type: "url",
+        index: String(button?.index || "0"),
+        parameters: [
+          {
+            type: "text",
+            text
+          }
+        ]
+      });
+    });
+  }
+
+  if (Array.isArray(options.quickReplyButtons)) {
+    options.quickReplyButtons.slice(0, 3).forEach((button, index) => {
+      const payload = String(button?.payload || "").trim();
+      if (!payload) return;
+      templateComponents.push({
+        type: "button",
+        sub_type: "quick_reply",
+        index: String(index),
+        parameters: [
+          {
+            type: "payload",
+            payload
+          }
+        ]
+      });
+    });
+  }
+
   const buildPayload = (languageCode) => ({
     messaging_product: "whatsapp",
     to: recipient,
@@ -480,6 +516,64 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = [], op
   }
 }
 
+async function sendWhatsappInteractiveButtons(to, bodyText = "", buttons = []) {
+  if (!isWhatsappCloudReady()) {
+    throw new Error("WhatsApp Cloud API is not configured");
+  }
+
+  const recipient = formatIndonesianPhone(to);
+  if (!recipient) {
+    throw new Error("Recipient WhatsApp number is missing");
+  }
+
+  const normalizedButtons = buttons
+    .map((button) => ({
+      id: String(button?.id || "").trim(),
+      title: String(button?.title || "").trim()
+    }))
+    .filter((button) => button.id && button.title)
+    .slice(0, 3);
+
+  if (!normalizedButtons.length) {
+    throw new Error("WhatsApp interactive message needs at least one button");
+  }
+
+  const response = await fetch(whatsappMessagesUrl(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: recipient,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: {
+          text: String(bodyText || "").trim()
+        },
+        action: {
+          buttons: normalizedButtons.map((button) => ({
+            type: "reply",
+            reply: button
+          }))
+        }
+      }
+    })
+  });
+
+  const responseText = await response.text();
+  const parsed = parseJsonSafely(responseText, {});
+  if (!response.ok) {
+    const message =
+      parsed?.error?.message ||
+      `WhatsApp interactive message failed with status ${response.status}`;
+    throw new Error(message);
+  }
+  return parsed;
+}
+
 async function sendWhatsappOtpCode(phone, code) {
   const templateName = String(process.env.WHATSAPP_OTP_TEMPLATE_NAME || "").trim();
   if (!templateName) {
@@ -526,8 +620,26 @@ function getPublicDocumentUrl(order) {
   return `${baseUrl}/invoice.html?order=${encodeURIComponent(order.id)}&token=${encodeURIComponent(ensureOrderReceiptToken(order))}${modeParam}`;
 }
 
+function publicDocumentButtonQuery(order) {
+  const modeParam = order.mode === "test" ? "&mode=test" : "";
+  return `order=${encodeURIComponent(order.id)}&token=${encodeURIComponent(ensureOrderReceiptToken(order))}${modeParam}`;
+}
+
 function xenditInvoiceUrl(order) {
   return order.payment?.invoiceUrl || order.payment?.paymentUrl || getPublicDocumentUrl(order);
+}
+
+function xenditReceiptButtonPath(order) {
+  const receiptUrl = xenditInvoiceUrl(order);
+  try {
+    const parsed = new URL(receiptUrl);
+    if (parsed.hostname === "checkout.xendit.co") {
+      return `${parsed.pathname.replace(/^\/+/, "")}${parsed.search}${parsed.hash}`;
+    }
+  } catch (_error) {
+    return String(receiptUrl || "").trim();
+  }
+  return String(receiptUrl || "").trim();
 }
 
 function biteshipDocumentUrl(order) {
@@ -590,15 +702,14 @@ function adminWhatsappParameters(order, eventLabel = "") {
     order.payment?.label || "",
     order.fulfillment?.shipment?.status || order.status || "",
     documentUrl,
-    order.status === "paid" ? `Reply APPROVE ${order.id} when packed, or CANCEL ${order.id} if stock is empty.` : ""
+    order.status === "paid" ? `Reply APPROVE when packed, or CANCEL if stock is empty. If there is more than one waiting order, reply APPROVE ${order.id} or CANCEL ${order.id}.` : "No staff action needed."
   ];
 }
 
 function receiptWhatsappParameters(order) {
   return [
     order.id,
-    `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`,
-    xenditInvoiceUrl(order)
+    `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`
   ];
 }
 
@@ -624,7 +735,13 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
   return sendWhatsappTemplateMessage(adminNumber, templateName, adminWhatsappParameters(order, eventLabel), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     headerDocumentUrl: whatsappDocumentAttachmentUrl(xenditInvoiceUrl(order)),
-    headerDocumentFilename: `${order.id}-xendit-invoice.pdf`
+    headerDocumentFilename: `${order.id}-xendit-invoice.pdf`,
+    quickReplyButtons: order.status === "paid"
+      ? [
+          { payload: `APPROVE ${order.id}` },
+          { payload: `CANCEL ${order.id}` }
+        ]
+      : []
   });
 }
 
@@ -637,7 +754,13 @@ async function sendWhatsappPaymentReceipt(order) {
   return sendWhatsappTemplateMessage(order.customer.phone, templateName, receiptWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     headerDocumentUrl: whatsappDocumentAttachmentUrl(xenditInvoiceUrl(order)),
-    headerDocumentFilename: `${order.id}-payment-receipt.pdf`
+    headerDocumentFilename: `${order.id}-payment-receipt.pdf`,
+    urlButtonParameters: [
+      {
+        index: "0",
+        text: xenditReceiptButtonPath(order)
+      }
+    ]
   });
 }
 
@@ -681,7 +804,13 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
   return sendWhatsappTemplateMessage(recipient, templateName, shippingWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     headerDocumentUrl: documentUrl,
-    headerDocumentFilename: `${order.id}-shipping.pdf`
+    headerDocumentFilename: `${order.id}-shipping.pdf`,
+    urlButtonParameters: [
+      {
+        index: "0",
+        text: publicDocumentButtonQuery(order)
+      }
+    ]
   });
 }
 
@@ -819,14 +948,95 @@ function isConfiguredAdminWhatsapp(from = "") {
 
 function parseAdminApproveCommand(text = "") {
   const normalized = String(text || "").trim().toUpperCase();
-  const match = normalized.match(/^(APPROVE|READY|KIRIM|SEND)\s+([A-Z]+-\d+)/);
-  return match ? match[2] : "";
+  const match = normalized.match(/^(APPROVE|READY|KIRIM|SEND)(?:\s+([A-Z]+-\d+))?$/);
+  return match ? { action: match[1], orderId: match[2] || "" } : null;
 }
 
 function parseAdminCancelCommand(text = "") {
   const normalized = String(text || "").trim().toUpperCase();
-  const match = normalized.match(/^(CANCEL|REFUND|EMPTY|NO STOCK|OUT OF STOCK)\s+([A-Z]+-\d+)/);
-  return match ? match[2] : "";
+  const match = normalized.match(/^(CANCEL|REFUND|EMPTY|NO STOCK|OUT OF STOCK)(?:\s+([A-Z]+-\d+))?$/);
+  return match ? { action: match[1], orderId: match[2] || "" } : null;
+}
+
+function parseAdminUndoCommand(text = "") {
+  const normalized = String(text || "").trim().toUpperCase();
+  const match = normalized.match(/^UNDO(?:\s+([A-Z]+-\d+))?(?:\s+([A-F0-9]+))?$/);
+  return match ? { action: "UNDO", orderId: match[1] || "", token: match[2] || "" } : null;
+}
+
+function latestOrderTimestamp(order = {}) {
+  return Date.parse(order.paidAt || order.createdAt || "") || 0;
+}
+
+function resolveAdminCommandOrderId(command = {}, candidateStatuses = []) {
+  if (!command) {
+    return "";
+  }
+  if (command.orderId) {
+    return command.orderId;
+  }
+  const candidates = stores.live.orders
+    .filter((order) => candidateStatuses.includes(order.status))
+    .filter((order) => !order.fulfillment?.shipment?.orderId)
+    .sort((a, b) => latestOrderTimestamp(b) - latestOrderTimestamp(a));
+
+  if (candidates.length === 1) {
+    return candidates[0].id;
+  }
+  if (!candidates.length) {
+    throw new Error(`No order is waiting for ${command.action}. Use ${command.action} BAK-0001 if needed.`);
+  }
+  throw new Error(`More than one order is waiting. Reply ${command.action} BAK-0001 with the order number.`);
+}
+
+function resolvePendingAdminActionOrderId(command = {}) {
+  if (command.orderId) {
+    return command.orderId;
+  }
+  const candidates = stores.live.orders.filter((order) => order.adminPendingAction?.token);
+  if (candidates.length === 1) {
+    return candidates[0].id;
+  }
+  if (!candidates.length) {
+    throw new Error("No admin action is waiting to undo.");
+  }
+  throw new Error("More than one action is waiting. Reply UNDO BAK-0001 with the order number.");
+}
+
+function adminActionTimerKey(mode, orderId, token) {
+  return `${mode}:${orderId}:${token}`;
+}
+
+function clearAdminActionTimer(mode, orderId, token) {
+  const key = adminActionTimerKey(mode, orderId, token);
+  const timer = pendingAdminActionTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    pendingAdminActionTimers.delete(key);
+  }
+}
+
+async function sendAdminActionUndoPrompt(order, action) {
+  const adminNumber = String(process.env.WHATSAPP_ADMIN_NUMBER || "").trim();
+  const pending = order.adminPendingAction || {};
+  if (!adminNumber || !pending.token) {
+    return { sent: false, skipped: true, reason: "admin_pending_action_missing" };
+  }
+
+  const actionLabel = action === "cancel" ? "Cancel" : "Approve";
+  const resultText = action === "cancel"
+    ? "cancel the order and start the refund flow"
+    : "request the Biteship delivery";
+  return sendWhatsappInteractiveButtons(
+    adminNumber,
+    `${actionLabel} selected for ${order.id}. The app will ${resultText} in 60 seconds. Tap Undo if this was a mistake.`,
+    [
+      {
+        id: `UNDO ${order.id} ${pending.token}`,
+        title: "Undo"
+      }
+    ]
+  );
 }
 
 async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by admin") {
@@ -853,6 +1063,145 @@ async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by ad
   return enrichOrder(order);
 }
 
+async function finalizePendingAdminOrderAction(mode, orderId, token) {
+  const order = findOrder(mode, orderId);
+  const pending = order?.adminPendingAction;
+  if (!order || !pending || pending.token !== token) {
+    return { handled: false, reason: "pending_action_missing" };
+  }
+  if (Date.parse(pending.executeAt || "") > Date.now()) {
+    scheduleAdminActionTimer(mode, orderId, token);
+    return { handled: false, reason: "pending_action_not_due" };
+  }
+
+  const action = pending.action;
+  delete order.adminPendingAction;
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+
+  if (action === "cancel") {
+    const cancelledOrder = await cancelPaidOrderFromAdmin(mode, orderId, "Cancelled from WhatsApp by admin");
+    return { handled: true, action, orderId: cancelledOrder.id };
+  }
+
+  const approvedOrder = await approveOrderForDelivery(mode, orderId, { role: "whatsapp_admin" });
+  return { handled: true, action: "approve", orderId: approvedOrder.id };
+}
+
+function scheduleAdminActionTimer(mode, orderId, token) {
+  const order = findOrder(mode, orderId);
+  const pending = order?.adminPendingAction;
+  if (!pending || pending.token !== token) {
+    return;
+  }
+
+  clearAdminActionTimer(mode, orderId, token);
+  const delay = Math.max(0, Date.parse(pending.executeAt || "") - Date.now());
+  const key = adminActionTimerKey(mode, orderId, token);
+  const timer = setTimeout(() => {
+    pendingAdminActionTimers.delete(key);
+    finalizePendingAdminOrderAction(mode, orderId, token).catch((error) => {
+      const currentOrder = findOrder(mode, orderId);
+      if (currentOrder?.adminPendingAction?.token === token) {
+        currentOrder.adminPendingAction.error = error.message;
+        currentOrder.adminPendingAction.failedAt = new Date().toISOString();
+        saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+      }
+    });
+  }, delay);
+  pendingAdminActionTimers.set(key, timer);
+}
+
+async function scheduleAdminOrderAction(mode, orderId, action) {
+  const order = findOrder(mode, orderId);
+  if (!order) {
+    throw new Error("Order not found");
+  }
+  if (action === "approve") {
+    if (order.status !== "paid") {
+      throw new Error("Only paid orders can be approved for delivery");
+    }
+    if (order.fulfillment?.type !== "delivery") {
+      throw new Error("Only delivery orders can be approved for Biteship");
+    }
+  }
+  if (action === "cancel") {
+    if (!["paid", "preparing"].includes(order.status)) {
+      throw new Error("Only paid or preparing orders can be cancelled from WhatsApp");
+    }
+    if (order.fulfillment?.shipment?.orderId) {
+      throw new Error("Delivery already requested. Cancel the shipment in Biteship before refunding.");
+    }
+  }
+
+  if (order.adminPendingAction?.token) {
+    clearAdminActionTimer(mode, orderId, order.adminPendingAction.token);
+  }
+
+  const token = crypto.randomBytes(4).toString("hex").toUpperCase();
+  order.adminPendingAction = {
+    action,
+    token,
+    requestedAt: new Date().toISOString(),
+    executeAt: new Date(Date.now() + 60 * 1000).toISOString(),
+    requestedBy: "whatsapp_admin"
+  };
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  scheduleAdminActionTimer(mode, orderId, token);
+
+  try {
+    await sendAdminActionUndoPrompt(order, action);
+    delete order.adminPendingAction.notificationError;
+  } catch (error) {
+    order.adminPendingAction.notificationError = error.message;
+    saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  }
+
+  return enrichOrder(order);
+}
+
+async function undoPendingAdminOrderAction(mode, command = {}) {
+  const orderId = resolvePendingAdminActionOrderId(command);
+  const order = findOrder(mode, orderId);
+  const pending = order?.adminPendingAction;
+  if (!order || !pending) {
+    throw new Error("No admin action is waiting to undo.");
+  }
+  if (command.token && pending.token !== command.token) {
+    throw new Error("This undo button is no longer valid.");
+  }
+  if (Date.parse(pending.executeAt || "") <= Date.now()) {
+    throw new Error("Undo window has already expired.");
+  }
+
+  clearAdminActionTimer(mode, order.id, pending.token);
+  const undoneAction = pending.action;
+  delete order.adminPendingAction;
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+
+  try {
+    await sendWhatsappInteractiveButtons(
+      process.env.WHATSAPP_ADMIN_NUMBER,
+      `Undo confirmed for ${order.id}. The ${undoneAction} action was cancelled.`,
+      [{ id: `APPROVE ${order.id}`, title: "Approve" }]
+    );
+  } catch (_error) {
+    // The undo itself is already saved; this confirmation is best-effort.
+  }
+
+  return enrichOrder(order);
+}
+
+function scheduleExistingPendingAdminActions() {
+  Object.entries(stores).forEach(([mode, storeState]) => {
+    storeState.orders.forEach((order) => {
+      const pending = order.adminPendingAction;
+      if (pending?.token) {
+        scheduleAdminActionTimer(mode, order.id, pending.token);
+      }
+    });
+  });
+}
+
 async function processWhatsappAdminCommand(message = {}) {
   if (!isConfiguredAdminWhatsapp(message.from)) {
     return { handled: false, reason: "not_admin" };
@@ -864,17 +1213,24 @@ async function processWhatsappAdminCommand(message = {}) {
     message.interactive?.button_reply?.id ||
     message.interactive?.button_reply?.title ||
     "";
-  const cancelOrderId = parseAdminCancelCommand(text);
-  if (cancelOrderId) {
-    const order = await cancelPaidOrderFromAdmin("live", cancelOrderId, "Cancelled from WhatsApp by admin");
-    return { handled: true, action: "cancel", orderId: order.id };
+  const undoCommand = parseAdminUndoCommand(text);
+  if (undoCommand) {
+    const order = await undoPendingAdminOrderAction("live", undoCommand);
+    return { handled: true, action: "undo", orderId: order.id };
   }
-  const orderId = parseAdminApproveCommand(text);
-  if (!orderId) {
+  const cancelCommand = parseAdminCancelCommand(text);
+  if (cancelCommand) {
+    const cancelOrderId = resolveAdminCommandOrderId(cancelCommand, ["paid", "preparing"]);
+    const order = await scheduleAdminOrderAction("live", cancelOrderId, "cancel");
+    return { handled: true, action: "cancel_scheduled", orderId: order.id };
+  }
+  const approveCommand = parseAdminApproveCommand(text);
+  if (!approveCommand) {
     return { handled: false, reason: "not_approve_command" };
   }
-  const order = await approveOrderForDelivery("live", orderId, { role: "whatsapp_admin" });
-  return { handled: true, action: "approve", orderId: order.id };
+  const orderId = resolveAdminCommandOrderId(approveCommand, ["paid"]);
+  const order = await scheduleAdminOrderAction("live", orderId, "approve");
+  return { handled: true, action: "approve_scheduled", orderId: order.id };
 }
 
 async function processWhatsappWebhook(payload) {
@@ -1128,6 +1484,7 @@ const stores = {
     registrations: new Map()
   }
 };
+const pendingAdminActionTimers = new Map();
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -2826,8 +3183,6 @@ function customerOwnsOrder(session, order) {
 }
 
 function validateCheckoutDraft(draft, summary) {
-  assertStoreIsOpen();
-
   if (!summary.itemCount) {
     throw new Error("Your basket is empty");
   }
@@ -2965,6 +3320,8 @@ async function createOrder(mode, payload, cartOverride = null) {
   const now = new Date();
   const payment = buildPaymentDetails(orderId, draft.paymentMethodId, summary.total);
   const isZeroTotalOrder = summary.total <= 0;
+  const storeConfig = getStoreConfig();
+  const isWithinWorkingHours = isStoreOpenNow(storeConfig.businessHours, now);
 
   const order = {
     id: orderId,
@@ -2984,6 +3341,13 @@ async function createOrder(mode, payload, cartOverride = null) {
       location: draft.destination
     },
     orderNotes: draft.orderNotes,
+    operations: {
+      workingHours: storeConfig.businessHours,
+      queuedForWorkingHours: !isWithinWorkingHours,
+      note: isWithinWorkingHours
+        ? "Order received during working hours."
+        : `Order received after hours. Staff approval and delivery dispatch happen from ${storeConfig.businessHours.open} to ${storeConfig.businessHours.close} Bali time.`
+    },
     pricing: {
       subtotal: summary.subtotal,
       deliveryFee: summary.deliveryFee,
@@ -3855,5 +4219,6 @@ const server = http.createServer((request, response) => {
 });
 
 server.listen(port, host, () => {
+  scheduleExistingPendingAdminActions();
   console.log(`Bakeaholic order app running at http://${host}:${port}`);
 });
