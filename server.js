@@ -625,8 +625,8 @@ function getPublicDocumentUrl(order) {
 }
 
 function publicDocumentButtonQuery(order) {
-  const modeParam = order.mode === "test" ? "&mode=test" : "";
-  return `order=${encodeURIComponent(order.id)}&token=${encodeURIComponent(ensureOrderReceiptToken(order))}${modeParam}`;
+  const modeSuffix = order.mode === "test" ? ".test" : "";
+  return `${order.id}.${ensureOrderReceiptToken(order)}${modeSuffix}`;
 }
 
 function xenditInvoiceUrl(order) {
@@ -639,6 +639,22 @@ function xenditReceiptButtonPath(order) {
     const parsed = new URL(receiptUrl);
     if (parsed.hostname === "checkout.xendit.co") {
       return `${parsed.pathname.replace(/^\/+/, "")}${parsed.search}${parsed.hash}`;
+    }
+  } catch (_error) {
+    return String(receiptUrl || "").trim();
+  }
+  return String(receiptUrl || "").trim();
+}
+
+function xenditCheckoutButtonToken(order) {
+  const receiptUrl = xenditInvoiceUrl(order);
+  try {
+    const parsed = new URL(receiptUrl);
+    if (parsed.hostname === "checkout.xendit.co") {
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      if (parts[0] === "web" && parts[1]) {
+        return parts.slice(1).join("");
+      }
     }
   } catch (_error) {
     return String(receiptUrl || "").trim();
@@ -774,7 +790,7 @@ async function sendWhatsappPaymentReceipt(order) {
     urlButtonParameters: [
       {
         index: "0",
-        text: xenditReceiptButtonPath(order)
+        text: xenditCheckoutButtonToken(order)
       }
     ]
   });

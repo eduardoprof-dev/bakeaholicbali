@@ -1,8 +1,16 @@
 const params = new URLSearchParams(window.location.search);
-const appMode = params.get("mode") === "test" ? "test" : "live";
-const orderId = params.get("order") || "";
-const token = params.get("token") || "";
+const ref = params.get("ref") || "";
+let appMode = params.get("mode") === "test" ? "test" : "live";
+let orderId = params.get("order") || "";
+let token = params.get("token") || "";
 const invoiceApp = document.getElementById("invoiceApp");
+
+if (ref && !orderId) {
+  const [refOrderId, refToken, refMode] = ref.split(".");
+  orderId = refOrderId || "";
+  token = refToken || "";
+  appMode = refMode === "test" ? "test" : appMode;
+}
 
 const formatRupiah = new Intl.NumberFormat("id-ID", {
   style: "currency",
