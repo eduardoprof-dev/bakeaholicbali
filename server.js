@@ -505,9 +505,20 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = [], op
   };
 
   const primaryLanguage = options.languageCode || process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en";
+  const explicitFallbackLanguages = Array.isArray(options.fallbackLanguageCodes)
+    ? options.fallbackLanguageCodes.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
   try {
     return await sendTemplate(primaryLanguage);
   } catch (error) {
+    for (const fallbackLanguage of explicitFallbackLanguages) {
+      if (fallbackLanguage === primaryLanguage) continue;
+      try {
+        return await sendTemplate(fallbackLanguage);
+      } catch (_fallbackError) {
+        // Continue through configured fallbacks before surfacing the original error.
+      }
+    }
     const fallbackLanguage = primaryLanguage === "en" ? "en_US" : primaryLanguage === "en_US" ? "en" : "";
     if (error.metaCode !== 132001 || !fallbackLanguage) {
       throw error;
@@ -586,7 +597,8 @@ async function sendWhatsappOtpCode(phone, code) {
 
   return sendWhatsappTemplateMessage(phone, templateName, [code], {
     authenticationCode: code,
-    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en_US"
+    languageCode: process.env.WHATSAPP_OTP_TEMPLATE_LANGUAGE || "en_US",
+    fallbackLanguageCodes: ["en"]
   });
 }
 
