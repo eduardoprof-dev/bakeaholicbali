@@ -214,6 +214,8 @@ function writeEnvMap(targetPath, envMap) {
     "WHATSAPP_OTP_TEMPLATE_NAME",
     "WHATSAPP_ORDER_TEMPLATE_NAME",
     "WHATSAPP_RECEIPT_TEMPLATE_NAME",
+    "WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME",
+    "WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME",
     "WHATSAPP_SHIPPING_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_NUMBER",
     "WHATSAPP_ADMIN_TEMPLATE_NAME",
@@ -275,6 +277,8 @@ function getEnvironmentIntegrationConfig() {
     whatsappOtpTemplateName: process.env.WHATSAPP_OTP_TEMPLATE_NAME || "",
     whatsappOrderTemplateName: process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "",
     whatsappReceiptTemplateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME || "",
+    whatsappPaymentReminderTemplateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME || "",
+    whatsappPaymentExpiredTemplateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME || "",
     whatsappShippingTemplateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || "",
     whatsappAdminNumber: process.env.WHATSAPP_ADMIN_NUMBER || "",
     whatsappAdminTemplateName: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "",
@@ -713,6 +717,18 @@ function receiptWhatsappParameters(order) {
   ];
 }
 
+function paymentReminderWhatsappParameters(order) {
+  return [
+    order.id
+  ];
+}
+
+function paymentExpiredWhatsappParameters(order) {
+  return [
+    order.id
+  ];
+}
+
 function shippingWhatsappParameters(order) {
   const shipment = order.fulfillment?.shipment || {};
   const courierName = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || shipment.raw?.courier?.name || "";
@@ -764,6 +780,40 @@ async function sendWhatsappPaymentReceipt(order) {
   });
 }
 
+async function sendWhatsappPaymentReminder(order) {
+  const templateName = String(process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME || "").trim();
+  if (!templateName) {
+    throw new Error("WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME is not configured");
+  }
+
+  return sendWhatsappTemplateMessage(order.customer.phone, templateName, paymentReminderWhatsappParameters(order), {
+    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+    urlButtonParameters: [
+      {
+        index: "0",
+        text: xenditReceiptButtonPath(order)
+      }
+    ]
+  });
+}
+
+async function sendWhatsappPaymentExpired(order) {
+  const templateName = String(process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME || "").trim();
+  if (!templateName) {
+    throw new Error("WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME is not configured");
+  }
+
+  return sendWhatsappTemplateMessage(order.customer.phone, templateName, paymentExpiredWhatsappParameters(order), {
+    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+    urlButtonParameters: [
+      {
+        index: "0",
+        text: publicDocumentButtonQuery(order)
+      }
+    ]
+  });
+}
+
 async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   const skipReason = (() => {
     if (order.mode === "test") return "test_order";
@@ -788,6 +838,161 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   } catch (error) {
     order.whatsappReceiptNotificationError = error.message;
     return { sent: false, skipped: false, error: error.message };
+  }
+}
+
+function paymentTimerKey(mode, orderId, step) {
+  return `${mode}:${orderId}:${step}`;
+}
+
+function clearPaymentReminderTimer(mode, orderId, step) {
+  const key = paymentTimerKey(mode, orderId, step);
+  const timer = pendingPaymentTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    pendingPaymentTimers.delete(key);
+  }
+}
+
+function clearPaymentReminderTimers(mode, orderId) {
+  ["first", "second", "expire"].forEach((step) => clearPaymentReminderTimer(mode, orderId, step));
+}
+
+function paymentReminderFlowTimes(createdAt = new Date().toISOString()) {
+  const created = Date.parse(createdAt) || Date.now();
+  return {
+    firstReminderAt: new Date(created + 5 * 60 * 1000).toISOString(),
+    secondReminderAt: new Date(created + 10 * 60 * 1000).toISOString(),
+    expireAt: new Date(created + 15 * 60 * 1000).toISOString()
+  };
+}
+
+async function refreshUnpaidOrderFromXendit(order) {
+  if (!order || order.status !== "awaiting_payment") {
+    return order;
+  }
+  const previousStatus = order.status;
+  const xenditStatus = await fetchXenditInvoiceStatus(order).catch(() => null);
+  if (xenditStatus) {
+    applyXenditInvoiceStatusToOrder(order, xenditStatus);
+  }
+  if (previousStatus !== order.status && order.status === "paid") {
+    clearPaymentReminderTimers(order.mode || "live", order.id);
+    await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
+    await maybeSendWhatsappAdminAlert(order, `order:${order.id}:xendit:${order.status}`, humanizeOrderStatus(order));
+  }
+  return order;
+}
+
+async function processPaymentReminderStep(mode, orderId, step) {
+  const order = findOrder(mode, orderId);
+  if (!order || order.status !== "awaiting_payment") {
+    return { handled: false, reason: "not_awaiting_payment" };
+  }
+
+  await refreshUnpaidOrderFromXendit(order);
+  if (order.status !== "awaiting_payment") {
+    saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+    return { handled: false, reason: `order_${order.status}` };
+  }
+
+  order.paymentReminderFlow = {
+    ...paymentReminderFlowTimes(order.createdAt),
+    ...(order.paymentReminderFlow || {})
+  };
+
+  const expireTime = Date.parse(order.paymentReminderFlow.expireAt || order.expiresAt || "");
+  if ((step === "first" || step === "second") && expireTime && expireTime <= Date.now()) {
+    return { handled: false, reason: "expired_due" };
+  }
+
+  if (step === "first" || step === "second") {
+    const eventKey = `order:${order.id}:payment-reminder:${step}`;
+    if (order.paymentReminderFlow[`${step}SentAt`]) {
+      return { handled: false, reason: "already_sent" };
+    }
+    if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME) {
+      try {
+        const response = await sendWhatsappPaymentReminder(order);
+        order.paymentReminderFlow[`${step}SentAt`] = new Date().toISOString();
+        order.paymentReminderFlow[`${step}MessageId`] = response?.messages?.[0]?.id || "";
+        delete order.paymentReminderFlow[`${step}Error`];
+      } catch (error) {
+        order.paymentReminderFlow[`${step}Error`] = error.message;
+      }
+    } else {
+      order.paymentReminderFlow[`${step}Skipped`] = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
+    }
+    order.whatsappNotifications = {
+      ...order.whatsappNotifications,
+      lastNotificationKey: eventKey
+    };
+    saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+    return { handled: true, action: `${step}_reminder`, orderId };
+  }
+
+  order.status = "expired";
+  order.payment.status = "expired";
+  order.expiredAt = new Date().toISOString();
+  order.whatsappUrl = buildWhatsappUrl(order);
+  order.paymentReminderFlow.expiredAt = order.expiredAt;
+
+  if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
+    try {
+      const response = await sendWhatsappPaymentExpired(order);
+      order.paymentReminderFlow.expiredMessageSentAt = new Date().toISOString();
+      order.paymentReminderFlow.expiredMessageId = response?.messages?.[0]?.id || "";
+      delete order.paymentReminderFlow.expiredError;
+    } catch (error) {
+      order.paymentReminderFlow.expiredError = error.message;
+    }
+  } else {
+    order.paymentReminderFlow.expiredSkipped = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
+  }
+
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return { handled: true, action: "expired", orderId };
+}
+
+function schedulePaymentReminderTimer(mode, orderId, step, executeAt) {
+  clearPaymentReminderTimer(mode, orderId, step);
+  const delay = Math.max(0, Date.parse(executeAt || "") - Date.now());
+  const key = paymentTimerKey(mode, orderId, step);
+  const timer = setTimeout(() => {
+    pendingPaymentTimers.delete(key);
+    processPaymentReminderStep(mode, orderId, step).catch((error) => {
+      const order = findOrder(mode, orderId);
+      if (order?.paymentReminderFlow) {
+        order.paymentReminderFlow[`${step}Error`] = error.message;
+        saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+      }
+    });
+  }, delay);
+  pendingPaymentTimers.set(key, timer);
+}
+
+function schedulePaymentReminderFlow(mode, order) {
+  if (!order || order.status !== "awaiting_payment" || order.pricing?.total <= 0) {
+    return;
+  }
+  order.paymentReminderFlow = {
+    ...paymentReminderFlowTimes(order.createdAt),
+    ...(order.paymentReminderFlow || {})
+  };
+  const now = Date.now();
+  const expireTime = Date.parse(order.paymentReminderFlow.expireAt || order.expiresAt || "");
+  if (expireTime && expireTime <= now) {
+    schedulePaymentReminderTimer(mode, order.id, "expire", order.paymentReminderFlow.expireAt || order.expiresAt);
+    return;
+  }
+  if (!order.paymentReminderFlow.firstSentAt) {
+    schedulePaymentReminderTimer(mode, order.id, "first", order.paymentReminderFlow.firstReminderAt);
+  }
+  if (!order.paymentReminderFlow.secondSentAt) {
+    schedulePaymentReminderTimer(mode, order.id, "second", order.paymentReminderFlow.secondReminderAt);
+  }
+  if (!order.paymentReminderFlow.expiredAt) {
+    schedulePaymentReminderTimer(mode, order.id, "expire", order.paymentReminderFlow.expireAt || order.expiresAt);
   }
 }
 
@@ -1052,6 +1257,7 @@ async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by ad
   }
 
   const previousStatus = order.status;
+  clearPaymentReminderTimers(mode, order.id);
   order.status = "cancelled";
   order.cancelledAt = new Date().toISOString();
   order.cancelReason = reason;
@@ -1202,6 +1408,12 @@ function scheduleExistingPendingAdminActions() {
   });
 }
 
+function scheduleExistingPaymentReminderFlows() {
+  Object.entries(stores).forEach(([mode, storeState]) => {
+    storeState.orders.forEach((order) => schedulePaymentReminderFlow(mode, order));
+  });
+}
+
 async function processWhatsappAdminCommand(message = {}) {
   if (!isConfiguredAdminWhatsapp(message.from)) {
     return { handled: false, reason: "not_admin" };
@@ -1300,6 +1512,8 @@ function readIntegrationSettings() {
     whatsappOtpTemplateName: configuredValue(savedSettings.whatsappOtpTemplateName, envMap.WHATSAPP_OTP_TEMPLATE_NAME, config.whatsappOtpTemplateName),
     whatsappOrderTemplateName: configuredValue(savedSettings.whatsappOrderTemplateName, envMap.WHATSAPP_ORDER_TEMPLATE_NAME, config.whatsappOrderTemplateName),
     whatsappReceiptTemplateName: configuredValue(savedSettings.whatsappReceiptTemplateName, envMap.WHATSAPP_RECEIPT_TEMPLATE_NAME, config.whatsappReceiptTemplateName),
+    whatsappPaymentReminderTemplateName: configuredValue(savedSettings.whatsappPaymentReminderTemplateName, envMap.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME, config.whatsappPaymentReminderTemplateName),
+    whatsappPaymentExpiredTemplateName: configuredValue(savedSettings.whatsappPaymentExpiredTemplateName, envMap.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME, config.whatsappPaymentExpiredTemplateName),
     whatsappShippingTemplateName: configuredValue(savedSettings.whatsappShippingTemplateName, envMap.WHATSAPP_SHIPPING_TEMPLATE_NAME, config.whatsappShippingTemplateName),
     whatsappAdminNumber: configuredValue(savedSettings.whatsappAdminNumber, envMap.WHATSAPP_ADMIN_NUMBER, config.whatsappAdminNumber),
     whatsappAdminTemplateName: configuredValue(savedSettings.whatsappAdminTemplateName, envMap.WHATSAPP_ADMIN_TEMPLATE_NAME, config.whatsappAdminTemplateName),
@@ -1342,6 +1556,8 @@ function saveIntegrationSettings(input = {}) {
       ? "order_received"
       : String(input.whatsappOrderTemplateName || "").trim(),
     whatsappReceiptTemplateName: String(input.whatsappReceiptTemplateName || "").trim(),
+    whatsappPaymentReminderTemplateName: String(input.whatsappPaymentReminderTemplateName || "").trim(),
+    whatsappPaymentExpiredTemplateName: String(input.whatsappPaymentExpiredTemplateName || "").trim(),
     whatsappShippingTemplateName: String(input.whatsappShippingTemplateName || "").trim(),
     whatsappAdminNumber: String(input.whatsappAdminNumber || "").trim(),
     whatsappAdminTemplateName: String(input.whatsappAdminTemplateName || "").trim(),
@@ -1369,6 +1585,8 @@ function saveIntegrationSettings(input = {}) {
       WHATSAPP_OTP_TEMPLATE_NAME: nextSettings.whatsappOtpTemplateName,
       WHATSAPP_ORDER_TEMPLATE_NAME: nextSettings.whatsappOrderTemplateName,
       WHATSAPP_RECEIPT_TEMPLATE_NAME: nextSettings.whatsappReceiptTemplateName,
+      WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: nextSettings.whatsappPaymentReminderTemplateName,
+      WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME: nextSettings.whatsappPaymentExpiredTemplateName,
       WHATSAPP_SHIPPING_TEMPLATE_NAME: nextSettings.whatsappShippingTemplateName,
       WHATSAPP_ADMIN_NUMBER: nextSettings.whatsappAdminNumber,
       WHATSAPP_ADMIN_TEMPLATE_NAME: nextSettings.whatsappAdminTemplateName,
@@ -1395,6 +1613,8 @@ function saveIntegrationSettings(input = {}) {
   process.env.WHATSAPP_OTP_TEMPLATE_NAME = nextSettings.whatsappOtpTemplateName;
   process.env.WHATSAPP_ORDER_TEMPLATE_NAME = nextSettings.whatsappOrderTemplateName;
   process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME = nextSettings.whatsappReceiptTemplateName;
+  process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME = nextSettings.whatsappPaymentReminderTemplateName;
+  process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME = nextSettings.whatsappPaymentExpiredTemplateName;
   process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME = nextSettings.whatsappShippingTemplateName;
   process.env.WHATSAPP_ADMIN_NUMBER = nextSettings.whatsappAdminNumber;
   process.env.WHATSAPP_ADMIN_TEMPLATE_NAME = nextSettings.whatsappAdminTemplateName;
@@ -1485,6 +1705,7 @@ const stores = {
   }
 };
 const pendingAdminActionTimers = new Map();
+const pendingPaymentTimers = new Map();
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -2948,7 +3169,7 @@ function buildXenditInvoicePayload(order) {
     payer_email: order.customer.email || undefined,
     success_redirect_url: returnUrl,
     failure_redirect_url: returnUrl,
-    invoice_duration: 86400
+    invoice_duration: 15 * 60
   };
 
   if (Array.isArray(order.payment?.xenditPaymentMethods) && order.payment.xenditPaymentMethods.length) {
@@ -3369,7 +3590,9 @@ async function createOrder(mode, payload, cartOverride = null) {
     lastSentAt: ""
   };
 
-  await maybeSendWhatsappOrderStatus(order, "");
+  if (!isZeroTotalOrder) {
+    schedulePaymentReminderFlow(mode, order);
+  }
   if (isZeroTotalOrder) {
     await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
   }
@@ -3422,6 +3645,9 @@ async function updateOrderPaymentStatus(mode, orderId) {
     order.whatsappUrl = buildWhatsappUrl(order);
   }
 
+  if (order.status !== "awaiting_payment") {
+    clearPaymentReminderTimers(mode, order.id);
+  }
   await maybeSendWhatsappOrderStatus(order, previousStatus);
   if (previousStatus !== order.status) {
     if (order.status === "paid") {
@@ -3448,6 +3674,7 @@ async function cancelOrder(mode, orderId) {
     throw new Error("Order not found");
   }
 
+  clearPaymentReminderTimers(mode, order.id);
   order.status = "cancelled";
   order.cancelledAt = new Date().toISOString();
   order.payment.status = "cancelled";
@@ -4140,10 +4367,32 @@ function handleApi(requestUrl, request, response) {
 
         const previousStatus = order.status;
         applyXenditInvoiceStatusToOrder(order, body);
-        await maybeSendWhatsappOrderStatus(order, previousStatus);
+        if (order.status !== "awaiting_payment") {
+          clearPaymentReminderTimers(order.mode || "live", order.id);
+        }
         if (previousStatus !== order.status) {
           if (order.status === "paid") {
+            await maybeSendWhatsappOrderStatus(order, previousStatus);
             await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
+          } else if (order.status === "expired") {
+            order.expiredAt = order.expiredAt || new Date().toISOString();
+            order.paymentReminderFlow = {
+              ...paymentReminderFlowTimes(order.createdAt),
+              ...(order.paymentReminderFlow || {}),
+              expiredAt: order.expiredAt
+            };
+            if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
+              try {
+                const expiredResponse = await sendWhatsappPaymentExpired(order);
+                order.paymentReminderFlow.expiredMessageSentAt = new Date().toISOString();
+                order.paymentReminderFlow.expiredMessageId = expiredResponse?.messages?.[0]?.id || "";
+                delete order.paymentReminderFlow.expiredError;
+              } catch (error) {
+                order.paymentReminderFlow.expiredError = error.message;
+              }
+            }
+          } else {
+            await maybeSendWhatsappOrderStatus(order, previousStatus);
           }
           await maybeSendWhatsappAdminAlert(order, `order:${order.id}:xendit:${order.status}`, humanizeOrderStatus(order));
         }
@@ -4220,5 +4469,6 @@ const server = http.createServer((request, response) => {
 
 server.listen(port, host, () => {
   scheduleExistingPendingAdminActions();
+  scheduleExistingPaymentReminderFlows();
   console.log(`Bakeaholic order app running at http://${host}:${port}`);
 });

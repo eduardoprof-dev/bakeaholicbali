@@ -278,6 +278,14 @@
               <input id="whatsappReceiptTemplateNameInput" type="text" placeholder="payment_receipt" autocomplete="off" />
             </div>
             <div class="admin-field">
+              <label for="whatsappPaymentReminderTemplateNameInput">Payment reminder template name</label>
+              <input id="whatsappPaymentReminderTemplateNameInput" type="text" placeholder="payment_update_order" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="whatsappPaymentExpiredTemplateNameInput">Payment expired template name</label>
+              <input id="whatsappPaymentExpiredTemplateNameInput" type="text" placeholder="order_cancelled_unpaid" autocomplete="off" />
+            </div>
+            <div class="admin-field">
               <label for="whatsappShippingTemplateNameInput">Customer shipping template name</label>
               <input id="whatsappShippingTemplateNameInput" type="text" placeholder="shipping_update" autocomplete="off" />
             </div>
@@ -385,17 +393,20 @@ sequenceDiagram
               <pre class="mermaid">
 flowchart TD
   A["Customer verifies phone"] --> B["otp_verification"]
-  C["Order created and awaiting payment"] --> D["payment_pending or Xendit payment page"]
-  E["Xendit confirms paid invoice"] --> F["payment_receipt to customer"]
-  E --> G["admin_order_alert_v2 to admin"]
-  G --> H{"Admin taps button"}
-  H -->|Approve| I["Undo button sent to admin"]
-  H -->|Cancel| J["Undo button sent to admin"]
-  I -->|No undo after 60 seconds| K["Create Biteship delivery"]
-  J -->|No undo after 60 seconds| L["Cancel order and attempt refund"]
-  K --> M["shipping_update to customer"]
-  K --> N["admin_shipping_update to admin"]
-  O["Biteship status changes"] --> P["order_shipped or order_delivered to customer"]
+  C["Order created and awaiting payment"] --> D["Xendit payment page opens"]
+  D --> E["5 minutes unpaid: payment_update_order"]
+  E --> F["10 minutes unpaid: payment_update_order again"]
+  F --> G["15 minutes unpaid: order_cancelled_unpaid"]
+  H["Xendit confirms paid invoice"] --> I["payment_receipt to customer"]
+  H --> J["admin_order_alert_v2 to admin"]
+  J --> K{"Admin taps button"}
+  K -->|Approve| L["Undo button sent to admin"]
+  K -->|Cancel| M["Undo button sent to admin"]
+  L -->|No undo after 60 seconds| N["Create Biteship delivery"]
+  M -->|No undo after 60 seconds| O["Cancel order and attempt refund"]
+  N --> P["shipping_update to customer"]
+  N --> Q["admin_shipping_update to admin"]
+  R["Biteship status changes"] --> S["order_shipped or order_delivered to customer"]
               </pre>
             </article>
           </div>
