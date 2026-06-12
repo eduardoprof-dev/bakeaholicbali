@@ -935,9 +935,11 @@ async function processPaymentReminderStep(mode, orderId, step) {
         delete order.paymentReminderFlow[`${step}Error`];
       } catch (error) {
         order.paymentReminderFlow[`${step}Error`] = error.message;
+        console.warn(`WhatsApp payment reminder failed for ${order.id} (${step}): ${error.message}`);
       }
     } else {
       order.paymentReminderFlow[`${step}Skipped`] = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
+      console.warn(`WhatsApp payment reminder skipped for ${order.id} (${step}): ${order.paymentReminderFlow[`${step}Skipped`]}`);
     }
     order.whatsappNotifications = {
       ...order.whatsappNotifications,
@@ -961,9 +963,11 @@ async function processPaymentReminderStep(mode, orderId, step) {
       delete order.paymentReminderFlow.expiredError;
     } catch (error) {
       order.paymentReminderFlow.expiredError = error.message;
+      console.warn(`WhatsApp payment expiry failed for ${order.id}: ${error.message}`);
     }
   } else {
     order.paymentReminderFlow.expiredSkipped = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
+    console.warn(`WhatsApp payment expiry skipped for ${order.id}: ${order.paymentReminderFlow.expiredSkipped}`);
   }
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
@@ -1009,6 +1013,44 @@ function schedulePaymentReminderFlow(mode, order) {
   }
   if (!order.paymentReminderFlow.expiredAt) {
     schedulePaymentReminderTimer(mode, order.id, "expire", order.paymentReminderFlow.expireAt || order.expiresAt);
+  }
+}
+
+async function sweepPaymentReminderFlows() {
+  if (paymentReminderSweepInProgress) {
+    return;
+  }
+  paymentReminderSweepInProgress = true;
+  try {
+    const now = Date.now();
+    for (const [mode, storeState] of Object.entries(stores)) {
+      for (const order of storeState.orders) {
+        if (!order || order.status !== "awaiting_payment" || order.pricing?.total <= 0) {
+          continue;
+        }
+        order.paymentReminderFlow = {
+          ...paymentReminderFlowTimes(order.createdAt),
+          ...(order.paymentReminderFlow || {})
+        };
+        const firstDue = Date.parse(order.paymentReminderFlow.firstReminderAt || "") <= now;
+        const secondDue = Date.parse(order.paymentReminderFlow.secondReminderAt || "") <= now;
+        const expireDue = Date.parse(order.paymentReminderFlow.expireAt || order.expiresAt || "") <= now;
+
+        if (expireDue && !order.paymentReminderFlow.expiredAt) {
+          await processPaymentReminderStep(mode, order.id, "expire");
+          continue;
+        }
+        if (firstDue && !order.paymentReminderFlow.firstSentAt) {
+          await processPaymentReminderStep(mode, order.id, "first");
+          continue;
+        }
+        if (secondDue && !order.paymentReminderFlow.secondSentAt) {
+          await processPaymentReminderStep(mode, order.id, "second");
+        }
+      }
+    }
+  } finally {
+    paymentReminderSweepInProgress = false;
   }
 }
 
@@ -1722,6 +1764,7 @@ const stores = {
 };
 const pendingAdminActionTimers = new Map();
 const pendingPaymentTimers = new Map();
+let paymentReminderSweepInProgress = false;
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -4486,5 +4529,10 @@ const server = http.createServer((request, response) => {
 server.listen(port, host, () => {
   scheduleExistingPendingAdminActions();
   scheduleExistingPaymentReminderFlows();
+  setInterval(() => {
+    sweepPaymentReminderFlows().catch((error) => {
+      console.warn(`Payment reminder sweep failed: ${error.message}`);
+    });
+  }, 30 * 1000);
   console.log(`Bakeaholic order app running at http://${host}:${port}`);
 });
