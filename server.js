@@ -597,7 +597,7 @@ async function sendWhatsappOtpCode(phone, code) {
 
   return sendWhatsappTemplateMessage(phone, templateName, [code], {
     authenticationCode: code,
-    languageCode: process.env.WHATSAPP_OTP_TEMPLATE_LANGUAGE || "en_US",
+    languageCode: "en_US",
     fallbackLanguageCodes: ["en"]
   });
 }
@@ -643,19 +643,6 @@ function publicDocumentButtonQuery(order) {
 
 function xenditInvoiceUrl(order) {
   return order.payment?.invoiceUrl || order.payment?.paymentUrl || getPublicDocumentUrl(order);
-}
-
-function xenditReceiptButtonPath(order) {
-  const receiptUrl = xenditInvoiceUrl(order);
-  try {
-    const parsed = new URL(receiptUrl);
-    if (parsed.hostname === "checkout.xendit.co") {
-      return `${parsed.pathname.replace(/^\/+/, "")}${parsed.search}${parsed.hash}`;
-    }
-  } catch (_error) {
-    return String(receiptUrl || "").trim();
-  }
-  return String(receiptUrl || "").trim();
 }
 
 function xenditCheckoutButtonToken(order) {
@@ -819,7 +806,7 @@ async function sendWhatsappPaymentReminder(order) {
     urlButtonParameters: [
       {
         index: "0",
-        text: xenditReceiptButtonPath(order)
+        text: xenditCheckoutButtonToken(order)
       }
     ]
   });
@@ -895,6 +882,14 @@ function paymentReminderFlowTimes(createdAt = new Date().toISOString()) {
   };
 }
 
+function ensurePaymentReminderFlow(order) {
+  order.paymentReminderFlow = {
+    ...paymentReminderFlowTimes(order.createdAt),
+    ...(order.paymentReminderFlow || {})
+  };
+  return order.paymentReminderFlow;
+}
+
 async function refreshUnpaidOrderFromXendit(order) {
   if (!order || order.status !== "awaiting_payment") {
     return order;
@@ -924,34 +919,31 @@ async function processPaymentReminderStep(mode, orderId, step) {
     return { handled: false, reason: `order_${order.status}` };
   }
 
-  order.paymentReminderFlow = {
-    ...paymentReminderFlowTimes(order.createdAt),
-    ...(order.paymentReminderFlow || {})
-  };
+  const reminderFlow = ensurePaymentReminderFlow(order);
 
-  const expireTime = Date.parse(order.paymentReminderFlow.expireAt || order.expiresAt || "");
+  const expireTime = Date.parse(reminderFlow.expireAt || order.expiresAt || "");
   if ((step === "first" || step === "second") && expireTime && expireTime <= Date.now()) {
     return { handled: false, reason: "expired_due" };
   }
 
   if (step === "first" || step === "second") {
     const eventKey = `order:${order.id}:payment-reminder:${step}`;
-    if (order.paymentReminderFlow[`${step}SentAt`]) {
+    if (reminderFlow[`${step}SentAt`]) {
       return { handled: false, reason: "already_sent" };
     }
     if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME) {
       try {
         const response = await sendWhatsappPaymentReminder(order);
-        order.paymentReminderFlow[`${step}SentAt`] = new Date().toISOString();
-        order.paymentReminderFlow[`${step}MessageId`] = response?.messages?.[0]?.id || "";
-        delete order.paymentReminderFlow[`${step}Error`];
+        reminderFlow[`${step}SentAt`] = new Date().toISOString();
+        reminderFlow[`${step}MessageId`] = response?.messages?.[0]?.id || "";
+        delete reminderFlow[`${step}Error`];
       } catch (error) {
-        order.paymentReminderFlow[`${step}Error`] = error.message;
+        reminderFlow[`${step}Error`] = error.message;
         console.warn(`WhatsApp payment reminder failed for ${order.id} (${step}): ${error.message}`);
       }
     } else {
-      order.paymentReminderFlow[`${step}Skipped`] = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
-      console.warn(`WhatsApp payment reminder skipped for ${order.id} (${step}): ${order.paymentReminderFlow[`${step}Skipped`]}`);
+      reminderFlow[`${step}Skipped`] = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
+      console.warn(`WhatsApp payment reminder skipped for ${order.id} (${step}): ${reminderFlow[`${step}Skipped`]}`);
     }
     order.whatsappNotifications = {
       ...order.whatsappNotifications,
@@ -965,21 +957,21 @@ async function processPaymentReminderStep(mode, orderId, step) {
   order.payment.status = "expired";
   order.expiredAt = new Date().toISOString();
   order.whatsappUrl = buildWhatsappUrl(order);
-  order.paymentReminderFlow.expiredAt = order.expiredAt;
+  reminderFlow.expiredAt = order.expiredAt;
 
   if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
     try {
       const response = await sendWhatsappPaymentExpired(order);
-      order.paymentReminderFlow.expiredMessageSentAt = new Date().toISOString();
-      order.paymentReminderFlow.expiredMessageId = response?.messages?.[0]?.id || "";
-      delete order.paymentReminderFlow.expiredError;
+      reminderFlow.expiredMessageSentAt = new Date().toISOString();
+      reminderFlow.expiredMessageId = response?.messages?.[0]?.id || "";
+      delete reminderFlow.expiredError;
     } catch (error) {
-      order.paymentReminderFlow.expiredError = error.message;
+      reminderFlow.expiredError = error.message;
       console.warn(`WhatsApp payment expiry failed for ${order.id}: ${error.message}`);
     }
   } else {
-    order.paymentReminderFlow.expiredSkipped = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
-    console.warn(`WhatsApp payment expiry skipped for ${order.id}: ${order.paymentReminderFlow.expiredSkipped}`);
+    reminderFlow.expiredSkipped = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
+    console.warn(`WhatsApp payment expiry skipped for ${order.id}: ${reminderFlow.expiredSkipped}`);
   }
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
@@ -1007,24 +999,23 @@ function schedulePaymentReminderFlow(mode, order) {
   if (!order || order.status !== "awaiting_payment" || order.pricing?.total <= 0) {
     return;
   }
-  order.paymentReminderFlow = {
-    ...paymentReminderFlowTimes(order.createdAt),
-    ...(order.paymentReminderFlow || {})
-  };
+  const reminderFlow = ensurePaymentReminderFlow(order);
   const now = Date.now();
-  const expireTime = Date.parse(order.paymentReminderFlow.expireAt || order.expiresAt || "");
+  const expireTime = Date.parse(reminderFlow.expireAt || order.expiresAt || "");
   if (expireTime && expireTime <= now) {
-    schedulePaymentReminderTimer(mode, order.id, "expire", order.paymentReminderFlow.expireAt || order.expiresAt);
+    schedulePaymentReminderTimer(mode, order.id, "expire", reminderFlow.expireAt || order.expiresAt);
     return;
   }
-  if (!order.paymentReminderFlow.firstSentAt) {
-    schedulePaymentReminderTimer(mode, order.id, "first", order.paymentReminderFlow.firstReminderAt);
+  if (!reminderFlow.firstSentAt) {
+    schedulePaymentReminderTimer(mode, order.id, "first", reminderFlow.firstReminderAt);
+    return;
   }
-  if (!order.paymentReminderFlow.secondSentAt) {
-    schedulePaymentReminderTimer(mode, order.id, "second", order.paymentReminderFlow.secondReminderAt);
+  if (!reminderFlow.secondSentAt) {
+    schedulePaymentReminderTimer(mode, order.id, "second", reminderFlow.secondReminderAt);
+    return;
   }
-  if (!order.paymentReminderFlow.expiredAt) {
-    schedulePaymentReminderTimer(mode, order.id, "expire", order.paymentReminderFlow.expireAt || order.expiresAt);
+  if (!reminderFlow.expiredAt) {
+    schedulePaymentReminderTimer(mode, order.id, "expire", reminderFlow.expireAt || order.expiresAt);
   }
 }
 
@@ -1040,23 +1031,20 @@ async function sweepPaymentReminderFlows() {
         if (!order || order.status !== "awaiting_payment" || order.pricing?.total <= 0) {
           continue;
         }
-        order.paymentReminderFlow = {
-          ...paymentReminderFlowTimes(order.createdAt),
-          ...(order.paymentReminderFlow || {})
-        };
-        const firstDue = Date.parse(order.paymentReminderFlow.firstReminderAt || "") <= now;
-        const secondDue = Date.parse(order.paymentReminderFlow.secondReminderAt || "") <= now;
-        const expireDue = Date.parse(order.paymentReminderFlow.expireAt || order.expiresAt || "") <= now;
+        const reminderFlow = ensurePaymentReminderFlow(order);
+        const firstDue = Date.parse(reminderFlow.firstReminderAt || "") <= now;
+        const secondDue = Date.parse(reminderFlow.secondReminderAt || "") <= now;
+        const expireDue = Date.parse(reminderFlow.expireAt || order.expiresAt || "") <= now;
 
-        if (expireDue && !order.paymentReminderFlow.expiredAt) {
+        if (expireDue && !reminderFlow.expiredAt) {
           await processPaymentReminderStep(mode, order.id, "expire");
           continue;
         }
-        if (firstDue && !order.paymentReminderFlow.firstSentAt) {
+        if (firstDue && !reminderFlow.firstSentAt) {
           await processPaymentReminderStep(mode, order.id, "first");
           continue;
         }
-        if (secondDue && !order.paymentReminderFlow.secondSentAt) {
+        if (secondDue && !reminderFlow.secondSentAt) {
           await processPaymentReminderStep(mode, order.id, "second");
         }
       }
