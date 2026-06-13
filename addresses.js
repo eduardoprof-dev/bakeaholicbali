@@ -1,7 +1,8 @@
 const params = new URLSearchParams(window.location.search);
 const appMode = params.get("mode") === "test" ? "test" : "live";
 const modeQuery = appMode === "test" ? "?mode=test" : "";
-const draftKey = `bakeaholic-checkout-draft-${appMode}`;
+const shopperStateVersion = "20260604-session-cart";
+const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
 const accountCommon = window.BakeaholicAccountCommon;
 
 const addressesApp = document.getElementById("addressesApp");

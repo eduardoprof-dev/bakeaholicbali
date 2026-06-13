@@ -649,7 +649,7 @@ function xenditCheckoutButtonToken(order) {
   const receiptUrl = xenditInvoiceUrl(order);
   try {
     const parsed = new URL(receiptUrl);
-    if (parsed.hostname === "checkout.xendit.co") {
+    if (parsed.hostname === "checkout.xendit.co" || parsed.hostname === "checkout-staging.xendit.co") {
       const parts = parsed.pathname.split("/").filter(Boolean);
       if (parts[0] === "web" && parts[1]) {
         return parts.slice(1).join("");
@@ -2295,13 +2295,15 @@ function normalizeAddressEntry(input = {}) {
   const locationNotes = String(input.locationNotes || "").trim();
   const lat = Number(input.lat);
   const lng = Number(input.lng);
+  const routeDistanceKm = Number(input.routeDistanceKm);
   return {
     id,
     label,
     formattedAddress,
     locationNotes,
     lat: Number.isFinite(lat) ? lat : null,
-    lng: Number.isFinite(lng) ? lng : null
+    lng: Number.isFinite(lng) ? lng : null,
+    routeDistanceKm: Number.isFinite(routeDistanceKm) ? routeDistanceKm : null
   };
 }
 
@@ -2331,6 +2333,60 @@ function saveCustomerProfile(input = {}, verifiedPhone = "") {
     email,
     addresses: Array.isArray(existing.addresses) ? existing.addresses : [],
     defaultAddressId: existing.defaultAddressId || "",
+    createdAt: existing.createdAt || now,
+    updatedAt: now,
+    lastLoginAt: now
+  };
+
+  customers[phone] = profile;
+  saveCustomers(customers);
+  return publicCustomerProfile(profile);
+}
+
+function upsertCustomerFromCheckout(order) {
+  const phone = formatIndonesianPhone(order?.customer?.phone);
+  if (!phone) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const existing = customers[phone] || {};
+  const name = String(order.customer?.name || existing.name || "").trim();
+  const nameParts = name.split(/\s+/).filter(Boolean);
+  const firstName = existing.firstName || order.customer?.firstName || nameParts.shift() || "Customer";
+  const lastName = existing.lastName || order.customer?.lastName || nameParts.join(" ") || "Bakeaholic";
+  const addresses = Array.isArray(existing.addresses) ? [...existing.addresses] : [];
+  const location = order.fulfillment?.location || {};
+  const formattedAddress = String(location.formattedAddress || order.customer?.address || "").trim();
+
+  if (formattedAddress) {
+    const address = normalizeAddressEntry({
+      id: existing.defaultAddressId || undefined,
+      label: location.label || "Delivery address",
+      formattedAddress,
+      locationNotes: location.locationNotes || "",
+      lat: location.lat,
+      lng: location.lng,
+      routeDistanceKm: location.routeDistanceKm
+    });
+    const existingIndex = addresses.findIndex((entry) => (
+      entry.id === address.id || entry.formattedAddress === address.formattedAddress
+    ));
+    if (existingIndex >= 0) {
+      addresses[existingIndex] = { ...addresses[existingIndex], ...address };
+    } else {
+      addresses.unshift(address);
+    }
+  }
+
+  const profile = {
+    phone,
+    firstName,
+    lastName,
+    name: [firstName, lastName].filter(Boolean).join(" "),
+    email: String(order.customer?.email || existing.email || "").trim().toLowerCase(),
+    addresses,
+    defaultAddressId: existing.defaultAddressId || addresses[0]?.id || "",
     createdAt: existing.createdAt || now,
     updatedAt: now,
     lastLoginAt: now
@@ -3658,6 +3714,7 @@ async function createOrder(mode, payload, cartOverride = null) {
   await maybeSendWhatsappAdminAlert(order, `order:${order.id}:created`, "Order created");
 
   storeState.orders.unshift(order);
+  upsertCustomerFromCheckout(order);
   saveOrders(ordersPathForMode(mode), storeState.orders);
   cartState.cart.clear();
   return enrichOrder(order);

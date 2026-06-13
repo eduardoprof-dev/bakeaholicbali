@@ -57,7 +57,7 @@ For admin alerts, use a Meta-approved template whose body variables match the va
 
 For customer receipts, use a Meta-approved template whose body variables match the values the app sends: order id and total. Add a dynamic website button with base URL `https://checkout.xendit.co/{{1}}`; the app sends the Xendit receipt path into that button.
 
-For unpaid payment reminders, use a Meta-approved template whose body variables match the values the app sends: order id. Add a dynamic website button with base URL `https://checkout.xendit.co/web/{{1}}`; the app sends only the Xendit checkout token into that button. The app sends this reminder at 5 minutes and again at 10 minutes after checkout if Xendit has not confirmed payment.
+For unpaid payment reminders, use a Meta-approved template whose body variables match the values the app sends: order id. Add a dynamic website button with base URL `https://checkout.xendit.co/web/{{1}}` for live Xendit invoices, or `https://checkout-staging.xendit.co/web/{{1}}` while `XENDIT_ENVIRONMENT=test`. The app sends only the Xendit checkout token into that button. The app sends this reminder at 5 minutes and again at 10 minutes after checkout if Xendit has not confirmed payment.
 
 For unpaid payment expiry, use a Meta-approved template whose body variables match the values the app sends: order id. Add a dynamic website button with base URL `https://bakeaholicbali.com/invoice.html?ref={{1}}`; the app sends a safe order document reference into that button. The app marks the order expired at 15 minutes if Xendit has not confirmed payment.
 

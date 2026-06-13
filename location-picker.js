@@ -106,7 +106,7 @@
       script.async = true;
       script.defer = true;
       script.src =
-        `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places,marker&callback=${callbackName}`;
+        `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places,marker&loading=async&callback=${callbackName}`;
       script.onerror = () => {
         reject(new Error("Unable to load Google Maps"));
         delete global[callbackName];

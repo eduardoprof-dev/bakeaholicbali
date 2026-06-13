@@ -83,6 +83,20 @@
           <span id="adminStatus" class="admin-status">Loading catalog...</span>
         </header>
 
+        <section class="admin-login-panel" id="adminLoginPanel" hidden>
+          <form id="adminLoginForm" class="admin-login-form">
+            <div>
+              <h2>Admin Login</h2>
+              <p class="helper-text">Enter the admin password to manage catalog, orders, and integrations.</p>
+            </div>
+            <label class="admin-field" for="adminPasswordInput">
+              <span>Password</span>
+              <input id="adminPasswordInput" type="password" autocomplete="current-password" />
+            </label>
+            <button class="admin-button" id="adminLoginButton" type="submit">Log in</button>
+          </form>
+        </section>
+
         <section class="admin-panel" data-admin-section="store">
           <div class="admin-section-head">
             <div>
@@ -495,6 +509,6 @@ DATA_DIR
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <script src="admin.js?v=20260612-admin-diagrams"></script>
+    <script src="admin.js?v=20260613-login-form"></script>
   </body>
 </html>

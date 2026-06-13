@@ -1,3 +1,6 @@
+const params = new URLSearchParams(window.location.search);
+const appMode = params.get("mode") === "test" ? "test" : "live";
+
 const state = {
   catalog: null,
   orders: []
@@ -14,6 +17,10 @@ const saveIntegrationsButton = document.getElementById("saveIntegrationsButton")
 const addProductButton = document.getElementById("addProductButton");
 const adminLogoutButton = document.getElementById("adminLogoutButton");
 const adminStatus = document.getElementById("adminStatus");
+const adminLoginPanel = document.getElementById("adminLoginPanel");
+const adminLoginForm = document.getElementById("adminLoginForm");
+const adminPasswordInput = document.getElementById("adminPasswordInput");
+const adminLoginButton = document.getElementById("adminLoginButton");
 const categoryList = document.getElementById("categoryList");
 const productList = document.getElementById("productList");
 const adminOrderList = document.getElementById("adminOrderList");
@@ -110,7 +117,8 @@ const secretIntegrationKeys = new Set([
 async function request(path, options = {}) {
   const response = await fetch(path, {
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "X-App-Mode": appMode
     },
     ...options
   });
@@ -128,6 +136,7 @@ async function request(path, options = {}) {
 async function ensureAdminSession() {
   try {
     await request("/api/admin/session");
+    adminLoginPanel.hidden = true;
     return;
   } catch (error) {
     if (error.status !== 401) {
@@ -135,16 +144,37 @@ async function ensureAdminSession() {
     }
   }
 
-  const password = window.prompt("Enter the admin password");
-  if (!password) {
-    throw new Error("Admin login was cancelled.");
-  }
+  adminLoginPanel.hidden = false;
+  adminPasswordInput.focus();
+  setStatus("Enter the admin password to continue.");
 
-  await request("/api/admin/login", {
-    method: "POST",
-    body: JSON.stringify({ password })
+  await new Promise((resolve) => {
+    adminLoginForm.onsubmit = async (event) => {
+      event.preventDefault();
+      const password = adminPasswordInput.value.trim();
+      if (!password) {
+        setStatus("Please enter the admin password.");
+        return;
+      }
+
+      adminLoginButton.disabled = true;
+      setStatus("Checking admin password...");
+      try {
+        await request("/api/admin/login", {
+          method: "POST",
+          body: JSON.stringify({ password })
+        });
+        adminPasswordInput.value = "";
+        adminLoginPanel.hidden = true;
+        resolve();
+      } catch (error) {
+        adminLoginButton.disabled = false;
+        setStatus(error.message);
+      }
+    };
   });
 
+  adminLoginButton.disabled = false;
   setStatus("Admin login successful. Session lasts 15 minutes.");
 }
 
