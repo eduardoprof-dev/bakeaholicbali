@@ -1862,6 +1862,43 @@ function sendFile(response, targetPath) {
   });
 }
 
+const publicStaticFiles = new Set([
+  "account-common.js",
+  "addresses.html",
+  "addresses.js",
+  "admin.html",
+  "admin.js",
+  "app.js",
+  "cart.html",
+  "cart.js",
+  "home-visual-directions.css",
+  "home-visual-directions.html",
+  "index.html",
+  "invoice.html",
+  "invoice.js",
+  "location-picker.js",
+  "orders.html",
+  "orders.js",
+  "pay.html",
+  "pay.js",
+  "styles.css",
+  "terms.html"
+]);
+
+function isPublicStaticFile(targetPath) {
+  const relative = path.relative(rootDir, targetPath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return false;
+  }
+  if (relative.split(path.sep).some((segment) => segment.startsWith("."))) {
+    return false;
+  }
+  if (relative.startsWith(`assets${path.sep}`)) {
+    return true;
+  }
+  return publicStaticFiles.has(relative);
+}
+
 function timingSafeEqualString(left, right) {
   const leftBuffer = Buffer.from(String(left || ""), "utf8");
   const rightBuffer = Buffer.from(String(right || ""), "utf8");
@@ -4566,17 +4603,12 @@ const server = http.createServer((request, response) => {
 
   const relativePath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
   const targetPath = path.normalize(path.join(rootDir, relativePath));
-  const fileName = path.basename(targetPath);
-  if (!targetPath.startsWith(rootDir)) {
+  if (!targetPath.startsWith(`${rootDir}${path.sep}`) && targetPath !== rootDir) {
     sendJson(response, 403, { error: "Forbidden" });
     return;
   }
-  if (
-    fileName.startsWith(".")
-    || targetPath === envPath
-    || targetPath.startsWith(path.join(rootDir, "data"))
-  ) {
-    sendJson(response, 403, { error: "Forbidden" });
+  if (!isPublicStaticFile(targetPath)) {
+    sendJson(response, 404, { error: "File not found" });
     return;
   }
 
