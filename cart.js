@@ -77,7 +77,6 @@ const footerCartMeta = document.getElementById("footerCartMeta");
 const footerTotalLabel = document.getElementById("footerTotalLabel");
 const footerAddressButton = document.getElementById("footerAddressButton");
 const footerAddressLabel = document.getElementById("footerAddressLabel");
-const paymentFooter = document.querySelector(".payment-footer");
 const footerWhatsappLink = document.getElementById("footerWhatsappLink");
 const footerInstagramLink = document.getElementById("footerInstagramLink");
 const footerTermsLink = document.getElementById("footerTermsLink");
@@ -275,8 +274,31 @@ function setCheckoutMessage(message = "", tone = "error") {
   checkoutMessage.dataset.tone = tone;
 }
 
+function afterHoursMessage() {
+  if (state.store?.businessHours?.enabled === false || state.store?.isOpenNow !== false) {
+    return "";
+  }
+  const hours = state.store.businessHours || {};
+  return `Online ordering is open 24 hours. Orders placed now will be prepared and sent during working hours, ${hours.open || "09:00"} to ${hours.close || "17:00"} Bali time.`;
+}
+
+function syncAfterHoursMessage() {
+  const message = afterHoursMessage();
+  if (message) {
+    setCheckoutMessage(message, "success");
+  } else if (checkoutMessage.textContent.includes("Online ordering is open 24 hours")) {
+    setCheckoutMessage("");
+  }
+}
+
+function submitButtonLabel() {
+  if (state.pendingPaymentUrl) return "Open Payment Page";
+  if ((state.cart?.total || 0) <= 0 && (state.cart?.itemCount || 0) > 0) return "Place Order";
+  return "Continue to secure payment";
+}
+
 function setSubmitButtonState(label, disabled) {
-  submitOrderButton.textContent = label;
+  submitOrderButton.textContent = label || submitButtonLabel();
   submitOrderButton.disabled = disabled;
 }
 
@@ -295,7 +317,7 @@ function applyCartPayload(cartPayload) {
   renderSummary();
   renderPaymentChoice();
   if (!state.pendingPaymentUrl) {
-    setSubmitButtonState("Submit Order", state.cart.itemCount === 0);
+    setSubmitButtonState(submitButtonLabel(), state.cart.itemCount === 0);
   }
   syncFulfillmentUi();
   syncCheckoutVisibility();
@@ -387,10 +409,6 @@ function syncCheckoutVisibility() {
       section.hidden = !hasItems;
     }
   });
-
-  if (paymentFooter) {
-    paymentFooter.hidden = !hasItems;
-  }
 
   if (upsellSection && !hasItems) {
     upsellSection.hidden = true;
@@ -731,7 +749,7 @@ function bindPaymentMethodButtons(container) {
       persistDraft();
       renderPaymentChoice();
       setCheckoutMessage("");
-      setSubmitButtonState("Submit Order", state.cart?.itemCount === 0);
+      setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
       closeModal(paymentModal);
     });
   });
@@ -792,15 +810,12 @@ async function submitOrder() {
 
     syncDraftFromForm();
     setCheckoutMessage("");
-    if (state.store?.businessHours?.enabled !== false && state.store?.isOpenNow === false) {
-      const hours = state.store.businessHours;
-      setCheckoutMessage(`Online ordering is open 24 hours. Orders placed now will be prepared and sent during working hours, ${hours.open} to ${hours.close} Bali time.`, "success");
-    }
+    syncAfterHoursMessage();
     if (!state.draft.customer.phoneVerifiedAt) {
       submitAfterLogin = true;
       openWhatsappModal();
       setCheckoutMessage("Please verify your WhatsApp number to continue checkout.", "success");
-      setSubmitButtonState("Submit Order", state.cart?.itemCount === 0);
+      setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
       return;
     }
 
@@ -870,11 +885,11 @@ async function submitOrder() {
       submitAfterLogin = true;
       openWhatsappModal();
       setCheckoutMessage("Please verify your WhatsApp number to continue checkout.", "success");
-      setSubmitButtonState("Submit Order", false);
+      setSubmitButtonState(submitButtonLabel(), false);
       return;
     }
     setCheckoutMessage(error.message || "Unable to submit the order.");
-    setSubmitButtonState("Submit Order", false);
+    setSubmitButtonState(submitButtonLabel(), false);
   }
 }
 
@@ -890,10 +905,7 @@ async function bootstrap() {
   document.title = "Checkout | Bakeaholic Online Shop";
   syncTopLinks();
   syncFooterLinks();
-  if (state.store?.businessHours?.enabled !== false && state.store?.isOpenNow === false) {
-    const hours = state.store.businessHours;
-    setCheckoutMessage(`Online ordering is open 24 hours. Orders placed now will be prepared and sent during working hours, ${hours.open} to ${hours.close} Bali time.`, "success");
-  }
+  syncAfterHoursMessage();
   whatsappPrompt.textContent = withVerificationPrompt(state.store.whatsappPrompt);
   await syncSessionProfile();
   hydrateForm();
@@ -918,7 +930,8 @@ async function bootstrap() {
   renderPaymentModal();
   renderPaymentChoice();
   await refreshCart();
-  setSubmitButtonState("Submit Order", (state.cart?.itemCount || 0) === 0);
+  syncAfterHoursMessage();
+  setSubmitButtonState(submitButtonLabel(), (state.cart?.itemCount || 0) === 0);
 }
 
 [

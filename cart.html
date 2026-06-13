@@ -12,7 +12,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260604-session-cart" />
+    <link rel="stylesheet" href="styles.css?v=20260613-checkout-ux" />
   </head>
   <body class="cart-is-empty">
     <div class="mobile-shell checkout-shell">
@@ -151,6 +151,9 @@
             <span class="address-arrow">›</span>
           </button>
           <div class="payment-method-list inline-payment-method-list" id="inlinePaymentMethodList"></div>
+          <button class="primary-button full-width checkout-payment-submit" id="submitOrderButton" type="button">
+            Continue to secure payment
+          </button>
         </section>
 
         <section class="cart-section checkout-message-card" id="checkoutMessageSection" hidden>
@@ -183,12 +186,6 @@
         </div>
       </footer>
     </div>
-
-    <section class="payment-footer" hidden>
-      <button class="primary-button full-width" id="submitOrderButton" type="button">
-        Submit Order
-      </button>
-    </section>
 
     <div class="modal-scrim" id="modalScrim" hidden></div>
 
@@ -315,6 +312,6 @@
       crossorigin=""
     ></script>
     <script src="location-picker.js?v=20260613-maps-async"></script>
-    <script src="cart.js?v=20260604-session-cart"></script>
+    <script src="cart.js?v=20260613-checkout-ux"></script>
   </body>
 </html>

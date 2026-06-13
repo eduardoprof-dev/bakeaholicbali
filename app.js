@@ -915,7 +915,8 @@ function buildCartQuery() {
   return search.toString();
 }
 
-async function refreshCart() {
+async function refreshCart(options = {}) {
+  const { renderProducts = true } = options;
   state.cart = await request(`/api/cart?${buildCartQuery()}`);
   if (state.cart?.shipping?.distanceKm) {
     state.draft.destination.routeDistanceKm = state.cart.shipping.distanceKm;
@@ -926,37 +927,54 @@ async function refreshCart() {
   state.draft.destination.courierServiceName = state.cart?.shipping?.courierServiceName || "";
   persistDraft();
   renderCartSummary();
-  renderCatalog();
+  if (renderProducts) {
+    renderCatalog();
+  }
   syncFulfillmentUi();
 }
 
+function setAddButtonBadge(button, quantity) {
+  if (!button) return;
+  let badge = button.querySelector(".add-quantity-badge");
+  if (quantity <= 0) {
+    badge?.remove();
+    return;
+  }
+  badge = badge || document.createElement("span");
+  badge.className = "add-quantity-badge";
+  badge.textContent = quantity > 99 ? "99+" : String(quantity);
+  if (!badge.isConnected) {
+    button.appendChild(badge);
+  }
+}
+
+function adjustVisibleAddBadges(itemId, delta) {
+  document.querySelectorAll("[data-item-id]").forEach((button) => {
+    if (button.dataset.itemId !== itemId) return;
+    const badge = button.querySelector(".add-quantity-badge");
+    const currentQuantity = Number(badge?.textContent || "0") || 0;
+    setAddButtonBadge(button, Math.max(0, currentQuantity + delta));
+    button.setAttribute("aria-live", "polite");
+  });
+}
+
 async function addToCart(itemId, triggerButton = null) {
-  const idleText = triggerButton?.textContent;
+  adjustVisibleAddBadges(itemId, 1);
   if (triggerButton) {
-    const badge = triggerButton.querySelector(".add-quantity-badge") || document.createElement("span");
-    const currentQuantity = Number(badge.textContent || "0") || 0;
-    badge.className = "add-quantity-badge";
-    badge.textContent = currentQuantity + 1 > 99 ? "99+" : String(currentQuantity + 1);
-    if (!badge.isConnected) {
-      triggerButton.appendChild(badge);
-    }
-    triggerButton.disabled = true;
     triggerButton.classList.add("is-updating");
+    triggerButton.setAttribute("aria-live", "polite");
   }
   try {
     await request("/api/cart", {
       method: "POST",
       body: JSON.stringify({ itemId, quantity: 1 })
     });
-    await refreshCart();
+    await refreshCart({ renderProducts: false });
+  } catch (error) {
+    adjustVisibleAddBadges(itemId, -1);
+    throw error;
   } finally {
-    if (triggerButton) {
-      triggerButton.disabled = false;
-      triggerButton.classList.remove("is-updating");
-      if (idleText) {
-        triggerButton.setAttribute("aria-live", "polite");
-      }
-    }
+    triggerButton?.classList.remove("is-updating");
   }
 }
 
@@ -1408,7 +1426,7 @@ profileEmailInput.addEventListener("keydown", (event) => {
 });
 productModalAddButton.addEventListener("click", async () => {
   if (!selectedProductId) return;
-  await addToCart(selectedProductId);
+  await addToCart(selectedProductId, productModalAddButton);
   closeModal(productModal);
 });
 

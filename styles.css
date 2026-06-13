@@ -3720,6 +3720,11 @@ body.has-cart-items .storefront-content {
   opacity: 1;
 }
 
+.checkout-payment-submit {
+  margin-top: 14px;
+  min-height: 54px;
+}
+
 .payment-logo {
   display: inline-flex;
   align-items: center;
@@ -4310,19 +4315,6 @@ body.cart-is-empty .checkout-shell .cart-layout {
     margin: 0;
     padding: 10px;
     gap: 8px;
-  }
-
-  body:not(.cart-is-empty) .checkout-shell {
-    padding-bottom: 132px;
-  }
-
-  .payment-footer .payment-footer-meta,
-  .payment-footer .secure-note {
-    display: none;
-  }
-
-  .payment-footer .primary-button {
-    min-height: 52px;
   }
 
   .checkout-summary-card {
