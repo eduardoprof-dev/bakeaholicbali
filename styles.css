@@ -3720,6 +3720,32 @@ body.has-cart-items .storefront-content {
   opacity: 1;
 }
 
+.xendit-checkout-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.xendit-checkout-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.xendit-checkout-card strong {
+  color: var(--text);
+}
+
+.xendit-checkout-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
 .checkout-payment-submit {
   margin-top: 14px;
   min-height: 54px;

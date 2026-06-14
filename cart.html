@@ -12,7 +12,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260613-checkout-ux" />
+    <link rel="stylesheet" href="styles.css?v=20260614-xendit-checkout" />
   </head>
   <body class="cart-is-empty">
     <div class="mobile-shell checkout-shell">
@@ -139,18 +139,15 @@
 
         <section class="cart-section checkout-payment-card">
           <div class="section-head-inline">
-            <h2>Payment method</h2>
-            <button class="text-action" id="choosePaymentButton" type="button" hidden>Change</button>
+            <h2>Payment</h2>
           </div>
-          <button class="payment-method-card" id="selectedPaymentButton" type="button" hidden>
-            <span class="payment-logo" id="paymentLogo">CARD</span>
+          <div class="xendit-checkout-card">
+            <span class="payment-logo large" id="paymentLogo">XENDIT</span>
             <div>
-              <strong id="paymentMethodLabel">Credit / Debit Card</strong>
-              <p id="paymentMethodHint">Visa, Mastercard, JCB, Amex</p>
+              <strong id="paymentMethodLabel">Secure Xendit checkout</strong>
+              <p id="paymentMethodHint">Choose QRIS, bank transfer, card, or other active methods on Xendit.</p>
             </div>
-            <span class="address-arrow">›</span>
-          </button>
-          <div class="payment-method-list inline-payment-method-list" id="inlinePaymentMethodList"></div>
+          </div>
           <button class="primary-button full-width checkout-payment-submit" id="submitOrderButton" type="button">
             Continue to secure payment
           </button>
@@ -312,6 +309,6 @@
       crossorigin=""
     ></script>
     <script src="location-picker.js?v=20260613-maps-async"></script>
-    <script src="cart.js?v=20260613-checkout-ux"></script>
+    <script src="cart.js?v=20260614-xendit-checkout"></script>
   </body>
 </html>

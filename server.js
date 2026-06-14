@@ -114,6 +114,13 @@ const ordersTestPath = path.join(dataDir, "orders-test.json");
 const biteshipWebhookLogPath = path.join(dataDir, "biteship-webhook-log.json");
 const PAYMENT_METHODS = [
   {
+    id: "xendit-checkout",
+    label: "Xendit Checkout",
+    kind: "xendit",
+    logoText: "XENDIT",
+    description: "Choose your preferred secure payment method on Xendit"
+  },
+  {
     id: "xendit-card",
     label: "Credit / Debit Card",
     kind: "card",
@@ -831,6 +838,7 @@ async function sendWhatsappPaymentExpired(order) {
 
 async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   const skipReason = (() => {
+    if (usesXenditCustomerPaymentNotifications(order)) return "xendit_customer_notifications";
     if (order.mode === "test") return "test_order";
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (!process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME) return "receipt_template_not_configured";
@@ -854,6 +862,10 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
     order.whatsappReceiptNotificationError = error.message;
     return { sent: false, skipped: false, error: error.message };
   }
+}
+
+function usesXenditCustomerPaymentNotifications(order) {
+  return order?.payment?.provider === "xendit" && process.env.XENDIT_CUSTOMER_NOTIFICATIONS !== "app";
 }
 
 function paymentTimerKey(mode, orderId, step) {
@@ -931,6 +943,11 @@ async function processPaymentReminderStep(mode, orderId, step) {
     if (reminderFlow[`${step}SentAt`]) {
       return { handled: false, reason: "already_sent" };
     }
+    if (usesXenditCustomerPaymentNotifications(order)) {
+      reminderFlow[`${step}Skipped`] = "xendit_customer_notifications";
+      saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+      return { handled: true, action: `${step}_reminder_skipped`, orderId };
+    }
     if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME) {
       try {
         const response = await sendWhatsappPaymentReminder(order);
@@ -959,7 +976,9 @@ async function processPaymentReminderStep(mode, orderId, step) {
   order.whatsappUrl = buildWhatsappUrl(order);
   reminderFlow.expiredAt = order.expiredAt;
 
-  if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
+  if (usesXenditCustomerPaymentNotifications(order)) {
+    reminderFlow.expiredSkipped = "xendit_customer_notifications";
+  } else if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
     try {
       const response = await sendWhatsappPaymentExpired(order);
       reminderFlow.expiredMessageSentAt = new Date().toISOString();
@@ -1003,6 +1022,10 @@ function schedulePaymentReminderFlow(mode, order) {
   const now = Date.now();
   const expireTime = Date.parse(reminderFlow.expireAt || order.expiresAt || "");
   if (expireTime && expireTime <= now) {
+    schedulePaymentReminderTimer(mode, order.id, "expire", reminderFlow.expireAt || order.expiresAt);
+    return;
+  }
+  if (usesXenditCustomerPaymentNotifications(order)) {
     schedulePaymentReminderTimer(mode, order.id, "expire", reminderFlow.expireAt || order.expiresAt);
     return;
   }
@@ -2514,7 +2537,7 @@ function hasCompleteDestination(destination) {
 function normalizeCheckoutDraft(input = {}) {
   const customer = normalizeCustomerDetails(input.customer);
   const fulfillmentType = "delivery";
-  const paymentMethodId = String(input.paymentMethodId || "xendit-card").trim() || "xendit-card";
+  const paymentMethodId = String(input.paymentMethodId || "xendit-checkout").trim() || "xendit-checkout";
 
   return {
     customer,
@@ -3324,7 +3347,11 @@ function buildXenditInvoicePayload(order) {
     invoice_duration: 15 * 60
   };
 
-  if (Array.isArray(order.payment?.xenditPaymentMethods) && order.payment.xenditPaymentMethods.length) {
+  if (
+    order.payment?.id !== "xendit-checkout"
+    && Array.isArray(order.payment?.xenditPaymentMethods)
+    && order.payment.xenditPaymentMethods.length
+  ) {
     payload.payment_methods = order.payment.xenditPaymentMethods;
   }
 
@@ -4138,7 +4165,7 @@ function handleApi(requestUrl, request, response) {
       brandStory: withDefaultBrandStory(catalog.brandStory),
       categories: catalog.categories,
       items: catalog.items,
-      paymentMethods: PAYMENT_METHODS,
+      paymentMethods: PAYMENT_METHODS.filter((method) => method.id === "xendit-checkout"),
       vouchers: DEMO_VOUCHERS
     });
     return true;
@@ -4534,7 +4561,9 @@ function handleApi(requestUrl, request, response) {
               ...(order.paymentReminderFlow || {}),
               expiredAt: order.expiredAt
             };
-            if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
+            if (usesXenditCustomerPaymentNotifications(order)) {
+              order.paymentReminderFlow.expiredSkipped = "xendit_customer_notifications";
+            } else if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
               try {
                 const expiredResponse = await sendWhatsappPaymentExpired(order);
                 order.paymentReminderFlow.expiredMessageSentAt = new Date().toISOString();

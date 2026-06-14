@@ -194,8 +194,8 @@ function renderPending() {
   });
   const paymentLinkBlock = payment.paymentUrl
     ? `
-      <a class="primary-button button-link full-width" href="${escapeHtml(payment.paymentUrl)}" target="_blank" rel="noopener">
-        Open secure payment page
+      <a class="primary-button button-link full-width" href="${escapeHtml(payment.paymentUrl)}">
+        Continue to secure payment
       </a>
     `
     : "";

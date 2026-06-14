@@ -32,7 +32,7 @@ At minimum:
 - `XENDIT_SECRET_KEY=...`
 - `XENDIT_CALLBACK_TOKEN=...`
 
-Activate the customer-facing payment channels in the Xendit dashboard. The storefront offers card, QRIS, and virtual-account choices, then Xendit handles the secure payment flow for the selected channel.
+Activate the customer-facing payment channels in the Xendit dashboard. The storefront sends paid orders to Xendit Checkout without preselecting card, QRIS, or virtual-account channels, so the payment options shown to customers come from Xendit's Checkout settings.
 
 Optional but recommended for live messaging:
 
@@ -44,9 +44,6 @@ Optional but recommended for live messaging:
 - `WHATSAPP_APP_SECRET=...`
 - `WHATSAPP_OTP_TEMPLATE_NAME=...`
 - `WHATSAPP_ORDER_TEMPLATE_NAME=...`
-- `WHATSAPP_RECEIPT_TEMPLATE_NAME=...`
-- `WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME=...`
-- `WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME=...`
 - `WHATSAPP_SHIPPING_TEMPLATE_NAME=...`
 - `WHATSAPP_ADMIN_NUMBER=...`
 - `WHATSAPP_ADMIN_TEMPLATE_NAME=...`
@@ -55,11 +52,7 @@ Optional but recommended for live messaging:
 
 For admin alerts, use a Meta-approved template whose body variables match the values the app sends: event/status, order id, customer name, customer phone, total, payment method, delivery status, and invoice URL.
 
-For customer receipts, use a Meta-approved template whose body variables match the values the app sends: order id and total. Add a dynamic website button with base URL `https://checkout.xendit.co/{{1}}`; the app sends the Xendit receipt path into that button.
-
-For unpaid payment reminders, use a Meta-approved template whose body variables match the values the app sends: order id. Add a dynamic website button with base URL `https://checkout.xendit.co/web/{{1}}` for live Xendit invoices, or `https://checkout-staging.xendit.co/web/{{1}}` while `XENDIT_ENVIRONMENT=test`. The app sends only the Xendit checkout token into that button. The app sends this reminder at 5 minutes and again at 10 minutes after checkout if Xendit has not confirmed payment.
-
-For unpaid payment expiry, use a Meta-approved template whose body variables match the values the app sends: order id. Add a dynamic website button with base URL `https://bakeaholicbali.com/invoice.html?ref={{1}}`; the app sends a safe order document reference into that button. The app marks the order expired at 15 minutes if Xendit has not confirmed payment.
+Customer payment links, payment reminders, and successful-payment notices should be managed in Xendit Dashboard > Settings > Checkout > Notifications. The app skips its own customer payment receipt/reminder/expiry WhatsApp messages for Xendit orders unless `XENDIT_CUSTOMER_NOTIFICATIONS=app` is set.
 
 For shipping updates, use a Meta-approved template whose body variables match the values the app sends: order id, courier name, waybill/tracking number, tracking link, and Biteship document/link. Add a dynamic website button with base URL `https://bakeaholicbali.com/invoice.html?{{1}}`; the app sends the order document query into that button so customer/admin can open tracking, invoice, and print details.
 

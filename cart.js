@@ -48,9 +48,6 @@ const orderNotesInput = document.getElementById("orderNotesInput");
 const voucherInput = document.getElementById("voucherInput");
 const applyVoucherButton = document.getElementById("applyVoucherButton");
 const voucherMessage = document.getElementById("voucherMessage");
-const choosePaymentButton = document.getElementById("choosePaymentButton");
-const selectedPaymentButton = document.getElementById("selectedPaymentButton");
-const inlinePaymentMethodList = document.getElementById("inlinePaymentMethodList");
 const paymentLogo = document.getElementById("paymentLogo");
 const paymentMethodLabel = document.getElementById("paymentMethodLabel");
 const paymentMethodHint = document.getElementById("paymentMethodHint");
@@ -140,7 +137,7 @@ const instagramIcon = `
 function loadDraft() {
   const fallback = {
     fulfillmentType: "delivery",
-    paymentMethodId: "xendit-card",
+    paymentMethodId: "xendit-checkout",
     voucherCode: "",
     deliveryNotes: "",
     orderNotes: "",
@@ -258,8 +255,7 @@ function versionedAsset(path) {
 }
 
 function currentPaymentMethod() {
-  return state.paymentMethods.find((method) => method.id === state.draft.paymentMethodId)
-    || state.paymentMethods.find((method) => method.id === "xendit-card")
+  return state.paymentMethods.find((method) => method.id === "xendit-checkout")
     || state.paymentMethods[0];
 }
 
@@ -597,9 +593,9 @@ function renderPaymentChoice() {
   state.draft.paymentMethodId = payment.id;
   persistDraft();
 
-  paymentLogo.textContent = payment.logoText;
-  paymentMethodLabel.textContent = payment.label;
-  paymentMethodHint.textContent = payment.description
+  if (paymentLogo) paymentLogo.textContent = payment.logoText;
+  if (paymentMethodLabel) paymentMethodLabel.textContent = "Secure Xendit checkout";
+  if (paymentMethodHint) paymentMethodHint.textContent = payment.description
     || "Pay securely through Xendit.";
 
   if (footerPaymentLogo) footerPaymentLogo.textContent = payment.logoText;
@@ -761,11 +757,6 @@ function renderPaymentModal() {
       (method) => paymentMethodMarkup(method)
     )
     .join("");
-
-  if (inlinePaymentMethodList) {
-    inlinePaymentMethodList.innerHTML = methodHtml;
-    bindPaymentMethodButtons(inlinePaymentMethodList);
-  }
 
   if (paymentMethodList) {
     paymentMethodList.innerHTML = methodHtml;
@@ -973,9 +964,7 @@ applyVoucherButton.addEventListener("click", async () => {
   await refreshCart();
 });
 
-choosePaymentButton.addEventListener("click", () => openModal(paymentModal));
-selectedPaymentButton.addEventListener("click", () => openModal(paymentModal));
-closePaymentModal.addEventListener("click", () => closeModal(paymentModal));
+closePaymentModal?.addEventListener("click", () => closeModal(paymentModal));
 saveWhatsappButton.addEventListener("click", requestOtp);
 closeWhatsappModal.addEventListener("click", () => closeModal(whatsappModal));
 whatsappInput.addEventListener("keydown", (event) => {
