@@ -5,8 +5,18 @@ const formatRupiah = new Intl.NumberFormat("id-ID", {
 });
 
 const params = new URLSearchParams(window.location.search);
-const appMode = params.get("mode") === "test" ? "test" : "live";
-const orderId = params.get("order") || "";
+const orderRef = params.get("ref") || "";
+let appMode = params.get("mode") === "test" ? "test" : "live";
+let orderId = params.get("order") || "";
+let orderToken = params.get("token") || "";
+
+if (orderRef && !orderId) {
+  const [refOrderId, refToken, refMode] = orderRef.split(".");
+  orderId = refOrderId || "";
+  orderToken = refToken || "";
+  appMode = refMode === "test" ? "test" : appMode;
+}
+
 const latestOrderKey = `bakeaholic-latest-order-${appMode}`;
 
 const paymentApp = document.getElementById("paymentApp");
@@ -66,6 +76,88 @@ function lineItemsMarkup() {
       `
     )
     .join("");
+}
+
+function actionValue(action) {
+  const value = action?.value;
+  if (value && typeof value === "object") {
+    return value.qr_string
+      || value.qr_code
+      || value.qr_code_url
+      || value.virtual_account_number
+      || value.account_number
+      || value.payment_code
+      || value.url
+      || JSON.stringify(value);
+  }
+  return String(value || "");
+}
+
+function paymentActionMarkup(payment) {
+  const actions = Array.isArray(payment.actions) ? payment.actions : [];
+  const presentAction = actions.find((action) => action.type === "PRESENT_TO_CUSTOMER");
+  const redirectAction = actions.find((action) => action.type === "REDIRECT_CUSTOMER") || (payment.paymentUrl
+    ? { value: payment.paymentUrl }
+    : null);
+  const presentValue = actionValue(presentAction);
+  const redirectValue = actionValue(redirectAction);
+
+  if (presentAction && payment.kind === "qris") {
+    const isImage = /^https?:\/\//i.test(presentValue) || /^data:image\//i.test(presentValue);
+    return `
+      <div class="xendit-present-box">
+        <div class="xendit-present-head">
+          <div>
+            <h3>QRIS</h3>
+            <p>Scan from any QRIS-enabled app.</p>
+          </div>
+          <span class="payment-countdown">${formatRemainingTime(state.order.expiresAt)}</span>
+        </div>
+        <div class="qris-display">
+          ${isImage
+            ? `<img class="qris-image" src="${escapeHtml(presentValue)}" alt="QRIS payment code" />`
+            : `<div class="qr-data-fallback">
+                <strong>QR data received from Xendit</strong>
+                <p>A local QR renderer is needed if Xendit returns raw QR text instead of an image URL.</p>
+                <button class="secondary-button" type="button" data-copy="${escapeHtml(presentValue)}">Copy QR data</button>
+              </div>`}
+        </div>
+      </div>
+    `;
+  }
+
+  if (presentAction) {
+    return `
+      <div class="xendit-present-box">
+        <div class="xendit-present-head">
+          <div>
+            <h3>${escapeHtml(payment.label)}</h3>
+            <p>${payment.kind === "va" ? "Transfer to this virtual account number." : "Use the payment details below."}</p>
+          </div>
+          <span class="payment-countdown">${formatRemainingTime(state.order.expiresAt)}</span>
+        </div>
+        <div class="virtual-account-box">
+          <span>${payment.kind === "va" ? "Virtual Account Number" : "Payment Code"}</span>
+          <strong>${escapeHtml(presentValue)}</strong>
+          <button class="secondary-button" type="button" data-copy="${escapeHtml(presentValue)}">Copy</button>
+        </div>
+      </div>
+    `;
+  }
+
+  if (redirectValue) {
+    return `
+      <a class="primary-button button-link full-width" href="${escapeHtml(redirectValue)}">
+        Complete payment
+      </a>
+    `;
+  }
+
+  return `
+    <div class="instruction-box">
+      Payment is being prepared. Tap check status in a moment.
+    </div>
+  `;
 }
 
 function renderCancelled() {
@@ -192,13 +284,8 @@ function renderPending() {
     day: "numeric",
     year: "numeric"
   });
-  const paymentLinkBlock = payment.paymentUrl
-    ? `
-      <a class="primary-button button-link full-width" href="${escapeHtml(payment.paymentUrl)}">
-        Continue to secure payment
-      </a>
-    `
-    : "";
+  const paymentLinkBlock = paymentActionMarkup(payment);
+  const documentUrl = state.order.documentUrl || `/invoice.html?order=${encodeURIComponent(state.order.id)}${orderToken ? `&token=${encodeURIComponent(orderToken)}` : ""}${appMode === "test" ? "&mode=test" : ""}`;
 
   document.title = `Pay and Order ${state.order.id} | Bakeaholic Online Shop`;
   paymentApp.innerHTML = `
@@ -240,6 +327,10 @@ function renderPending() {
         <button class="secondary-link link-button centered-link" id="cancelOrderButton" type="button">
           Cancel your order
         </button>
+        <div class="payment-page-actions">
+          <a class="secondary-link" href="${escapeHtml(documentUrl)}">View receipt</a>
+          <a class="secondary-link" href="/orders.html${appMode === "test" ? "?mode=test" : ""}">All orders</a>
+        </div>
       </div>
 
       <section class="payment-page-card order-total-card">
@@ -284,9 +375,9 @@ function renderPending() {
   });
 
   document.getElementById("checkStatusButton")?.addEventListener("click", async () => {
-    const response = await request("/api/order/payment-status", {
+        const response = await request("/api/order/payment-status", {
       method: "POST",
-      body: JSON.stringify({ id: orderId })
+      body: JSON.stringify({ id: orderId, token: orderToken })
     });
     state.order = response.order;
     localStorage.setItem(latestOrderKey, state.order.id);
@@ -323,7 +414,8 @@ async function bootstrap() {
     throw new Error("Missing order id");
   }
 
-  const response = await request(`/api/order?id=${encodeURIComponent(orderId)}`);
+  const tokenQuery = orderToken ? `&token=${encodeURIComponent(orderToken)}` : "";
+  const response = await request(`/api/order?id=${encodeURIComponent(orderId)}${tokenQuery}`);
   state.order = response.order;
   localStorage.setItem(latestOrderKey, state.order.id);
   render();

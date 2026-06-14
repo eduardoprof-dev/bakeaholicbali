@@ -48,6 +48,7 @@ const orderNotesInput = document.getElementById("orderNotesInput");
 const voucherInput = document.getElementById("voucherInput");
 const applyVoucherButton = document.getElementById("applyVoucherButton");
 const voucherMessage = document.getElementById("voucherMessage");
+const inlinePaymentMethodList = document.getElementById("inlinePaymentMethodList");
 const paymentLogo = document.getElementById("paymentLogo");
 const paymentMethodLabel = document.getElementById("paymentMethodLabel");
 const paymentMethodHint = document.getElementById("paymentMethodHint");
@@ -137,7 +138,7 @@ const instagramIcon = `
 function loadDraft() {
   const fallback = {
     fulfillmentType: "delivery",
-    paymentMethodId: "xendit-checkout",
+    paymentMethodId: "xendit-qris",
     voucherCode: "",
     deliveryNotes: "",
     orderNotes: "",
@@ -255,13 +256,14 @@ function versionedAsset(path) {
 }
 
 function currentPaymentMethod() {
-  return state.paymentMethods.find((method) => method.id === "xendit-checkout")
+  return state.paymentMethods.find((method) => method.id === state.draft.paymentMethodId)
+    || state.paymentMethods.find((method) => method.id === "xendit-qris")
     || state.paymentMethods[0];
 }
 
 function paymentUrlForOrder(order) {
   const localPaymentUrl = `/pay.html${modeQuery ? `${modeQuery}&order=${order.id}` : `?order=${order.id}`}`;
-  return order.payment?.paymentUrl || localPaymentUrl;
+  return localPaymentUrl;
 }
 
 function setCheckoutMessage(message = "", tone = "error") {
@@ -290,7 +292,7 @@ function syncAfterHoursMessage() {
 function submitButtonLabel() {
   if (state.pendingPaymentUrl) return "Open Payment Page";
   if ((state.cart?.total || 0) <= 0 && (state.cart?.itemCount || 0) > 0) return "Place Order";
-  return "Continue to secure payment";
+  return "Submit Order";
 }
 
 function setSubmitButtonState(label, disabled) {
@@ -594,7 +596,7 @@ function renderPaymentChoice() {
   persistDraft();
 
   if (paymentLogo) paymentLogo.textContent = payment.logoText;
-  if (paymentMethodLabel) paymentMethodLabel.textContent = "Secure Xendit checkout";
+  if (paymentMethodLabel) paymentMethodLabel.textContent = payment.label;
   if (paymentMethodHint) paymentMethodHint.textContent = payment.description
     || "Pay securely through Xendit.";
 
@@ -758,6 +760,11 @@ function renderPaymentModal() {
     )
     .join("");
 
+  if (inlinePaymentMethodList) {
+    inlinePaymentMethodList.innerHTML = methodHtml;
+    bindPaymentMethodButtons(inlinePaymentMethodList);
+  }
+
   if (paymentMethodList) {
     paymentMethodList.innerHTML = methodHtml;
     bindPaymentMethodButtons(paymentMethodList);
@@ -851,7 +858,7 @@ async function submitOrder() {
       fulfillmentType: state.draft.fulfillmentType,
       perkUnlocked: false
     });
-    setSubmitButtonState("Opening payment...", true);
+    setSubmitButtonState("Opening order...", true);
     window.location.assign(state.pendingPaymentUrl);
 
     window.setTimeout(() => {

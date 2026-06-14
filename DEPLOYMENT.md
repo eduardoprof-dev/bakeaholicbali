@@ -32,7 +32,7 @@ At minimum:
 - `XENDIT_SECRET_KEY=...`
 - `XENDIT_CALLBACK_TOKEN=...`
 
-Activate the customer-facing payment channels in the Xendit dashboard. The storefront sends paid orders to Xendit Checkout without preselecting card, QRIS, or virtual-account channels, so the payment options shown to customers come from Xendit's Checkout settings.
+Activate QRIS, Virtual Account, and Card channels in the Xendit dashboard. The storefront lets customers choose QRIS, Bank Transfer, or Credit / Debit Card, then creates a Xendit Payment Request for that channel. QRIS and virtual-account details are shown on the Bakeaholic waiting-payment page when Xendit returns a customer-presentable action; card payments may redirect for secure authentication.
 
 Optional but recommended for live messaging:
 
@@ -52,7 +52,7 @@ Optional but recommended for live messaging:
 
 For admin alerts, use a Meta-approved template whose body variables match the values the app sends: event/status, order id, customer name, customer phone, total, payment method, delivery status, and invoice URL.
 
-Customer payment links, payment reminders, and successful-payment notices should be managed in Xendit Dashboard > Settings > Checkout > Notifications. The app skips its own customer payment receipt/reminder/expiry WhatsApp messages for Xendit orders unless `XENDIT_CUSTOMER_NOTIFICATIONS=app` is set.
+Customer payment reminders should use the app's WhatsApp templates. The payment reminder template button should point to `https://bakeaholicbali.com/pay.html?ref={{1}}`; the app sends a secure order reference so customers land on the Bakeaholic waiting-payment page first. Receipt buttons should point to `https://bakeaholicbali.com/invoice.html?ref={{1}}`.
 
 For shipping updates, use a Meta-approved template whose body variables match the values the app sends: order id, courier name, waybill/tracking number, tracking link, and Biteship document/link. Add a dynamic website button with base URL `https://bakeaholicbali.com/invoice.html?{{1}}`; the app sends the order document query into that button so customer/admin can open tracking, invoice, and print details.
 

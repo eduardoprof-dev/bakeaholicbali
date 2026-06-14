@@ -114,27 +114,12 @@ const ordersTestPath = path.join(dataDir, "orders-test.json");
 const biteshipWebhookLogPath = path.join(dataDir, "biteship-webhook-log.json");
 const PAYMENT_METHODS = [
   {
-    id: "xendit-checkout",
-    label: "Xendit Checkout",
-    kind: "xendit",
-    logoText: "XENDIT",
-    description: "Choose your preferred secure payment method on Xendit"
-  },
-  {
-    id: "xendit-card",
-    label: "Credit / Debit Card",
-    kind: "card",
-    logoText: "CARD",
-    description: "Visa, Mastercard, JCB, Amex",
-    xenditPaymentMethods: ["CREDIT_CARD"]
-  },
-  {
     id: "xendit-qris",
     label: "QRIS",
     kind: "qris",
     logoText: "QRIS",
     description: "Scan QRIS to pay from any e-wallet or banking app",
-    xenditPaymentMethods: ["QRIS"]
+    xenditChannelCode: "QRIS"
   },
   {
     id: "xendit-va",
@@ -142,7 +127,15 @@ const PAYMENT_METHODS = [
     kind: "va",
     logoText: "BANK",
     description: "Mandiri, Permata, BNI, CIMB Niaga, BRI",
-    xenditPaymentMethods: ["MANDIRI", "PERMATA", "BNI", "CIMB", "BRI"]
+    xenditChannelCode: "BCA"
+  },
+  {
+    id: "xendit-card",
+    label: "Credit / Debit Card",
+    kind: "card",
+    logoText: "CARD",
+    description: "Visa, Mastercard, JCB, Amex",
+    xenditChannelCode: "CREDIT_CARD"
   }
 ];
 const MAX_DELIVERY_DISTANCE_KM = 100;
@@ -648,6 +641,11 @@ function publicDocumentButtonQuery(order) {
   return `${order.id}.${ensureOrderReceiptToken(order)}${modeSuffix}`;
 }
 
+function publicOrderButtonQuery(order) {
+  const modeSuffix = order.mode === "test" ? ".test" : "";
+  return `${order.id}.${ensureOrderReceiptToken(order)}${modeSuffix}`;
+}
+
 function xenditInvoiceUrl(order) {
   return order.payment?.invoiceUrl || order.payment?.paymentUrl || getPublicDocumentUrl(order);
 }
@@ -813,7 +811,7 @@ async function sendWhatsappPaymentReminder(order) {
     urlButtonParameters: [
       {
         index: "0",
-        text: xenditCheckoutButtonToken(order)
+        text: publicOrderButtonQuery(order)
       }
     ]
   });
@@ -838,7 +836,6 @@ async function sendWhatsappPaymentExpired(order) {
 
 async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   const skipReason = (() => {
-    if (usesXenditCustomerPaymentNotifications(order)) return "xendit_customer_notifications";
     if (order.mode === "test") return "test_order";
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (!process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME) return "receipt_template_not_configured";
@@ -862,10 +859,6 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
     order.whatsappReceiptNotificationError = error.message;
     return { sent: false, skipped: false, error: error.message };
   }
-}
-
-function usesXenditCustomerPaymentNotifications(order) {
-  return order?.payment?.provider === "xendit" && process.env.XENDIT_CUSTOMER_NOTIFICATIONS !== "app";
 }
 
 function paymentTimerKey(mode, orderId, step) {
@@ -907,9 +900,15 @@ async function refreshUnpaidOrderFromXendit(order) {
     return order;
   }
   const previousStatus = order.status;
-  const xenditStatus = await fetchXenditInvoiceStatus(order).catch(() => null);
+  const xenditStatus = order.payment?.provider === "xendit_payments_api"
+    ? await fetchXenditPaymentRequestStatus(order).catch(() => null)
+    : await fetchXenditInvoiceStatus(order).catch(() => null);
   if (xenditStatus) {
-    applyXenditInvoiceStatusToOrder(order, xenditStatus);
+    if (order.payment?.provider === "xendit_payments_api") {
+      applyXenditPaymentRequestStatusToOrder(order, xenditStatus);
+    } else {
+      applyXenditInvoiceStatusToOrder(order, xenditStatus);
+    }
   }
   if (previousStatus !== order.status && order.status === "paid") {
     clearPaymentReminderTimers(order.mode || "live", order.id);
@@ -943,11 +942,6 @@ async function processPaymentReminderStep(mode, orderId, step) {
     if (reminderFlow[`${step}SentAt`]) {
       return { handled: false, reason: "already_sent" };
     }
-    if (usesXenditCustomerPaymentNotifications(order)) {
-      reminderFlow[`${step}Skipped`] = "xendit_customer_notifications";
-      saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
-      return { handled: true, action: `${step}_reminder_skipped`, orderId };
-    }
     if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME) {
       try {
         const response = await sendWhatsappPaymentReminder(order);
@@ -976,9 +970,7 @@ async function processPaymentReminderStep(mode, orderId, step) {
   order.whatsappUrl = buildWhatsappUrl(order);
   reminderFlow.expiredAt = order.expiredAt;
 
-  if (usesXenditCustomerPaymentNotifications(order)) {
-    reminderFlow.expiredSkipped = "xendit_customer_notifications";
-  } else if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
+  if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
     try {
       const response = await sendWhatsappPaymentExpired(order);
       reminderFlow.expiredMessageSentAt = new Date().toISOString();
@@ -1022,10 +1014,6 @@ function schedulePaymentReminderFlow(mode, order) {
   const now = Date.now();
   const expireTime = Date.parse(reminderFlow.expireAt || order.expiresAt || "");
   if (expireTime && expireTime <= now) {
-    schedulePaymentReminderTimer(mode, order.id, "expire", reminderFlow.expireAt || order.expiresAt);
-    return;
-  }
-  if (usesXenditCustomerPaymentNotifications(order)) {
     schedulePaymentReminderTimer(mode, order.id, "expire", reminderFlow.expireAt || order.expiresAt);
     return;
   }
@@ -2537,7 +2525,7 @@ function hasCompleteDestination(destination) {
 function normalizeCheckoutDraft(input = {}) {
   const customer = normalizeCustomerDetails(input.customer);
   const fulfillmentType = "delivery";
-  const paymentMethodId = String(input.paymentMethodId || "xendit-checkout").trim() || "xendit-checkout";
+  const paymentMethodId = String(input.paymentMethodId || "xendit-qris").trim() || "xendit-qris";
 
   return {
     customer,
@@ -3331,7 +3319,7 @@ function isXenditReady() {
 function getPublicOrderUrl(order) {
   const baseUrl = String(process.env.PUBLIC_SITE_URL || "https://bakeaholicbali.com").replace(/\/+$/, "");
   const modeParam = order.mode === "test" ? "&mode=test" : "";
-  return `${baseUrl}/pay.html?order=${encodeURIComponent(order.id)}${modeParam}`;
+  return `${baseUrl}/pay.html?order=${encodeURIComponent(order.id)}&token=${encodeURIComponent(ensureOrderReceiptToken(order))}${modeParam}`;
 }
 
 function buildXenditInvoicePayload(order) {
@@ -3348,11 +3336,74 @@ function buildXenditInvoicePayload(order) {
   };
 
   if (
-    order.payment?.id !== "xendit-checkout"
-    && Array.isArray(order.payment?.xenditPaymentMethods)
+    Array.isArray(order.payment?.xenditPaymentMethods)
     && order.payment.xenditPaymentMethods.length
   ) {
     payload.payment_methods = order.payment.xenditPaymentMethods;
+  }
+
+  return payload;
+}
+
+function buildXenditPaymentRequestPayload(order) {
+  const returnUrl = getPublicOrderUrl(order);
+  const expiresAt = order.expiresAt || new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  return {
+    reference_id: order.id,
+    type: "PAY",
+    country: "ID",
+    currency: "IDR",
+    request_amount: order.pricing.total,
+    capture_method: "AUTOMATIC",
+    channel_code: order.payment.xenditChannelCode,
+    channel_properties: {
+      expires_at: expiresAt,
+      success_return_url: returnUrl,
+      failure_return_url: returnUrl
+    },
+    description: `Bakeaholic Bali order ${order.id}`,
+    metadata: {
+      order_id: order.id,
+      customer_phone: order.customer?.phone || ""
+    }
+  };
+}
+
+function normalizeXenditPaymentActions(actions = []) {
+  return Array.isArray(actions)
+    ? actions.map((action) => ({
+      type: String(action.type || "").toUpperCase(),
+      value: action.value ?? "",
+      descriptor: String(action.descriptor || "").toUpperCase()
+    }))
+    : [];
+}
+
+function xenditRedirectAction(actions = []) {
+  return actions.find((action) => action.type === "REDIRECT_CUSTOMER" && action.value);
+}
+
+async function createXenditPaymentRequest(order) {
+  if (order.pricing.total <= 0) {
+    return null;
+  }
+  if (!isXenditReady()) {
+    throw new Error("Xendit secret key is required before accepting paid orders.");
+  }
+
+  const response = await fetch("https://api.xendit.co/payment_requests", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: xenditAuthHeader()
+    },
+    body: JSON.stringify(buildXenditPaymentRequestPayload(enrichOrder(order)))
+  });
+
+  const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error_code || "Xendit payment request failed");
   }
 
   return payload;
@@ -3382,6 +3433,28 @@ async function createXenditInvoice(order) {
   }
 
   return payload;
+}
+
+function applyXenditPaymentRequestToPayment(payment, paymentRequest) {
+  if (!paymentRequest) {
+    return payment;
+  }
+  const actions = normalizeXenditPaymentActions(paymentRequest.actions);
+  const redirectAction = xenditRedirectAction(actions);
+  return {
+    ...payment,
+    provider: "xendit_payments_api",
+    status: String(paymentRequest.status || "REQUIRES_ACTION").toLowerCase(),
+    transactionId: paymentRequest.payment_request_id || paymentRequest.id || "",
+    paymentRequestId: paymentRequest.payment_request_id || paymentRequest.id || "",
+    paymentId: paymentRequest.payment_id || payment.paymentId || "",
+    externalId: paymentRequest.reference_id || "",
+    invoiceUrl: "",
+    paymentUrl: redirectAction?.value || "",
+    actions,
+    rawStatus: paymentRequest.status || "",
+    instructions: "Complete the payment instructions shown below. Payment is processed securely by Xendit."
+  };
 }
 
 function applyXenditInvoiceToPayment(payment, invoice) {
@@ -3464,6 +3537,28 @@ async function fetchXenditInvoiceStatus(order) {
   return payload;
 }
 
+async function fetchXenditPaymentRequestStatus(order) {
+  const paymentRequestId = order.payment?.paymentRequestId || order.payment?.transactionId || "";
+  if (!isXenditReady() || order.payment?.provider !== "xendit_payments_api" || !paymentRequestId) {
+    return null;
+  }
+
+  const response = await fetch(`https://api.xendit.co/payment_requests/${encodeURIComponent(paymentRequestId)}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: xenditAuthHeader()
+    }
+  });
+
+  const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error_code || "Unable to check Xendit payment status");
+  }
+
+  return payload;
+}
+
 function applyXenditInvoiceStatusToOrder(order, invoice) {
   order.payment = applyXenditInvoiceToPayment(order.payment, invoice);
   const status = String(invoice.status || "").toUpperCase();
@@ -3475,6 +3570,30 @@ function applyXenditInvoiceStatusToOrder(order, invoice) {
   } else if (status === "EXPIRED") {
     order.status = "expired";
     order.payment.status = "expired";
+  } else {
+    order.status = "awaiting_payment";
+    order.payment.status = status.toLowerCase() || "pending";
+  }
+
+  order.whatsappUrl = buildWhatsappUrl(order);
+  return order;
+}
+
+function applyXenditPaymentRequestStatusToOrder(order, paymentRequest = {}) {
+  order.payment = applyXenditPaymentRequestToPayment(order.payment, paymentRequest);
+  const status = String(paymentRequest.status || "").toUpperCase();
+  const eventName = String(paymentRequest.event || "").toLowerCase();
+
+  if (status === "SUCCEEDED" || eventName === "payment.capture") {
+    order.status = "paid";
+    order.payment.status = "paid";
+    order.paidAt = order.paidAt || new Date().toISOString();
+  } else if (status === "FAILED" || eventName === "payment.failure") {
+    order.status = "payment_failed";
+    order.payment.status = "failed";
+  } else if (status === "EXPIRED" || status === "CANCELED") {
+    order.status = "expired";
+    order.payment.status = status.toLowerCase();
   } else {
     order.status = "awaiting_payment";
     order.payment.status = status.toLowerCase() || "pending";
@@ -3760,8 +3879,8 @@ async function createOrder(mode, payload, cartOverride = null) {
   };
 
   if (!isZeroTotalOrder) {
-    const xenditInvoice = await createXenditInvoice(enrichOrder(order));
-    order.payment = applyXenditInvoiceToPayment(order.payment, xenditInvoice);
+    const xenditPaymentRequest = await createXenditPaymentRequest(enrichOrder(order));
+    order.payment = applyXenditPaymentRequestToPayment(order.payment, xenditPaymentRequest);
   }
   order.whatsappUrl = buildWhatsappUrl(order);
   order.whatsappNotifications = {
@@ -4165,7 +4284,7 @@ function handleApi(requestUrl, request, response) {
       brandStory: withDefaultBrandStory(catalog.brandStory),
       categories: catalog.categories,
       items: catalog.items,
-      paymentMethods: PAYMENT_METHODS.filter((method) => method.id === "xendit-checkout"),
+      paymentMethods: PAYMENT_METHODS,
       vouchers: DEMO_VOUCHERS
     });
     return true;
@@ -4192,12 +4311,12 @@ function handleApi(requestUrl, request, response) {
 
   if (request.method === "GET" && pathname === "/api/order") {
     const orderId = String(requestUrl.searchParams.get("id") || "").trim();
-    const session = requireCustomerSession(request, response);
-    if (!session) {
-      return true;
-    }
+    const token = String(requestUrl.searchParams.get("token") || "").trim();
+    const session = currentCustomerSession(request);
     const order = enrichOrder(findOrder(mode, orderId));
-    if (!order || !customerOwnsOrder(session, order)) {
+    const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
+    const customerOwns = session && order && customerOwnsOrder(session, order);
+    if (!order || (!tokenMatches && !customerOwns)) {
       sendJson(response, 404, { error: "Order not found" });
       return true;
     }
@@ -4492,14 +4611,24 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/order/payment-status") {
-    const session = requireCustomerSession(request, response);
-    if (!session) {
-      return true;
-    }
     parseBody(request)
       .then(async (body) => {
-        const order = await updateOrderPaymentStatusForSession(mode, String(body.id || "").trim(), session);
-        sendJson(response, 200, { order });
+        const session = currentCustomerSession(request);
+        const orderId = String(body.id || "").trim();
+        const token = String(body.token || "").trim();
+        const order = findOrder(mode, orderId);
+        const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
+        if (!tokenMatches && !session) {
+          sendJson(response, 401, { error: "Please log in again to continue" });
+          return;
+        }
+        const updatedOrder = tokenMatches
+          ? await refreshUnpaidOrderFromXendit(order).then((entry) => {
+            saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+            return enrichOrder(entry);
+          })
+          : await updateOrderPaymentStatusForSession(mode, orderId, session);
+        sendJson(response, 200, { order: updatedOrder });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
@@ -4534,7 +4663,10 @@ function handleApi(requestUrl, request, response) {
           return;
         }
 
-        const orderId = String(body.external_id || "").trim();
+        const paymentEvent = body.data && typeof body.data === "object"
+          ? { ...body.data, event: body.event }
+          : null;
+        const orderId = String(paymentEvent?.reference_id || body.external_id || "").trim();
         const order = findOrder("live", orderId) || findOrder("test", orderId);
         if (!order) {
           sendJson(response, 200, {
@@ -4546,7 +4678,11 @@ function handleApi(requestUrl, request, response) {
         }
 
         const previousStatus = order.status;
-        applyXenditInvoiceStatusToOrder(order, body);
+        if (paymentEvent || order.payment?.provider === "xendit_payments_api") {
+          applyXenditPaymentRequestStatusToOrder(order, paymentEvent || body);
+        } else {
+          applyXenditInvoiceStatusToOrder(order, body);
+        }
         if (order.status !== "awaiting_payment") {
           clearPaymentReminderTimers(order.mode || "live", order.id);
         }
@@ -4561,9 +4697,7 @@ function handleApi(requestUrl, request, response) {
               ...(order.paymentReminderFlow || {}),
               expiredAt: order.expiredAt
             };
-            if (usesXenditCustomerPaymentNotifications(order)) {
-              order.paymentReminderFlow.expiredSkipped = "xendit_customer_notifications";
-            } else if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
+            if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
               try {
                 const expiredResponse = await sendWhatsappPaymentExpired(order);
                 order.paymentReminderFlow.expiredMessageSentAt = new Date().toISOString();

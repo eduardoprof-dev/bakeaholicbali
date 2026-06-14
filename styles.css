@@ -4000,6 +4000,97 @@ body.cart-is-empty .checkout-shell .cart-layout {
   background: #f5f3f0;
 }
 
+.xendit-present-box {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.xendit-present-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.xendit-present-head h3 {
+  margin: 0 0 4px;
+}
+
+.xendit-present-head p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.payment-countdown {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #f3f0eb;
+  padding: 8px 10px;
+  color: var(--text);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.qris-display {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  border-radius: 16px;
+  background: #f6f6f6;
+  padding: 20px;
+}
+
+.qris-image {
+  width: min(100%, 320px);
+  height: auto;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(36, 24, 18, 0.08);
+}
+
+.qr-data-fallback {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 420px;
+  text-align: center;
+}
+
+.qr-data-fallback p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.virtual-account-box {
+  display: grid;
+  gap: 8px;
+  border-radius: 16px;
+  background: #f6f6f6;
+  padding: 18px;
+}
+
+.virtual-account-box span {
+  color: var(--muted);
+}
+
+.virtual-account-box strong {
+  font-size: clamp(1.35rem, 4vw, 2rem);
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+}
+
+.payment-page-actions {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
 .qr-block {
   display: grid;
   justify-items: center;
