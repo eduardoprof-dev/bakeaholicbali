@@ -1790,6 +1790,7 @@ const contentTypes = {
 const CUSTOMER_SESSION_COOKIE = "bakeaholic_customer_session";
 const ADMIN_SESSION_COOKIE = "bakeaholic_admin_session";
 const CART_SESSION_COOKIE = "bakeaholic_cart_session";
+const CART_SESSION_HEADER = "x-cart-session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const ADMIN_SESSION_TTL_SECONDS = 60 * 15;
 const SESSION_SECRET = process.env.SESSION_SECRET
@@ -1799,9 +1800,9 @@ const SESSION_SECRET = process.env.SESSION_SECRET
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
 const rateLimitBuckets = new Map();
 
-function defaultSecurityHeaders() {
+function defaultSecurityHeaders(cacheControl = "no-store") {
   return {
-    "Cache-Control": "no-store",
+    "Cache-Control": cacheControl,
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
@@ -1856,6 +1857,17 @@ function sendBareNoContent(response) {
   response.end();
 }
 
+function cacheControlForFile(targetPath) {
+  const ext = path.extname(targetPath).toLowerCase();
+  if ([".jpg", ".jpeg", ".png", ".svg", ".webp", ".ico"].includes(ext)) {
+    return "public, max-age=31536000, immutable";
+  }
+  if ([".css", ".js"].includes(ext)) {
+    return "public, max-age=3600";
+  }
+  return "no-store";
+}
+
 function sendFile(response, targetPath) {
   const ext = path.extname(targetPath).toLowerCase();
   const contentType = contentTypes[ext] || "application/octet-stream";
@@ -1867,7 +1879,7 @@ function sendFile(response, targetPath) {
 
     response.writeHead(200, {
       "Content-Type": contentType,
-      ...defaultSecurityHeaders()
+      ...defaultSecurityHeaders(cacheControlForFile(targetPath))
     });
     response.end(content);
   });
@@ -2049,8 +2061,11 @@ function clearSessionCookie(response, request, cookieName) {
 function ensureCartSession(request, response) {
   const cookies = parseCookies(request);
   const existingId = String(cookies[CART_SESSION_COOKIE] || "");
+  const fallbackId = String(request.headers[CART_SESSION_HEADER] || "");
   const sessionId = /^[a-f0-9]{32}$/i.test(existingId)
     ? existingId.toLowerCase()
+    : /^[a-f0-9]{32}$/i.test(fallbackId)
+      ? fallbackId.toLowerCase()
     : crypto.randomBytes(16).toString("hex");
 
   appendSetCookie(response, serializeCookie(CART_SESSION_COOKIE, sessionId, {
@@ -2069,6 +2084,7 @@ function getSessionCartState(mode, request, response) {
   }
   return {
     storeState,
+    sessionId,
     cartState: {
       ...storeState,
       cart: storeState.carts.get(sessionId)
@@ -3257,6 +3273,7 @@ function buildCartSummary(storeState, options = {}) {
   const total = Math.max(0, subtotal + deliveryFee + tax - discount.amount);
 
   return {
+    cartSessionId: String(options.cartSessionId || ""),
     items: lineItems.map(({ itemId, quantity }) => ({ itemId, quantity })),
     lineItems: lineItems.map(({ item, quantity }) => ({
       itemId: item.id,
@@ -4002,7 +4019,7 @@ function resetStore(mode) {
   saveOrders(ordersPathForMode(mode), storeState.orders);
 }
 
-function handleCartUpsert(storeState, response, body, strategy) {
+function handleCartUpsert(storeState, response, body, strategy, cartSessionId = "") {
   const item = findMenuItem(body.itemId);
   if (!item) {
     sendJson(response, 404, { error: "Unknown menu item" });
@@ -4018,7 +4035,7 @@ function handleCartUpsert(storeState, response, body, strategy) {
   const nextQuantity = strategy(item, quantity);
   if (nextQuantity <= 0) {
     storeState.cart.delete(item.id);
-    sendJson(response, 200, buildCartSummary(storeState));
+    sendJson(response, 200, buildCartSummary(storeState, { cartSessionId }));
     return;
   }
 
@@ -4033,7 +4050,7 @@ function handleCartUpsert(storeState, response, body, strategy) {
   }
 
   storeState.cart.set(item.id, nextQuantity);
-  sendJson(response, 200, buildCartSummary(storeState));
+  sendJson(response, 200, buildCartSummary(storeState, { cartSessionId }));
 }
 
 function handleApi(requestUrl, request, response) {
@@ -4291,7 +4308,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/cart") {
-    const { cartState } = getSessionCartState(mode, request, response);
+    const { cartState, sessionId } = getSessionCartState(mode, request, response);
     const destination = {
       lat: requestUrl.searchParams.get("lat"),
       lng: requestUrl.searchParams.get("lng"),
@@ -4302,6 +4319,7 @@ function handleApi(requestUrl, request, response) {
     getCartSummaryPayload(cartState, {
       fulfillmentType: requestUrl.searchParams.get("fulfillment"),
       voucherCode: requestUrl.searchParams.get("voucher"),
+      cartSessionId: sessionId,
       destination
     })
       .then((payload) => sendJson(response, 200, payload))
@@ -4470,11 +4488,15 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/cart") {
-    const { cartState } = getSessionCartState(mode, request, response);
+    const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
       .then((body) =>
-        handleCartUpsert(cartState, response, body, (item, quantity) =>
-          (cartState.cart.get(item.id) || 0) + quantity
+        handleCartUpsert(
+          cartState,
+          response,
+          body,
+          (item, quantity) => (cartState.cart.get(item.id) || 0) + quantity,
+          sessionId
         )
       )
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -4482,10 +4504,10 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "PATCH" && pathname === "/api/cart") {
-    const { cartState } = getSessionCartState(mode, request, response);
+    const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
       .then((body) =>
-        handleCartUpsert(cartState, response, body, (_item, quantity) => quantity)
+        handleCartUpsert(cartState, response, body, (_item, quantity) => quantity, sessionId)
       )
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;

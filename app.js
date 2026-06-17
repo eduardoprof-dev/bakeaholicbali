@@ -11,6 +11,7 @@ const assetVersion = "20260422-bliss-lifestyle-photos";
 const shopperStateVersion = "20260604-session-cart";
 const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
 const latestOrderKey = `bakeaholic-latest-order-${shopperStateVersion}-${appMode}`;
+const cartSessionKey = `bakeaholic-cart-session-${shopperStateVersion}-${appMode}`;
 
 const state = {
   appMode,
@@ -252,19 +253,43 @@ function applyCustomerProfile(profile) {
   state.draft.customer.name = profile.name || customerFullName();
 }
 
+function getCartSessionId() {
+  try {
+    return localStorage.getItem(cartSessionKey) || "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function rememberCartSession(payload) {
+  const sessionId = String(payload?.cartSessionId || "");
+  if (!/^[a-f0-9]{32}$/i.test(sessionId)) {
+    return;
+  }
+  try {
+    localStorage.setItem(cartSessionKey, sessionId.toLowerCase());
+  } catch (_error) {
+    // Cookies still cover the common case.
+  }
+}
+
 function request(path, options = {}) {
+  const cartSessionId = getCartSessionId();
   return fetch(path, {
+    ...options,
     headers: {
       "Content-Type": "application/json",
-      "X-App-Mode": appMode
-    },
-    ...options
+      "X-App-Mode": appMode,
+      ...(cartSessionId ? { "X-Cart-Session": cartSessionId } : {}),
+      ...(options.headers || {})
+    }
   }).then(async (response) => {
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
       throw new Error(payload.error || `Request failed: ${response.status}`);
     }
-    return response.json();
+    rememberCartSession(payload);
+    return payload;
   });
 }
 
@@ -529,7 +554,7 @@ function renderCatalog() {
                   return `
                   <article class="product-card" role="button" tabindex="0" data-product-id="${escapeHtml(item.id)}" aria-label="View ${escapeHtml(item.name)} details">
                     <div class="product-thumb-wrap">
-                      <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" ${productImageStyle(item)} />
+                      <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" ${productImageStyle(item)} />
                     </div>
                     <div class="product-copy">
                       <div class="product-topline">
@@ -1090,7 +1115,7 @@ function storySlideMarkup(slide, index) {
           ${points.map((point) => `<span data-story-icon="${escapeHtml(point.icon)}">${escapeHtml(point.label)}</span>`).join("")}
         </div>
       </div>
-      <img class="brand-story-image" src="${versionedAsset(slide.imagePath)}" alt="${escapeHtml(slide.imageAlt || "Bakeaholic packaged snacks")}" />
+      <img class="brand-story-image" src="${escapeHtml(versionedAsset(slide.imagePath))}" alt="${escapeHtml(slide.imageAlt || "Bakeaholic packaged snacks")}" ${index === 0 ? "fetchpriority=\"high\"" : "loading=\"lazy\""} decoding="async" />
     </article>
   `;
 }

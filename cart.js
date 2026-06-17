@@ -11,6 +11,7 @@ const assetVersion = "20260422-bliss-lifestyle-photos";
 const shopperStateVersion = "20260604-session-cart";
 const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
 const latestOrderKey = `bakeaholic-latest-order-${shopperStateVersion}-${appMode}`;
+const cartSessionKey = `bakeaholic-cart-session-${shopperStateVersion}-${appMode}`;
 
 const state = {
   store: null,
@@ -200,19 +201,43 @@ function hasDeliveryDestination(destination = state.draft.destination) {
     && !isPlaceholderAddress;
 }
 
+function getCartSessionId() {
+  try {
+    return localStorage.getItem(cartSessionKey) || "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function rememberCartSession(payload) {
+  const sessionId = String(payload?.cartSessionId || "");
+  if (!/^[a-f0-9]{32}$/i.test(sessionId)) {
+    return;
+  }
+  try {
+    localStorage.setItem(cartSessionKey, sessionId.toLowerCase());
+  } catch (_error) {
+    // Cookies still cover the common case.
+  }
+}
+
 function request(path, options = {}) {
+  const cartSessionId = getCartSessionId();
   return fetch(path, {
+    ...options,
     headers: {
       "Content-Type": "application/json",
-      "X-App-Mode": appMode
-    },
-    ...options
+      "X-App-Mode": appMode,
+      ...(cartSessionId ? { "X-Cart-Session": cartSessionId } : {}),
+      ...(options.headers || {})
+    }
   }).then(async (response) => {
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
       throw new Error(payload.error || `Request failed: ${response.status}`);
     }
-    return response.json();
+    rememberCartSession(payload);
+    return payload;
   });
 }
 
@@ -626,7 +651,7 @@ function renderUpsell() {
   upsellSection.hidden = false;
   upsellCard.innerHTML = `
     <article class="upsell-card checkout-upsell-card">
-      <img class="upsell-thumb" src="${escapeHtml(versionedAsset(upsell.imagePath))}" alt="${escapeHtml(upsell.name)}" />
+      <img class="upsell-thumb" src="${escapeHtml(versionedAsset(upsell.imagePath))}" alt="${escapeHtml(upsell.name)}" loading="lazy" decoding="async" />
       <div class="upsell-copy">
         <span class="upsell-label">Optional add-on</span>
         <strong>${escapeHtml(upsell.name)}</strong>
@@ -667,7 +692,7 @@ function renderCartItems() {
       (entry) => `
         <article class="cart-line-card">
           <div class="cart-thumb-wrap">
-            <img class="cart-line-thumb" src="${escapeHtml(versionedAsset(entry.item.imagePath))}" alt="${escapeHtml(entry.item.name)}" />
+            <img class="cart-line-thumb" src="${escapeHtml(versionedAsset(entry.item.imagePath))}" alt="${escapeHtml(entry.item.name)}" loading="lazy" decoding="async" />
           </div>
           <div class="cart-line-copy">
             <strong>${escapeHtml(entry.item.name)}</strong>
