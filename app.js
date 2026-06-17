@@ -254,6 +254,10 @@ function applyCustomerProfile(profile) {
 }
 
 function getCartSessionId() {
+  const urlSessionId = String(params.get("cart_session") || "");
+  if (/^[a-f0-9]{32}$/i.test(urlSessionId)) {
+    return urlSessionId.toLowerCase();
+  }
   try {
     return localStorage.getItem(cartSessionKey) || "";
   } catch (_error) {
@@ -271,6 +275,19 @@ function rememberCartSession(payload) {
   } catch (_error) {
     // Cookies still cover the common case.
   }
+}
+
+function cartPageUrl() {
+  const search = new URLSearchParams();
+  if (appMode === "test") {
+    search.set("mode", "test");
+  }
+  const sessionId = String(state.cart?.cartSessionId || getCartSessionId() || "");
+  if (/^[a-f0-9]{32}$/i.test(sessionId)) {
+    search.set("cart_session", sessionId.toLowerCase());
+  }
+  const query = search.toString();
+  return `/cart.html${query ? `?${query}` : ""}`;
 }
 
 function request(path, options = {}) {
@@ -658,7 +675,7 @@ function openProductModal(itemId) {
 
 function renderCartSummary() {
   const itemCount = state.cart?.itemCount || 0;
-  cartLink.href = `/cart.html${modeQuery}`;
+  cartLink.href = cartPageUrl();
   document.body.classList.toggle("has-cart-items", itemCount > 0);
   cartCountBadge.hidden = itemCount <= 0;
   cartCountBadge.textContent = itemCount > 99 ? "99+" : String(itemCount);
@@ -1016,7 +1033,7 @@ async function updateCartQuantity(itemId, quantity) {
 
 function openCartDrawer() {
   if ((state.cart?.itemCount || 0) <= 0) {
-    window.location.href = `/cart.html${modeQuery}`;
+    window.location.href = cartPageUrl();
     return;
   }
   openModal(cartDrawer);
@@ -1355,7 +1372,7 @@ cartLink?.addEventListener("click", (event) => {
 });
 storefrontCartBar?.addEventListener("click", openCartDrawer);
 cartDrawerCheckoutButton?.addEventListener("click", () => {
-  window.location.href = `/cart.html${modeQuery}`;
+  window.location.href = cartPageUrl();
 });
 cartDrawerAddressButton?.addEventListener("click", () => {
   closeModal(cartDrawer);

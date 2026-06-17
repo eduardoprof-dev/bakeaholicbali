@@ -202,6 +202,10 @@ function hasDeliveryDestination(destination = state.draft.destination) {
 }
 
 function getCartSessionId() {
+  const urlSessionId = String(params.get("cart_session") || "");
+  if (/^[a-f0-9]{32}$/i.test(urlSessionId)) {
+    return urlSessionId.toLowerCase();
+  }
   try {
     return localStorage.getItem(cartSessionKey) || "";
   } catch (_error) {
