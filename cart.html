@@ -12,7 +12,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260618-qris-bank-card-fix" />
+    <link rel="stylesheet" href="styles.css?v=20260618-sinamon-payment-style" />
   </head>
   <body class="cart-is-empty">
     <div class="mobile-shell checkout-shell">
@@ -139,8 +139,12 @@
 
         <section class="cart-section checkout-payment-card">
           <div class="section-head-inline">
-            <h2>Choose payment method</h2>
+            <h2 id="checkoutPaymentTitle">Choose payment method</h2>
           </div>
+          <button class="payment-change-button" id="changePaymentMethodButton" type="button" hidden>
+            <span aria-hidden="true">←</span>
+            <strong>Select a different payment method</strong>
+          </button>
           <div class="payment-method-card" id="selectedPaymentButton" hidden>
             <span class="payment-logo" id="paymentLogo">QRIS</span>
             <div>
@@ -312,6 +316,6 @@
       crossorigin=""
     ></script>
     <script src="location-picker.js?v=20260618-address-fallback"></script>
-    <script src="cart.js?v=20260618-qris-bank-card-fix"></script>
+    <script src="cart.js?v=20260618-sinamon-payment-style"></script>
   </body>
 </html>

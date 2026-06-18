@@ -52,6 +52,8 @@ const applyVoucherButton = document.getElementById("applyVoucherButton");
 const voucherMessage = document.getElementById("voucherMessage");
 const inlinePaymentMethodList = document.getElementById("inlinePaymentMethodList");
 const checkoutXenditPanel = document.getElementById("checkoutXenditPanel");
+const checkoutPaymentTitle = document.getElementById("checkoutPaymentTitle");
+const changePaymentMethodButton = document.getElementById("changePaymentMethodButton");
 const paymentLogo = document.getElementById("paymentLogo");
 const paymentMethodLabel = document.getElementById("paymentMethodLabel");
 const paymentMethodHint = document.getElementById("paymentMethodHint");
@@ -353,7 +355,8 @@ function paymentStatusButtonMarkup(order) {
 function bankLogoMarkup(bank) {
   const code = String(bank?.code || "").toUpperCase();
   const label = bank?.label || code;
-  return `<span class="bank-logo bank-logo-${escapeHtml(code.toLowerCase())}" aria-label="${escapeHtml(label)}">${escapeHtml(code)}</span>`;
+  const brand = code === "MANDIRI" ? "mandiri" : code === "PERMATA" ? "PermataBank" : code === "CIMB" ? "CIMB" : code;
+  return `<span class="bank-logo bank-logo-${escapeHtml(code.toLowerCase())}" aria-label="${escapeHtml(label)}">${escapeHtml(brand)}</span>`;
 }
 
 function bankOptionsMarkup(order) {
@@ -381,11 +384,10 @@ function bankOptionsMarkup(order) {
         ${banks.map((bank) => `
           <button class="checkout-bank-button" type="button" data-bank-code="${escapeHtml(bank.code)}">
             ${bankLogoMarkup(bank)}
-            <strong>${escapeHtml(bank.label)}</strong>
+            <span>${escapeHtml(bank.label)}</span>
           </button>
         `).join("")}
       </div>
-      <p class="checkout-native-note">Choose your bank and the virtual account will appear here.</p>
     </div>
   `;
 }
@@ -412,10 +414,11 @@ function nativePaymentMarkup(order) {
             : `<div class="checkout-payment-placeholder">Generating QR code...</div>`}
         </div>
         <div class="checkout-native-total">
-          <span>Total payment</span>
+          <span>Total due</span>
           <strong>${formatRupiah.format(order.pricing.total)}</strong>
         </div>
         ${paymentStatusButtonMarkup(order)}
+        <p class="checkout-native-note">Waiting for payment confirmation...</p>
       </div>
     `;
   }
@@ -449,10 +452,14 @@ function nativePaymentMarkup(order) {
           <button class="secondary-button compact-button" type="button" data-copy-payment="${escapeHtml(accountNumber)}">Copy</button>
         </div>
         <div class="checkout-native-total">
-          <span>Total payment</span>
+          <span>Total due</span>
           <strong>${formatRupiah.format(order.pricing.total)}</strong>
         </div>
+        <button class="secondary-button full-width checkout-payment-secondary" type="button" data-change-payment-method>
+          Change bank
+        </button>
         ${paymentStatusButtonMarkup(order)}
+        <p class="checkout-native-note">Waiting for payment confirmation...</p>
       </div>
     `;
   }
@@ -484,6 +491,10 @@ function nativePaymentMarkup(order) {
 }
 
 function bindCheckoutPaymentPanel(order) {
+  checkoutXenditPanel.querySelectorAll("[data-change-payment-method]").forEach((button) => {
+    button.addEventListener("click", () => showPaymentMethodChooser());
+  });
+
   checkoutXenditPanel.querySelectorAll("[data-bank-code]").forEach((button) => {
     button.addEventListener("click", async () => {
       const originalHtml = button.innerHTML;
@@ -539,11 +550,29 @@ function bindCheckoutPaymentPanel(order) {
   });
 }
 
+function showPaymentMethodChooser() {
+  if (checkoutPaymentTitle) checkoutPaymentTitle.textContent = "Choose payment method";
+  if (changePaymentMethodButton) changePaymentMethodButton.hidden = true;
+  if (inlinePaymentMethodList) inlinePaymentMethodList.hidden = false;
+  if (checkoutXenditPanel) checkoutXenditPanel.hidden = true;
+  state.currentOrder = state.currentOrder || null;
+  state.pendingPaymentUrl = "";
+  setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
+}
+
+function showActivePaymentMode() {
+  if (checkoutPaymentTitle) checkoutPaymentTitle.textContent = "Payment";
+  if (changePaymentMethodButton) changePaymentMethodButton.hidden = false;
+  if (inlinePaymentMethodList) inlinePaymentMethodList.hidden = true;
+  hideSubmitButtonForOpenPayment();
+}
+
 function renderEmbeddedPayment(order) {
   if (!checkoutXenditPanel || !order?.payment) {
     return false;
   }
 
+  showActivePaymentMode();
   checkoutXenditPanel.hidden = false;
   checkoutXenditPanel.innerHTML = nativePaymentMarkup(order);
   bindCheckoutPaymentPanel(order);
@@ -1279,6 +1308,7 @@ applyVoucherButton.addEventListener("click", async () => {
 });
 
 closePaymentModal?.addEventListener("click", () => closeModal(paymentModal));
+changePaymentMethodButton?.addEventListener("click", () => showPaymentMethodChooser());
 saveWhatsappButton.addEventListener("click", requestOtp);
 closeWhatsappModal.addEventListener("click", () => closeModal(whatsappModal));
 whatsappInput.addEventListener("keydown", (event) => {

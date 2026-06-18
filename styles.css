@@ -3817,14 +3817,35 @@ body.has-cart-items .storefront-content {
   background: #fff;
 }
 
+.payment-change-button {
+  width: 100%;
+  min-height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  border: 0;
+  border-radius: 14px;
+  background: #f3f4f6;
+  color: #111827;
+  font: inherit;
+  cursor: pointer;
+}
+
+.payment-change-button span {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
 .checkout-native-payment {
   display: grid;
   gap: 16px;
-  width: min(100%, 620px);
-  padding: 16px;
-  border: 1px solid rgba(107, 66, 38, 0.14);
+  width: 100%;
+  padding: 26px;
+  border: 1px solid #e5e7eb;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.86);
+  background: #fff;
+  color: #111827;
 }
 
 .checkout-native-head {
@@ -3857,7 +3878,7 @@ body.has-cart-items .storefront-content {
 }
 
 .checkout-native-head span {
-  color: var(--muted);
+  color: #6b7280;
   font-size: 0.9rem;
   line-height: 1.35;
 }
@@ -3865,8 +3886,8 @@ body.has-cart-items .storefront-content {
 .payment-countdown {
   flex: 0 0 auto;
   border-radius: 999px;
-  background: #fff6e8;
-  color: var(--accent) !important;
+  background: #f3f4f6;
+  color: #374151 !important;
   padding: 7px 10px;
   font-weight: 800;
   font-size: 0.82rem !important;
@@ -3875,16 +3896,21 @@ body.has-cart-items .storefront-content {
 .checkout-qris-box {
   display: grid;
   justify-items: center;
-  padding: 18px;
+  padding: 42px 18px;
   border-radius: 14px;
-  background: #fff;
-  border: 1px solid rgba(107, 66, 38, 0.08);
+  background: #f9fafb;
+  border: 0;
 }
 
 .checkout-qris-image {
-  width: min(100%, 260px);
+  width: min(100%, 330px);
   aspect-ratio: 1;
   object-fit: contain;
+  padding: 18px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
 }
 
 .checkout-payment-placeholder {
@@ -3908,36 +3934,52 @@ body.has-cart-items .storefront-content {
 }
 
 .checkout-native-total span {
-  color: var(--muted);
+  color: #6b7280;
 }
 
 .checkout-native-total strong {
   font-size: 1.2rem;
+  color: #111827;
 }
 
 .checkout-payment-status-button {
   width: 100%;
+  min-height: 54px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  box-shadow: none;
+}
+
+.checkout-payment-status-button:hover,
+.checkout-payment-status-button:focus-visible {
+  background: #f9fafb;
 }
 
 .checkout-bank-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .checkout-bank-button {
-  min-height: 64px;
-  display: flex;
+  min-height: 118px;
+  display: grid;
+  justify-items: center;
   align-items: center;
-  gap: 10px;
-  border: 1px solid rgba(107, 66, 38, 0.12);
-  border-radius: 14px;
+  gap: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
   background: #fff;
-  color: var(--text);
-  padding: 12px;
+  color: #374151;
+  padding: 18px 12px;
   font: inherit;
   cursor: pointer;
-  text-align: left;
+  text-align: center;
+}
+
+.checkout-bank-button span:last-child {
+  font-weight: 800;
 }
 
 .bank-logo {
@@ -3947,9 +3989,9 @@ body.has-cart-items .storefront-content {
   width: 92px;
   min-width: 92px;
   height: 44px;
-  border-radius: 9px;
+  border-radius: 6px;
   background: #fff;
-  border: 1px solid rgba(107, 66, 38, 0.12);
+  border: 1px solid #e5e7eb;
   color: var(--accent);
   font-size: 0.88rem;
   font-weight: 900;
@@ -3958,7 +4000,8 @@ body.has-cart-items .storefront-content {
 }
 
 .bank-logo-bca {
-  color: #0066ae;
+  background: #0066ae;
+  color: #fff;
 }
 
 .bank-logo-bni {
@@ -3966,12 +4009,13 @@ body.has-cart-items .storefront-content {
 }
 
 .bank-logo-bri {
-  color: #005baa;
+  background: #005baa;
+  color: #fff;
 }
 
 .bank-logo-mandiri {
   color: #003d79;
-  background: linear-gradient(180deg, #fff 0%, #fff9df 100%);
+  background: #fff;
 }
 
 .bank-logo-permata {
@@ -3979,7 +4023,8 @@ body.has-cart-items .storefront-content {
 }
 
 .bank-logo-cimb {
-  color: #b11226;
+  background: #e31d1a;
+  color: #fff;
 }
 
 .checkout-bank-button:hover,
@@ -3995,10 +4040,11 @@ body.has-cart-items .storefront-content {
 }
 
 .checkout-native-note {
-  margin: 0;
-  color: var(--muted);
+  margin: 4px 0 0;
+  color: #6b7280;
   font-size: 0.9rem;
   line-height: 1.4;
+  text-align: center;
 }
 
 .checkout-va-number {
@@ -4006,10 +4052,10 @@ body.has-cart-items .storefront-content {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 16px;
-  border: 1px solid rgba(107, 66, 38, 0.1);
-  border-radius: 14px;
-  background: #fff;
+  padding: 18px;
+  border: 0;
+  border-radius: 12px;
+  background: #f9fafb;
 }
 
 .checkout-va-number > div {
@@ -4019,19 +4065,27 @@ body.has-cart-items .storefront-content {
 }
 
 .checkout-va-number span {
-  color: var(--muted);
+  color: #6b7280;
   font-size: 0.85rem;
 }
 
 .checkout-va-number strong {
   overflow-wrap: anywhere;
-  font-size: clamp(1.35rem, 3vw, 1.85rem);
+  color: #111827;
+  font-size: clamp(1.45rem, 3vw, 1.95rem);
   letter-spacing: 0.04em;
 }
 
 .checkout-va-number .compact-button {
   min-width: 108px;
   height: 42px;
+}
+
+.checkout-payment-secondary {
+  min-height: 50px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
 }
 
 .checkout-card-head {
