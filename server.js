@@ -3502,6 +3502,30 @@ async function createXenditInvoice(order) {
   return payload;
 }
 
+function shouldFallbackToXenditInvoice(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("payment_method") && message.includes("payment_method_id");
+}
+
+async function createXenditPayment(order) {
+  try {
+    const paymentRequest = await createXenditPaymentRequest(order);
+    return {
+      kind: "payment_request",
+      payload: paymentRequest
+    };
+  } catch (error) {
+    if (!shouldFallbackToXenditInvoice(error)) {
+      throw error;
+    }
+    const invoice = await createXenditInvoice(order);
+    return {
+      kind: "invoice",
+      payload: invoice
+    };
+  }
+}
+
 function applyXenditPaymentRequestToPayment(payment, paymentRequest) {
   if (!paymentRequest) {
     return payment;
@@ -3946,8 +3970,10 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
   };
 
   if (!isZeroTotalOrder) {
-    const xenditPaymentRequest = await createXenditPaymentRequest(enrichOrder(order));
-    order.payment = applyXenditPaymentRequestToPayment(order.payment, xenditPaymentRequest);
+    const xenditPayment = await createXenditPayment(enrichOrder(order));
+    order.payment = xenditPayment.kind === "invoice"
+      ? applyXenditInvoiceToPayment(order.payment, xenditPayment.payload)
+      : applyXenditPaymentRequestToPayment(order.payment, xenditPayment.payload);
   }
   order.whatsappUrl = buildWhatsappUrl(order);
   order.whatsappNotifications = {
