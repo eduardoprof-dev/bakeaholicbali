@@ -350,6 +350,12 @@ function paymentStatusButtonMarkup(order) {
   `;
 }
 
+function bankLogoMarkup(bank) {
+  const code = String(bank?.code || "").toUpperCase();
+  const label = bank?.label || code;
+  return `<span class="bank-logo bank-logo-${escapeHtml(code.toLowerCase())}" aria-label="${escapeHtml(label)}">${escapeHtml(code)}</span>`;
+}
+
 function bankOptionsMarkup(order) {
   const banks = Array.isArray(order.payment?.bankOptions) && order.payment.bankOptions.length
     ? order.payment.bankOptions
@@ -374,7 +380,7 @@ function bankOptionsMarkup(order) {
       <div class="checkout-bank-grid">
         ${banks.map((bank) => `
           <button class="checkout-bank-button" type="button" data-bank-code="${escapeHtml(bank.code)}">
-            <span class="payment-logo">${escapeHtml(bank.code)}</span>
+            ${bankLogoMarkup(bank)}
             <strong>${escapeHtml(bank.label)}</strong>
           </button>
         `).join("")}
@@ -419,18 +425,27 @@ function nativePaymentMarkup(order) {
       return bankOptionsMarkup(order);
     }
     const accountNumber = presentValue || payment.accountNumber;
+    const selectedBank = {
+      code: payment.selectedBankCode || payment.logoText || "",
+      label: payment.selectedBankLabel || payment.label || "Bank Transfer"
+    };
     return `
       <div class="checkout-native-payment checkout-native-va">
         <div class="checkout-native-head">
-          <div>
+          <div class="checkout-bank-title">
+            ${bankLogoMarkup(selectedBank)}
+            <span>
             <strong>${escapeHtml(payment.selectedBankLabel || payment.label || "Bank Transfer")}</strong>
-            <span>Transfer exactly to this virtual account.</span>
+              <small>Transfer exactly to this virtual account.</small>
+            </span>
           </div>
           <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
         </div>
         <div class="checkout-va-number">
-          <span>Virtual account number</span>
-          <strong>${escapeHtml(accountNumber)}</strong>
+          <div>
+            <span>Virtual account number</span>
+            <strong>${escapeHtml(accountNumber)}</strong>
+          </div>
           <button class="secondary-button compact-button" type="button" data-copy-payment="${escapeHtml(accountNumber)}">Copy</button>
         </div>
         <div class="checkout-native-total">
@@ -444,15 +459,14 @@ function nativePaymentMarkup(order) {
 
   if (paymentUrl) {
     return `
-      <div class="checkout-xendit-head">
+      <div class="checkout-xendit-head checkout-card-head">
         <div>
           <strong>Card payment</strong>
           <span>Enter your card details securely below.</span>
         </div>
-        <a class="secondary-link" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noreferrer">Open in new tab</a>
       </div>
       <iframe
-        class="checkout-xendit-frame"
+        class="checkout-xendit-frame checkout-card-frame"
         src="${escapeHtml(paymentUrl)}"
         title="Xendit secure card checkout"
         loading="eager"

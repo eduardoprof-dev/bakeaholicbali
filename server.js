@@ -3455,7 +3455,7 @@ function buildXenditPaymentRequestPayload(order) {
       type: "PAY",
       country: "ID",
       currency: "IDR",
-      request_amount: order.pricing.total,
+      amount: order.pricing.total,
       capture_method: "AUTOMATIC",
       payment_method: {
         type: "VIRTUAL_ACCOUNT",
@@ -3484,7 +3484,7 @@ function buildXenditPaymentRequestPayload(order) {
       type: "PAY",
       country: "ID",
       currency: "IDR",
-      request_amount: order.pricing.total,
+      amount: order.pricing.total,
       capture_method: "AUTOMATIC",
       payment_method: {
         type: "QR_CODE",
@@ -3508,7 +3508,7 @@ function buildXenditPaymentRequestPayload(order) {
     type: "PAY",
     country: "ID",
     currency: "IDR",
-    request_amount: order.pricing.total,
+    amount: order.pricing.total,
     capture_method: "AUTOMATIC",
     channel_code: order.payment.xenditChannelCode,
     channel_properties: {

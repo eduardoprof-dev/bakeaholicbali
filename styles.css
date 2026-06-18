@@ -3839,6 +3839,23 @@ body.has-cart-items .storefront-content {
   gap: 4px;
 }
 
+.checkout-bank-title {
+  display: flex !important;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 12px;
+}
+
+.checkout-bank-title > span {
+  display: grid;
+  gap: 3px;
+}
+
+.checkout-bank-title small {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .checkout-native-head span {
   color: var(--muted);
   font-size: 0.9rem;
@@ -3923,6 +3940,48 @@ body.has-cart-items .storefront-content {
   text-align: left;
 }
 
+.bank-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 92px;
+  min-width: 92px;
+  height: 44px;
+  border-radius: 9px;
+  background: #fff;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+  color: var(--accent);
+  font-size: 0.88rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  box-shadow: 0 8px 20px rgba(55, 34, 22, 0.05);
+}
+
+.bank-logo-bca {
+  color: #0066ae;
+}
+
+.bank-logo-bni {
+  color: #f15a24;
+}
+
+.bank-logo-bri {
+  color: #005baa;
+}
+
+.bank-logo-mandiri {
+  color: #003d79;
+  background: linear-gradient(180deg, #fff 0%, #fff9df 100%);
+}
+
+.bank-logo-permata {
+  color: #2d65d9;
+}
+
+.bank-logo-cimb {
+  color: #b11226;
+}
+
 .checkout-bank-button:hover,
 .checkout-bank-button:focus-visible {
   border-color: rgba(107, 66, 38, 0.42);
@@ -3943,12 +4002,20 @@ body.has-cart-items .storefront-content {
 }
 
 .checkout-va-number {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   padding: 16px;
   border: 1px solid rgba(107, 66, 38, 0.1);
   border-radius: 14px;
   background: #fff;
+}
+
+.checkout-va-number > div {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
 }
 
 .checkout-va-number span {
@@ -3960,6 +4027,19 @@ body.has-cart-items .storefront-content {
   overflow-wrap: anywhere;
   font-size: clamp(1.35rem, 3vw, 1.85rem);
   letter-spacing: 0.04em;
+}
+
+.checkout-va-number .compact-button {
+  min-width: 108px;
+  height: 42px;
+}
+
+.checkout-card-head {
+  padding: 0 2px;
+}
+
+.checkout-card-frame {
+  min-height: 620px;
 }
 
 .payment-logo {
