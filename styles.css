@@ -3782,8 +3782,18 @@ body.has-cart-items .storefront-content {
 .checkout-xendit-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
+}
+
+.checkout-xendit-head > div {
+  display: grid;
+  gap: 2px;
+}
+
+.checkout-xendit-head span {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .checkout-xendit-frame {

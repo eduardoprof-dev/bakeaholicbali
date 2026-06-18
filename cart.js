@@ -309,7 +309,10 @@ function renderEmbeddedPayment(order) {
   checkoutXenditPanel.hidden = false;
   checkoutXenditPanel.innerHTML = `
     <div class="checkout-xendit-head">
-      <strong>Complete payment</strong>
+      <div>
+        <strong>Complete payment</strong>
+        <span>Order created. Finish securely below.</span>
+      </div>
       <a class="secondary-link" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noreferrer">Open in new tab</a>
     </div>
     <iframe
@@ -895,7 +898,7 @@ async function submitOrder() {
     localStorage.setItem(latestOrderKey, response.order.id);
     state.pendingPaymentUrl = paymentUrlForOrder(response.order);
     if (renderEmbeddedPayment(response.order)) {
-      setCheckoutMessage("Order created. Complete the secure payment below.", "success");
+      setCheckoutMessage("");
       setSubmitButtonState("Payment opened below", true);
       return;
     }
