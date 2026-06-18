@@ -181,6 +181,45 @@
       return mapApi === "leaflet" && map;
     }
 
+    function currentMapCenter() {
+      if (canUseGoogleMap()) {
+        const center = map.getCenter();
+        return {
+          lat: typeof center.lat === "function" ? center.lat() : center.lat,
+          lng: typeof center.lng === "function" ? center.lng() : center.lng
+        };
+      }
+      if (canUseLeafletMap()) {
+        const center = map.getCenter();
+        return {
+          lat: center.lat,
+          lng: center.lng
+        };
+      }
+      return {
+        lat: kitchen.lat,
+        lng: kitchen.lng
+      };
+    }
+
+    async function useTypedAddressFallback() {
+      const query = searchInput.value.trim();
+      if (!query) {
+        return false;
+      }
+      const center = currentMapCenter();
+      await setSelectedLocation({
+        lat: center.lat,
+        lng: center.lng,
+        label: query,
+        formattedAddress: query,
+        locationConfirmed: true,
+        locationNotes: notesInput.value.trim()
+      });
+      selectedFee.textContent = "Address saved from typed text. Please confirm the pin if the map becomes available.";
+      return true;
+    }
+
     function initializeLeafletMap() {
       if (!global.L) {
         selectedFee.textContent = "Map could not load. Please check your Google Maps key or internet connection.";
@@ -412,7 +451,7 @@
         const results = await geocode(query);
         const bestMatch = results[0];
         if (!bestMatch) {
-          selectedFee.textContent = "No address match found. Try a more specific Bali address.";
+          await useTypedAddressFallback();
           return;
         }
 
@@ -424,6 +463,8 @@
           locationConfirmed: true,
           locationNotes: notesInput.value.trim()
         });
+      } catch (_error) {
+        await useTypedAddressFallback();
       } finally {
         searchButton.disabled = false;
         searchButton.textContent = "Find";
@@ -479,7 +520,16 @@
 
     saveButton.addEventListener("click", () => {
       if (!hasConfirmedLocation()) {
-        selectedFee.textContent = "Please pin an address on the map before saving.";
+        useTypedAddressFallback()
+          .then((usedFallback) => {
+            if (!usedFallback || !hasConfirmedLocation()) {
+              selectedFee.textContent = "Please pin an address on the map before saving.";
+              return;
+            }
+            value.locationNotes = notesInput.value.trim();
+            renderSelectedLocation();
+            onSave?.(value);
+          });
         return;
       }
 
