@@ -915,10 +915,14 @@ async function refreshUnpaidOrderFromXendit(order) {
   const previousStatus = order.status;
   const xenditStatus = order.payment?.provider === "xendit_payments_api"
     ? await fetchXenditPaymentRequestStatus(order).catch(() => null)
-    : await fetchXenditInvoiceStatus(order).catch(() => null);
+    : order.payment?.provider === "xendit_virtual_account"
+      ? await fetchXenditVirtualAccountStatus(order).catch(() => null)
+      : await fetchXenditInvoiceStatus(order).catch(() => null);
   if (xenditStatus) {
     if (order.payment?.provider === "xendit_payments_api") {
       applyXenditPaymentRequestStatusToOrder(order, xenditStatus);
+    } else if (order.payment?.provider === "xendit_virtual_account") {
+      applyXenditVirtualAccountStatusToOrder(order, xenditStatus);
     } else {
       applyXenditInvoiceStatusToOrder(order, xenditStatus);
     }
@@ -3486,10 +3490,7 @@ function buildXenditPaymentRequestPayload(order) {
         type: "QR_CODE",
         reusability: "ONE_TIME_USE",
         qr_code: {
-          channel_code: "QRIS",
-          channel_properties: {
-            expires_at: expiresAt
-          }
+          channel_code: "QRIS"
         }
       },
       description: `Bakeaholic Bali order ${order.id}`,
@@ -3510,7 +3511,10 @@ function buildXenditPaymentRequestPayload(order) {
     request_amount: order.pricing.total,
     capture_method: "AUTOMATIC",
     channel_code: order.payment.xenditChannelCode,
-    channel_properties: channelProperties,
+    channel_properties: {
+      success_return_url: returnUrl,
+      failure_return_url: returnUrl
+    },
     description: `Bakeaholic Bali order ${order.id}`,
     metadata: {
       order_id: order.id,
@@ -3562,6 +3566,11 @@ async function createPaymentForOrder(order) {
 
   if (order.payment?.kind === "va" && !order.payment?.selectedBankCode) {
     return pendingBankPayment(order.payment);
+  }
+
+  if (order.payment?.kind === "va") {
+    const virtualAccount = await createXenditVirtualAccount(enrichOrder(order));
+    return applyXenditVirtualAccountToPayment(order.payment, virtualAccount);
   }
 
   const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));
@@ -3618,6 +3627,68 @@ async function createXenditInvoice(order) {
   }
 
   return payload;
+}
+
+async function createXenditVirtualAccount(order) {
+  if (order.pricing.total <= 0) {
+    return null;
+  }
+  if (!isXenditReady()) {
+    throw new Error("Xendit secret key is required before accepting paid orders.");
+  }
+
+  const response = await fetch("https://api.xendit.co/callback_virtual_accounts", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: xenditAuthHeader()
+    },
+    body: JSON.stringify({
+      external_id: order.payment?.externalId || order.id,
+      bank_code: order.payment?.selectedBankCode || order.payment?.xenditChannelCode,
+      name: order.customer?.name || "Bakeaholic Customer",
+      expected_amount: order.pricing.total,
+      is_closed: true,
+      is_single_use: true,
+      expiration_date: order.expiresAt || new Date(Date.now() + 15 * 60 * 1000).toISOString()
+    })
+  });
+
+  const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error_code || "Xendit virtual account creation failed");
+  }
+
+  return payload;
+}
+
+function applyXenditVirtualAccountToPayment(payment, virtualAccount) {
+  if (!virtualAccount) {
+    return payment;
+  }
+
+  const accountNumber = virtualAccount.account_number || virtualAccount.payment_code || "";
+  return {
+    ...payment,
+    provider: "xendit_virtual_account",
+    status: String(virtualAccount.status || "PENDING").toLowerCase(),
+    transactionId: virtualAccount.id || payment.transactionId || "",
+    paymentId: virtualAccount.id || payment.paymentId || "",
+    externalId: virtualAccount.external_id || payment.externalId || "",
+    invoiceUrl: "",
+    paymentUrl: "",
+    actions: accountNumber
+      ? [{
+        type: "PRESENT_TO_CUSTOMER",
+        descriptor: "VIRTUAL_ACCOUNT_NUMBER",
+        value: accountNumber
+      }]
+      : [],
+    accountNumber,
+    rawStatus: virtualAccount.status || "",
+    instructions: "Transfer to the virtual account number below. Payment is processed securely by Xendit."
+  };
 }
 
 function shouldFallbackToXenditInvoice(error) {
@@ -3768,6 +3839,28 @@ async function fetchXenditPaymentRequestStatus(order) {
   return payload;
 }
 
+async function fetchXenditVirtualAccountStatus(order) {
+  const virtualAccountId = order.payment?.transactionId || "";
+  if (!isXenditReady() || order.payment?.provider !== "xendit_virtual_account" || !virtualAccountId) {
+    return null;
+  }
+
+  const response = await fetch(`https://api.xendit.co/callback_virtual_accounts/${encodeURIComponent(virtualAccountId)}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: xenditAuthHeader()
+    }
+  });
+
+  const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error_code || "Unable to check Xendit virtual account status");
+  }
+
+  return payload;
+}
+
 function applyXenditInvoiceStatusToOrder(order, invoice) {
   order.payment = applyXenditInvoiceToPayment(order.payment, invoice);
   const status = String(invoice.status || "").toUpperCase();
@@ -3779,6 +3872,32 @@ function applyXenditInvoiceStatusToOrder(order, invoice) {
   } else if (status === "EXPIRED") {
     order.status = "expired";
     order.payment.status = "expired";
+  } else {
+    order.status = "awaiting_payment";
+    order.payment.status = status.toLowerCase() || "pending";
+  }
+
+  order.whatsappUrl = buildWhatsappUrl(order);
+  return order;
+}
+
+function applyXenditVirtualAccountStatusToOrder(order, virtualAccount = {}) {
+  order.payment = applyXenditVirtualAccountToPayment(order.payment, virtualAccount);
+  const status = String(virtualAccount.status || "").toUpperCase();
+  const hasPaymentSignal = Boolean(
+    virtualAccount.payment_id
+    || virtualAccount.payment_amount
+    || virtualAccount.paid_amount
+    || virtualAccount.payment_detail
+  );
+
+  if (status === "COMPLETED" || status === "PAID" || status === "SETTLED" || hasPaymentSignal) {
+    order.status = "paid";
+    order.payment.status = "paid";
+    order.paidAt = order.paidAt || new Date().toISOString();
+  } else if (status === "INACTIVE" || status === "EXPIRED") {
+    order.status = "expired";
+    order.payment.status = status.toLowerCase();
   } else {
     order.status = "awaiting_payment";
     order.payment.status = status.toLowerCase() || "pending";
@@ -4173,10 +4292,14 @@ async function updateOrderPaymentStatus(mode, orderId) {
 
   const xenditStatus = order.payment?.provider === "xendit_payments_api"
     ? await fetchXenditPaymentRequestStatus(order)
-    : await fetchXenditInvoiceStatus(order);
+    : order.payment?.provider === "xendit_virtual_account"
+      ? await fetchXenditVirtualAccountStatus(order)
+      : await fetchXenditInvoiceStatus(order);
   if (xenditStatus) {
     if (order.payment?.provider === "xendit_payments_api") {
       applyXenditPaymentRequestStatusToOrder(order, xenditStatus);
+    } else if (order.payment?.provider === "xendit_virtual_account") {
+      applyXenditVirtualAccountStatusToOrder(order, xenditStatus);
     } else {
       applyXenditInvoiceStatusToOrder(order, xenditStatus);
     }
@@ -5079,7 +5202,7 @@ function handleApi(requestUrl, request, response) {
         const paymentEvent = body.data && typeof body.data === "object"
           ? { ...body.data, event: body.event }
           : null;
-        const orderId = String(paymentEvent?.reference_id || body.external_id || "").trim();
+        const orderId = String(paymentEvent?.reference_id || paymentEvent?.external_id || body.external_id || "").trim();
         const order = findOrder("live", orderId) || findOrder("test", orderId) || findOrderByXenditExternalId(orderId);
         if (!order) {
           sendJson(response, 200, {
@@ -5091,7 +5214,9 @@ function handleApi(requestUrl, request, response) {
         }
 
         const previousStatus = order.status;
-        if (paymentEvent || order.payment?.provider === "xendit_payments_api") {
+        if (order.payment?.provider === "xendit_virtual_account") {
+          applyXenditVirtualAccountStatusToOrder(order, paymentEvent || body);
+        } else if (paymentEvent || order.payment?.provider === "xendit_payments_api") {
           applyXenditPaymentRequestStatusToOrder(order, paymentEvent || body);
         } else {
           applyXenditInvoiceStatusToOrder(order, body);

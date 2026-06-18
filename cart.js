@@ -543,7 +543,7 @@ async function updateCurrentOrderPaymentMethod(methodId, bankCode = "") {
     return false;
   }
 
-  setSubmitButtonState("Updating payment...", true);
+  hideSubmitButtonForOpenPayment();
   checkoutXenditPanel.innerHTML = `
     <div class="checkout-xendit-loading">
       <strong>Updating payment method...</strong>
@@ -565,7 +565,7 @@ async function updateCurrentOrderPaymentMethod(methodId, bankCode = "") {
   state.pendingPaymentUrl = paymentUrlForOrder(response.order);
   renderEmbeddedPayment(response.order);
   setCheckoutMessage("");
-  setSubmitButtonState("Payment opened below", true);
+  hideSubmitButtonForOpenPayment();
   return true;
 }
 
@@ -599,8 +599,13 @@ function submitButtonLabel() {
 }
 
 function setSubmitButtonState(label, disabled) {
+  submitOrderButton.hidden = false;
   submitOrderButton.textContent = label || submitButtonLabel();
   submitOrderButton.disabled = disabled;
+}
+
+function hideSubmitButtonForOpenPayment() {
+  submitOrderButton.hidden = true;
 }
 
 function applyCartPayload(cartPayload) {
@@ -1150,7 +1155,7 @@ async function submitOrder() {
     state.pendingPaymentUrl = paymentUrlForOrder(response.order);
     if (renderEmbeddedPayment(response.order)) {
       setCheckoutMessage("");
-      setSubmitButtonState("Payment opened below", true);
+      hideSubmitButtonForOpenPayment();
       return;
     }
 

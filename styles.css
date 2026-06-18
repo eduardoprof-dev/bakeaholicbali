@@ -3820,6 +3820,7 @@ body.has-cart-items .storefront-content {
 .checkout-native-payment {
   display: grid;
   gap: 16px;
+  width: min(100%, 620px);
   padding: 16px;
   border: 1px solid rgba(107, 66, 38, 0.14);
   border-radius: 16px;
