@@ -134,6 +134,23 @@ function bankOptionsMarkup(payment) {
   `;
 }
 
+function xenditEmbeddedCheckoutMarkup(paymentUrl) {
+  return `
+    <div class="xendit-embed-card">
+      <iframe
+        class="xendit-checkout-frame"
+        src="${escapeHtml(paymentUrl)}"
+        title="Xendit secure checkout"
+        loading="eager"
+        referrerpolicy="strict-origin-when-cross-origin"
+      ></iframe>
+      <a class="secondary-link centered-link" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noreferrer">
+        Open payment in a new tab
+      </a>
+    </div>
+  `;
+}
+
 function paymentActionMarkup(payment) {
   const actions = Array.isArray(payment.actions) ? payment.actions : [];
   const presentAction = actions.find((action) => action.type === "PRESENT_TO_CUSTOMER");
@@ -142,6 +159,10 @@ function paymentActionMarkup(payment) {
     : null);
   const presentValue = actionValue(presentAction);
   const redirectValue = actionValue(redirectAction);
+
+  if (payment.provider === "xendit" && payment.paymentUrl) {
+    return xenditEmbeddedCheckoutMarkup(payment.paymentUrl);
+  }
 
   if (payment.kind === "va" && !presentAction) {
     return bankOptionsMarkup(payment);
@@ -370,7 +391,7 @@ function renderPending() {
           <span class="payment-logo large">${escapeHtml(payment.logoText)}</span>
         </div>
         ${paymentLinkBlock}
-        <div class="instruction-box">
+        <div class="instruction-box${payment.provider === "xendit" && payment.paymentUrl ? " xendit-embed-note" : ""}">
           ${escapeHtml(payment.instructions)}
           ${payment.provider === "xendit" ? "<br />Payment is processed securely by Xendit." : ""}
         </div>
@@ -506,6 +527,13 @@ async function bootstrap() {
   const tokenQuery = orderToken ? `&token=${encodeURIComponent(orderToken)}` : "";
   const response = await request(`/api/order?id=${encodeURIComponent(orderId)}${tokenQuery}`);
   state.order = response.order;
+  if (state.order?.status === "awaiting_payment" && state.order.payment?.provider === "xendit_pending_bank") {
+    const hostedResponse = await request("/api/order/hosted-payment", {
+      method: "POST",
+      body: JSON.stringify({ id: orderId, token: orderToken })
+    });
+    state.order = hostedResponse.order;
+  }
   localStorage.setItem(latestOrderKey, state.order.id);
   render();
 }

@@ -3431,8 +3431,11 @@ function xenditInvoicePaymentMethodsForOrder(order) {
   if (order.payment?.kind === "card") {
     return ["CREDIT_CARD"];
   }
-  if (order.payment?.kind === "va" && order.payment?.xenditChannelCode) {
-    return [order.payment.xenditChannelCode];
+  if (order.payment?.kind === "va") {
+    if (order.payment?.selectedBankCode) {
+      return [order.payment.selectedBankCode];
+    }
+    return BANK_TRANSFER_CHANNELS.map((bank) => bank.code);
   }
   return [];
 }
@@ -4001,17 +4004,9 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
     payment
   };
 
-  if (!isZeroTotalOrder && order.payment.kind === "va") {
-    order.payment.provider = "xendit_pending_bank";
-    order.payment.status = "pending";
-    order.payment.paymentUrl = "";
-    order.payment.actions = [];
-    order.payment.instructions = "Choose your bank to generate a virtual account number.";
-  } else if (!isZeroTotalOrder) {
-    const xenditPayment = await createXenditPayment(enrichOrder(order));
-    order.payment = xenditPayment.kind === "invoice"
-      ? applyXenditInvoiceToPayment(order.payment, xenditPayment.payload)
-      : applyXenditPaymentRequestToPayment(order.payment, xenditPayment.payload);
+  if (!isZeroTotalOrder) {
+    const xenditInvoice = await createXenditInvoice(enrichOrder(order));
+    order.payment = applyXenditInvoiceToPayment(order.payment, xenditInvoice);
   }
   order.whatsappUrl = buildWhatsappUrl(order);
   order.whatsappNotifications = {
@@ -4143,6 +4138,33 @@ async function selectOrderBankTransferChannel(mode, orderId, bankCode, session, 
   order.payment.logoText = bank.code;
   order.whatsappUrl = buildWhatsappUrl(order);
 
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return enrichOrder(order);
+}
+
+async function ensureOrderHostedPayment(mode, orderId, session, token = "") {
+  const order = findOrder(mode, orderId);
+  const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
+  const customerOwns = session && order && customerOwnsOrder(session, order);
+  if (!order || (!tokenMatches && !customerOwns)) {
+    throw new Error("Order not found");
+  }
+
+  if (order.status !== "awaiting_payment") {
+    return enrichOrder(order);
+  }
+
+  if (order.payment?.provider === "xendit" && order.payment?.paymentUrl) {
+    return enrichOrder(order);
+  }
+
+  if (order.payment?.provider !== "xendit_pending_bank" && order.payment?.kind !== "va") {
+    return enrichOrder(order);
+  }
+
+  const xenditInvoice = await createXenditInvoice(enrichOrder(order));
+  order.payment = applyXenditInvoiceToPayment(order.payment, xenditInvoice);
+  order.whatsappUrl = buildWhatsappUrl(order);
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
 }
@@ -4834,6 +4856,22 @@ function handleApi(requestUrl, request, response) {
           mode,
           String(body.id || "").trim(),
           String(body.bankCode || "").trim(),
+          session,
+          String(body.token || "").trim()
+        );
+        sendJson(response, 200, { order });
+      })
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/order/hosted-payment") {
+    parseBody(request)
+      .then(async (body) => {
+        const session = currentCustomerSession(request);
+        const order = await ensureOrderHostedPayment(
+          mode,
+          String(body.id || "").trim(),
           session,
           String(body.token || "").trim()
         );

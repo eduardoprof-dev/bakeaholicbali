@@ -2397,6 +2397,10 @@ body::before {
   width: min(100%, 1180px);
 }
 
+.pay-shell {
+  width: min(100%, 1080px);
+}
+
 .checkout-shell .page-header {
   width: min(100%, 760px);
   margin: 0 auto;
@@ -3746,6 +3750,24 @@ body.has-cart-items .storefront-content {
   line-height: 1.35;
 }
 
+.xendit-embed-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.xendit-checkout-frame {
+  width: 100%;
+  min-height: 680px;
+  border: 1px solid rgba(107, 66, 38, 0.14);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.xendit-embed-note {
+  font-size: 0.9rem;
+}
+
 .checkout-payment-submit {
   margin-top: 14px;
   min-height: 54px;
@@ -3958,7 +3980,7 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
 .payment-detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  grid-template-columns: minmax(520px, 1fr) minmax(280px, 360px);
   gap: 18px;
   align-items: start;
 }
