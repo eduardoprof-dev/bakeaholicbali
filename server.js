@@ -3443,18 +3443,67 @@ function xenditInvoicePaymentMethodsForOrder(order) {
 function buildXenditPaymentRequestPayload(order) {
   const returnUrl = getPublicOrderUrl(order);
   const expiresAt = order.expiresAt || new Date(Date.now() + 15 * 60 * 1000).toISOString();
-  const channelProperties = {
-    success_return_url: returnUrl,
-    failure_return_url: returnUrl
-  };
+  const referenceId = order.payment?.externalId || order.id;
 
   if (order.payment?.kind === "va") {
-    channelProperties.expires_at = expiresAt;
-    channelProperties.customer_name = order.customer?.name || "Bakeaholic Customer";
+    return {
+      reference_id: referenceId,
+      type: "PAY",
+      country: "ID",
+      currency: "IDR",
+      request_amount: order.pricing.total,
+      capture_method: "AUTOMATIC",
+      payment_method: {
+        type: "VIRTUAL_ACCOUNT",
+        reusability: "ONE_TIME_USE",
+        virtual_account: {
+          channel_code: order.payment.xenditChannelCode,
+          channel_properties: {
+            customer_name: order.customer?.name || "Bakeaholic Customer",
+            expires_at: expiresAt
+          }
+        }
+      },
+      description: `Bakeaholic Bali order ${order.id}`,
+      metadata: {
+        order_id: order.id,
+        customer_phone: order.customer?.phone || "",
+        success_return_url: returnUrl,
+        failure_return_url: returnUrl
+      }
+    };
+  }
+
+  if (order.payment?.kind === "qris") {
+    return {
+      reference_id: referenceId,
+      type: "PAY",
+      country: "ID",
+      currency: "IDR",
+      request_amount: order.pricing.total,
+      capture_method: "AUTOMATIC",
+      payment_method: {
+        type: "QR_CODE",
+        reusability: "ONE_TIME_USE",
+        qr_code: {
+          channel_code: "QRIS",
+          channel_properties: {
+            expires_at: expiresAt
+          }
+        }
+      },
+      description: `Bakeaholic Bali order ${order.id}`,
+      metadata: {
+        order_id: order.id,
+        customer_phone: order.customer?.phone || "",
+        success_return_url: returnUrl,
+        failure_return_url: returnUrl
+      }
+    };
   }
 
   return {
-    reference_id: order.id,
+    reference_id: referenceId,
     type: "PAY",
     country: "ID",
     currency: "IDR",
@@ -3482,6 +3531,41 @@ function normalizeXenditPaymentActions(actions = []) {
 
 function xenditRedirectAction(actions = []) {
   return actions.find((action) => action.type === "REDIRECT_CUSTOMER" && action.value);
+}
+
+function pendingBankPayment(payment) {
+  return {
+    ...payment,
+    provider: "xendit_pending_bank",
+    status: "pending",
+    paymentUrl: "",
+    invoiceUrl: "",
+    actions: [],
+    accountNumber: "",
+    qrCodeData: "",
+    selectedBankCode: "",
+    selectedBankLabel: "",
+    bankOptions: BANK_TRANSFER_CHANNELS,
+    instructions: "Choose a bank to generate your virtual account number."
+  };
+}
+
+async function createPaymentForOrder(order) {
+  if (order.pricing.total <= 0) {
+    return order.payment;
+  }
+
+  if (order.payment?.kind === "card") {
+    const invoice = await createXenditInvoice(enrichOrder(order));
+    return applyXenditInvoiceToPayment(order.payment, invoice);
+  }
+
+  if (order.payment?.kind === "va" && !order.payment?.selectedBankCode) {
+    return pendingBankPayment(order.payment);
+  }
+
+  const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));
+  return applyXenditPaymentRequestToPayment(order.payment, paymentRequest);
 }
 
 async function createXenditPaymentRequest(order) {
@@ -4005,8 +4089,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
   };
 
   if (!isZeroTotalOrder) {
-    const xenditInvoice = await createXenditInvoice(enrichOrder(order));
-    order.payment = applyXenditInvoiceToPayment(order.payment, xenditInvoice);
+    order.payment = await createPaymentForOrder(order);
   }
   order.whatsappUrl = buildWhatsappUrl(order);
   order.whatsappNotifications = {
@@ -4088,9 +4171,15 @@ async function updateOrderPaymentStatus(mode, orderId) {
 
   const previousStatus = order.status;
 
-  const xenditStatus = await fetchXenditInvoiceStatus(order);
+  const xenditStatus = order.payment?.provider === "xendit_payments_api"
+    ? await fetchXenditPaymentRequestStatus(order)
+    : await fetchXenditInvoiceStatus(order);
   if (xenditStatus) {
-    applyXenditInvoiceStatusToOrder(order, xenditStatus);
+    if (order.payment?.provider === "xendit_payments_api") {
+      applyXenditPaymentRequestStatusToOrder(order, xenditStatus);
+    } else {
+      applyXenditInvoiceStatusToOrder(order, xenditStatus);
+    }
   } else {
     order.status = "paid";
     order.payment.status = "paid";
@@ -4148,10 +4237,8 @@ async function selectOrderBankTransferChannel(mode, orderId, bankCode, session, 
     instructions: `Transfer to the ${bank.label} virtual account number below. Payment is processed securely by Xendit.`
   };
 
-  const xenditPayment = await createXenditPayment(enrichOrder(order));
-  order.payment = xenditPayment.kind === "invoice"
-    ? applyXenditInvoiceToPayment(order.payment, xenditPayment.payload)
-    : applyXenditPaymentRequestToPayment(order.payment, xenditPayment.payload);
+  order.payment.externalId = `${order.id}-${Date.now()}`;
+  order.payment = await createPaymentForOrder(order);
   order.payment.selectedBankCode = bank.code;
   order.payment.selectedBankLabel = bank.label;
   order.payment.label = `${bank.label} Virtual Account`;
@@ -4189,7 +4276,7 @@ async function ensureOrderHostedPayment(mode, orderId, session, token = "") {
   return enrichOrder(order);
 }
 
-async function updateOrderPaymentMethod(mode, orderId, methodId, session, token = "") {
+async function updateOrderPaymentMethod(mode, orderId, methodId, session, token = "", bankCode = "") {
   const order = findOrder(mode, orderId);
   const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
   const customerOwns = session && order && customerOwnsOrder(session, order);
@@ -4205,11 +4292,22 @@ async function updateOrderPaymentMethod(mode, orderId, methodId, session, token 
   if (order.pricing.total > 0) {
     nextPayment.externalId = `${order.id}-${Date.now()}`;
     order.expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-    const xenditInvoice = await createXenditInvoice(enrichOrder({
+    if (nextPayment.kind === "va" && bankCode) {
+      const bank = BANK_TRANSFER_CHANNELS.find((entry) => entry.code === String(bankCode || "").toUpperCase());
+      if (!bank) {
+        throw new Error("Please choose a supported bank");
+      }
+      nextPayment.xenditChannelCode = bank.code;
+      nextPayment.selectedBankCode = bank.code;
+      nextPayment.selectedBankLabel = bank.label;
+      nextPayment.label = `${bank.label} Virtual Account`;
+      nextPayment.logoText = bank.code;
+      nextPayment.instructions = `Transfer to the ${bank.label} virtual account number below. Payment is processed securely by Xendit.`;
+    }
+    order.payment = await createPaymentForOrder({
       ...order,
       payment: nextPayment
-    }));
-    order.payment = applyXenditInvoiceToPayment(nextPayment, xenditInvoice);
+    });
   } else {
     order.payment = nextPayment;
   }
@@ -4940,7 +5038,8 @@ function handleApi(requestUrl, request, response) {
           String(body.id || "").trim(),
           String(body.paymentMethodId || "").trim(),
           session,
-          String(body.token || "").trim()
+          String(body.token || "").trim(),
+          String(body.bankCode || "").trim()
         );
         sendJson(response, 200, { order });
       })

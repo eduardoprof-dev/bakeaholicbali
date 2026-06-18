@@ -301,34 +301,243 @@ function xenditCheckoutUrlForOrder(order) {
   return order?.payment?.paymentUrl || "";
 }
 
-function renderEmbeddedPayment(order) {
+function actionValue(action) {
+  const value = action?.value;
+  if (value && typeof value === "object") {
+    return value.qr_string
+      || value.qr_code
+      || value.qr_code_url
+      || value.virtual_account_number
+      || value.account_number
+      || value.payment_code
+      || value.url
+      || JSON.stringify(value);
+  }
+  return String(value || "");
+}
+
+function qrImageSource(value) {
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value) || /^data:image\//i.test(value)) {
+    return value;
+  }
+  return `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(value)}`;
+}
+
+function formatRemainingTime(expiresAt) {
+  const diffMs = Math.max(0, new Date(expiresAt || Date.now()).getTime() - Date.now());
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds} remaining`;
+}
+
+function paymentPresentAction(payment) {
+  return (payment?.actions || []).find((action) =>
+    String(action.type || "").toUpperCase() === "PRESENT_TO_CUSTOMER"
+  );
+}
+
+function paymentPresentValue(payment) {
+  return actionValue(paymentPresentAction(payment));
+}
+
+function paymentStatusButtonMarkup(order) {
+  return `
+    <button class="primary-button checkout-payment-status-button" type="button" data-payment-status="${escapeHtml(order.id)}">
+      I've paid / check status
+    </button>
+  `;
+}
+
+function bankOptionsMarkup(order) {
+  const banks = Array.isArray(order.payment?.bankOptions) && order.payment.bankOptions.length
+    ? order.payment.bankOptions
+    : [
+      { code: "BCA", label: "BCA" },
+      { code: "BNI", label: "BNI" },
+      { code: "BRI", label: "BRI" },
+      { code: "MANDIRI", label: "Mandiri" },
+      { code: "PERMATA", label: "Permata" },
+      { code: "CIMB", label: "CIMB Niaga" }
+    ];
+
+  return `
+    <div class="checkout-native-payment checkout-native-bank">
+      <div class="checkout-native-head">
+        <div>
+          <strong>Choose your bank</strong>
+          <span>Select a bank to generate your virtual account number.</span>
+        </div>
+        <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
+      </div>
+      <div class="checkout-bank-grid">
+        ${banks.map((bank) => `
+          <button class="checkout-bank-button" type="button" data-bank-code="${escapeHtml(bank.code)}">
+            <span class="payment-logo">${escapeHtml(bank.code)}</span>
+            <strong>${escapeHtml(bank.label)}</strong>
+          </button>
+        `).join("")}
+      </div>
+      <p class="checkout-native-note">Choose your bank and the virtual account will appear here.</p>
+    </div>
+  `;
+}
+
+function nativePaymentMarkup(order) {
+  const payment = order.payment || {};
+  const presentValue = paymentPresentValue(payment);
   const paymentUrl = xenditCheckoutUrlForOrder(order);
-  if (!checkoutXenditPanel || !paymentUrl) {
+
+  if (payment.kind === "qris") {
+    const qrSource = qrImageSource(presentValue || payment.qrCodeData || "");
+    return `
+      <div class="checkout-native-payment checkout-native-qris">
+        <div class="checkout-native-head">
+          <div>
+            <strong>QRIS payment</strong>
+            <span>Scan with your e-wallet or banking app.</span>
+          </div>
+          <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
+        </div>
+        <div class="checkout-qris-box">
+          ${qrSource
+            ? `<img class="checkout-qris-image" src="${escapeHtml(qrSource)}" alt="QRIS payment code" />`
+            : `<div class="checkout-payment-placeholder">Generating QR code...</div>`}
+        </div>
+        <div class="checkout-native-total">
+          <span>Total payment</span>
+          <strong>${formatRupiah.format(order.pricing.total)}</strong>
+        </div>
+        ${paymentStatusButtonMarkup(order)}
+      </div>
+    `;
+  }
+
+  if (payment.kind === "va") {
+    if (!presentValue && !payment.accountNumber) {
+      return bankOptionsMarkup(order);
+    }
+    const accountNumber = presentValue || payment.accountNumber;
+    return `
+      <div class="checkout-native-payment checkout-native-va">
+        <div class="checkout-native-head">
+          <div>
+            <strong>${escapeHtml(payment.selectedBankLabel || payment.label || "Bank Transfer")}</strong>
+            <span>Transfer exactly to this virtual account.</span>
+          </div>
+          <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
+        </div>
+        <div class="checkout-va-number">
+          <span>Virtual account number</span>
+          <strong>${escapeHtml(accountNumber)}</strong>
+          <button class="secondary-button compact-button" type="button" data-copy-payment="${escapeHtml(accountNumber)}">Copy</button>
+        </div>
+        <div class="checkout-native-total">
+          <span>Total payment</span>
+          <strong>${formatRupiah.format(order.pricing.total)}</strong>
+        </div>
+        ${paymentStatusButtonMarkup(order)}
+      </div>
+    `;
+  }
+
+  if (paymentUrl) {
+    return `
+      <div class="checkout-xendit-head">
+        <div>
+          <strong>Card payment</strong>
+          <span>Enter your card details securely below.</span>
+        </div>
+        <a class="secondary-link" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noreferrer">Open in new tab</a>
+      </div>
+      <iframe
+        class="checkout-xendit-frame"
+        src="${escapeHtml(paymentUrl)}"
+        title="Xendit secure card checkout"
+        loading="eager"
+        referrerpolicy="strict-origin-when-cross-origin"
+      ></iframe>
+    `;
+  }
+
+  return `
+    <div class="checkout-xendit-loading">
+      <strong>Payment is being prepared...</strong>
+      <span>Please wait a moment and try again.</span>
+    </div>
+  `;
+}
+
+function bindCheckoutPaymentPanel(order) {
+  checkoutXenditPanel.querySelectorAll("[data-bank-code]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const originalHtml = button.innerHTML;
+      try {
+        checkoutXenditPanel.querySelectorAll("[data-bank-code]").forEach((entry) => {
+          entry.disabled = true;
+        });
+        button.innerHTML = "<strong>Generating...</strong>";
+        await updateCurrentOrderPaymentMethod("xendit-va", button.dataset.bankCode);
+      } catch (error) {
+        button.innerHTML = originalHtml;
+        checkoutXenditPanel.querySelectorAll("[data-bank-code]").forEach((entry) => {
+          entry.disabled = false;
+        });
+        setCheckoutMessage(error.message || "Unable to generate virtual account.");
+      }
+    });
+  });
+
+  checkoutXenditPanel.querySelectorAll("[data-copy-payment]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copyPayment);
+        button.textContent = "Copied";
+      } catch (_error) {
+        button.textContent = "Copy failed";
+      }
+    });
+  });
+
+  checkoutXenditPanel.querySelectorAll("[data-payment-status]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.textContent = "Checking...";
+      try {
+        const response = await request("/api/order/payment-status", {
+          method: "POST",
+          body: JSON.stringify({ id: order.id })
+        });
+        state.currentOrder = response.order;
+        renderEmbeddedPayment(response.order, false);
+        if (response.order.status === "paid" || response.order.status === "preparing") {
+          setCheckoutMessage("Payment received. Your order is confirmed.", "success");
+        } else {
+          setCheckoutMessage("Payment is still waiting. Please complete it below.", "success");
+        }
+      } catch (error) {
+        setCheckoutMessage(error.message || "Unable to check payment status.");
+        button.disabled = false;
+        button.textContent = "I've paid / check status";
+      }
+    });
+  });
+}
+
+function renderEmbeddedPayment(order) {
+  if (!checkoutXenditPanel || !order?.payment) {
     return false;
   }
 
   checkoutXenditPanel.hidden = false;
-  checkoutXenditPanel.innerHTML = `
-    <div class="checkout-xendit-head">
-      <div>
-        <strong>Complete payment</strong>
-        <span>Order created. Finish securely below.</span>
-      </div>
-      <a class="secondary-link" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noreferrer">Open in new tab</a>
-    </div>
-    <iframe
-      class="checkout-xendit-frame"
-      src="${escapeHtml(paymentUrl)}"
-      title="Xendit secure checkout"
-      loading="eager"
-      referrerpolicy="strict-origin-when-cross-origin"
-    ></iframe>
-  `;
+  checkoutXenditPanel.innerHTML = nativePaymentMarkup(order);
+  bindCheckoutPaymentPanel(order);
   checkoutXenditPanel.scrollIntoView({ behavior: "smooth", block: "start" });
   return true;
 }
 
-async function updateCurrentOrderPaymentMethod(methodId) {
+async function updateCurrentOrderPaymentMethod(methodId, bankCode = "") {
   const orderId = state.currentOrder?.id || localStorage.getItem(latestOrderKey) || "";
   if (!orderId || !checkoutXenditPanel || checkoutXenditPanel.hidden) {
     return false;
@@ -347,13 +556,15 @@ async function updateCurrentOrderPaymentMethod(methodId) {
     method: "POST",
     body: JSON.stringify({
       id: orderId,
-      paymentMethodId: methodId
+      paymentMethodId: methodId,
+      bankCode
     })
   });
   state.currentOrder = response.order;
   localStorage.setItem(latestOrderKey, response.order.id);
   state.pendingPaymentUrl = paymentUrlForOrder(response.order);
   renderEmbeddedPayment(response.order);
+  setCheckoutMessage("");
   setSubmitButtonState("Payment opened below", true);
   return true;
 }

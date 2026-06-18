@@ -3817,6 +3817,150 @@ body.has-cart-items .storefront-content {
   background: #fff;
 }
 
+.checkout-native-payment {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(107, 66, 38, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.checkout-native-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.checkout-native-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.checkout-native-head span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.payment-countdown {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #fff6e8;
+  color: var(--accent) !important;
+  padding: 7px 10px;
+  font-weight: 800;
+  font-size: 0.82rem !important;
+}
+
+.checkout-qris-box {
+  display: grid;
+  justify-items: center;
+  padding: 18px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(107, 66, 38, 0.08);
+}
+
+.checkout-qris-image {
+  width: min(100%, 260px);
+  aspect-ratio: 1;
+  object-fit: contain;
+}
+
+.checkout-payment-placeholder {
+  display: grid;
+  place-items: center;
+  width: min(100%, 260px);
+  aspect-ratio: 1;
+  border-radius: 12px;
+  background: #fffaf4;
+  color: var(--muted);
+  text-align: center;
+  padding: 16px;
+}
+
+.checkout-native-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.checkout-native-total span {
+  color: var(--muted);
+}
+
+.checkout-native-total strong {
+  font-size: 1.2rem;
+}
+
+.checkout-payment-status-button {
+  width: 100%;
+}
+
+.checkout-bank-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.checkout-bank-button {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--text);
+  padding: 12px;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.checkout-bank-button:hover,
+.checkout-bank-button:focus-visible {
+  border-color: rgba(107, 66, 38, 0.42);
+  box-shadow: 0 0 0 3px rgba(107, 66, 38, 0.08);
+  outline: none;
+}
+
+.checkout-bank-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.checkout-native-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.checkout-va-number {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid rgba(107, 66, 38, 0.1);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.checkout-va-number span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.checkout-va-number strong {
+  overflow-wrap: anywhere;
+  font-size: clamp(1.35rem, 3vw, 1.85rem);
+  letter-spacing: 0.04em;
+}
+
 .payment-logo {
   display: inline-flex;
   align-items: center;
@@ -4499,6 +4643,18 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
   .bank-choice-grid {
     grid-template-columns: 1fr;
+  }
+
+  .checkout-bank-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-native-head {
+    flex-direction: column;
+  }
+
+  .payment-countdown {
+    align-self: flex-start;
   }
 
   .waiting-icon {
