@@ -3615,6 +3615,11 @@ async function createPaymentForOrder(order) {
     return applyXenditVirtualAccountToPayment(order.payment, virtualAccount);
   }
 
+  if (order.payment?.kind === "qris") {
+    const qrCode = await createXenditQrCode(enrichOrder(order));
+    return applyXenditQrCodeToPayment(order.payment, qrCode);
+  }
+
   const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));
   return applyXenditPaymentRequestToPayment(order.payment, paymentRequest);
 }
@@ -3703,6 +3708,65 @@ async function createXenditVirtualAccount(order) {
   }
 
   return payload;
+}
+
+async function createXenditQrCode(order) {
+  if (order.pricing.total <= 0) {
+    return null;
+  }
+  if (!isXenditReady()) {
+    throw new Error("Xendit secret key is required before accepting paid orders.");
+  }
+
+  const response = await fetch("https://api.xendit.co/qr_codes", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: xenditAuthHeader()
+    },
+    body: JSON.stringify({
+      external_id: order.payment?.externalId || order.id,
+      type: "DYNAMIC",
+      amount: order.pricing.total,
+      callback_url: `${String(process.env.PUBLIC_SITE_URL || "https://bakeaholicbali.com").replace(/\/+$/, "")}/api/xendit/invoice-callback`
+    })
+  });
+
+  const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error_code || "Xendit QRIS creation failed");
+  }
+
+  return payload;
+}
+
+function applyXenditQrCodeToPayment(payment, qrCode) {
+  if (!qrCode) {
+    return payment;
+  }
+
+  const qrValue = qrCode.qr_string || qrCode.qr_code || qrCode.qr_code_url || "";
+  return {
+    ...payment,
+    provider: "xendit_qr_code",
+    status: String(qrCode.status || "ACTIVE").toLowerCase(),
+    transactionId: qrCode.id || qrCode.external_id || payment.transactionId || "",
+    paymentId: qrCode.id || payment.paymentId || "",
+    externalId: qrCode.external_id || payment.externalId || "",
+    invoiceUrl: "",
+    paymentUrl: "",
+    actions: qrValue
+      ? [{
+        type: "PRESENT_TO_CUSTOMER",
+        descriptor: "QR_CODE",
+        value: qrValue
+      }]
+      : [],
+    qrCodeData: qrValue,
+    rawStatus: qrCode.status || "",
+    instructions: "Scan the QRIS code below. Payment is processed securely by Xendit."
+  };
 }
 
 function applyXenditVirtualAccountToPayment(payment, virtualAccount) {
@@ -4006,6 +4070,37 @@ function buildPaymentDetails(orderId, methodId, total) {
   };
 }
 
+function paymentCacheKey(methodId, bankCode = "") {
+  const method = String(methodId || "").trim() || "xendit-qris";
+  const bank = String(bankCode || "").trim().toUpperCase();
+  return bank ? `${method}:${bank}` : method;
+}
+
+function isOrderPaymentExpired(order) {
+  const expiresAt = Date.parse(order?.expiresAt || "");
+  return Boolean(expiresAt && expiresAt <= Date.now());
+}
+
+function paymentHasPresentValue(payment) {
+  if (!payment) {
+    return false;
+  }
+  if (payment.kind === "qris") {
+    return Boolean(
+      payment.qrCodeData
+      || (payment.actions || []).some((action) => action.type === "PRESENT_TO_CUSTOMER" && action.value)
+    );
+  }
+  if (payment.kind === "va") {
+    return Boolean(
+      payment.accountNumber
+      || payment.provider === "xendit_pending_bank"
+      || (payment.actions || []).some((action) => action.type === "PRESENT_TO_CUSTOMER" && action.value)
+    );
+  }
+  return true;
+}
+
 function enrichOrder(order) {
   if (!order) return null;
   return {
@@ -4263,6 +4358,9 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
 
   if (!isZeroTotalOrder) {
     order.payment = await createPaymentForOrder(order);
+    order.paymentOptions = {
+      [paymentCacheKey(draft.paymentMethodId, order.payment?.selectedBankCode)]: order.payment
+    };
   }
   order.whatsappUrl = buildWhatsappUrl(order);
   order.whatsappNotifications = {
@@ -4465,12 +4563,21 @@ async function updateOrderPaymentMethod(mode, orderId, methodId, session, token 
     throw new Error("Payment method can only be changed before payment is completed");
   }
 
+  const normalizedBankCode = String(bankCode || "").toUpperCase();
+  const cacheKey = paymentCacheKey(methodId, normalizedBankCode);
+  const cachedPayment = order.paymentOptions?.[cacheKey];
+  if (cachedPayment && paymentHasPresentValue(cachedPayment) && !isOrderPaymentExpired(order)) {
+    order.payment = cachedPayment;
+    order.whatsappUrl = buildWhatsappUrl(order);
+    saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+    return enrichOrder(order);
+  }
+
   const nextPayment = buildPaymentDetails(order.id, methodId, order.pricing.total);
   if (order.pricing.total > 0) {
     nextPayment.externalId = `${order.id}-${Date.now()}`;
-    order.expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-    if (nextPayment.kind === "va" && bankCode) {
-      const bank = BANK_TRANSFER_CHANNELS.find((entry) => entry.code === String(bankCode || "").toUpperCase());
+    if (nextPayment.kind === "va" && normalizedBankCode) {
+      const bank = BANK_TRANSFER_CHANNELS.find((entry) => entry.code === normalizedBankCode);
       if (!bank) {
         throw new Error("Please choose a supported bank");
       }
@@ -4485,6 +4592,10 @@ async function updateOrderPaymentMethod(mode, orderId, methodId, session, token 
       ...order,
       payment: nextPayment
     });
+    order.paymentOptions = {
+      ...(order.paymentOptions || {}),
+      [cacheKey]: order.payment
+    };
   } else {
     order.payment = nextPayment;
   }

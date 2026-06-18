@@ -499,7 +499,7 @@ function nativePaymentMarkup(order) {
           <span>Total due</span>
           <strong>${formatRupiah.format(order.pricing.total)}</strong>
         </div>
-        <button class="secondary-button full-width checkout-payment-secondary" type="button" data-change-payment-method>
+        <button class="secondary-button full-width checkout-payment-secondary" type="button" data-change-bank>
           Change bank
         </button>
         ${paymentStatusButtonMarkup(order)}
@@ -555,8 +555,18 @@ function nativePaymentMarkup(order) {
 function bindCheckoutPaymentPanel(order) {
   startPaymentCountdown(order);
 
-  checkoutXenditPanel.querySelectorAll("[data-change-payment-method]").forEach((button) => {
-    button.addEventListener("click", () => showPaymentMethodChooser());
+  checkoutXenditPanel.querySelectorAll("[data-change-bank]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.textContent = "Loading banks...";
+      try {
+        await updateCurrentOrderPaymentMethod("xendit-va");
+      } catch (error) {
+        setCheckoutMessage(error.message || "Unable to load bank options.");
+        button.disabled = false;
+        button.textContent = "Change bank";
+      }
+    });
   });
 
   checkoutXenditPanel.querySelectorAll("[data-bank-code]").forEach((button) => {
@@ -646,9 +656,12 @@ function showPaymentMethodChooser() {
   if (changePaymentMethodButton) changePaymentMethodButton.hidden = true;
   if (inlinePaymentMethodList) inlinePaymentMethodList.hidden = false;
   if (checkoutXenditPanel) checkoutXenditPanel.hidden = true;
-  state.currentOrder = state.currentOrder || null;
-  state.pendingPaymentUrl = "";
-  setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
+  if (state.currentOrder) {
+    hideSubmitButtonForOpenPayment();
+  } else {
+    state.pendingPaymentUrl = "";
+    setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
+  }
 }
 
 function showActivePaymentMode() {
@@ -673,7 +686,7 @@ function renderEmbeddedPayment(order) {
 
 async function updateCurrentOrderPaymentMethod(methodId, bankCode = "") {
   const orderId = state.currentOrder?.id || localStorage.getItem(latestOrderKey) || "";
-  if (!orderId || !checkoutXenditPanel || checkoutXenditPanel.hidden) {
+  if (!orderId || !checkoutXenditPanel) {
     return false;
   }
 
