@@ -3773,6 +3773,27 @@ body.has-cart-items .storefront-content {
   min-height: 54px;
 }
 
+.checkout-xendit-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.checkout-xendit-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.checkout-xendit-frame {
+  width: 100%;
+  min-height: 680px;
+  border: 1px solid rgba(107, 66, 38, 0.14);
+  border-radius: 16px;
+  background: #fff;
+}
+
 .payment-logo {
   display: inline-flex;
   align-items: center;

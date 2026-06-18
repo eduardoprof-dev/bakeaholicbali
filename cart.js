@@ -50,6 +50,7 @@ const voucherInput = document.getElementById("voucherInput");
 const applyVoucherButton = document.getElementById("applyVoucherButton");
 const voucherMessage = document.getElementById("voucherMessage");
 const inlinePaymentMethodList = document.getElementById("inlinePaymentMethodList");
+const checkoutXenditPanel = document.getElementById("checkoutXenditPanel");
 const paymentLogo = document.getElementById("paymentLogo");
 const paymentMethodLabel = document.getElementById("paymentMethodLabel");
 const paymentMethodHint = document.getElementById("paymentMethodHint");
@@ -293,6 +294,34 @@ function currentPaymentMethod() {
 function paymentUrlForOrder(order) {
   const localPaymentUrl = `/pay.html${modeQuery ? `${modeQuery}&order=${order.id}` : `?order=${order.id}`}`;
   return localPaymentUrl;
+}
+
+function xenditCheckoutUrlForOrder(order) {
+  return order?.payment?.paymentUrl || "";
+}
+
+function renderEmbeddedPayment(order) {
+  const paymentUrl = xenditCheckoutUrlForOrder(order);
+  if (!checkoutXenditPanel || !paymentUrl) {
+    return false;
+  }
+
+  checkoutXenditPanel.hidden = false;
+  checkoutXenditPanel.innerHTML = `
+    <div class="checkout-xendit-head">
+      <strong>Complete payment</strong>
+      <a class="secondary-link" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noreferrer">Open in new tab</a>
+    </div>
+    <iframe
+      class="checkout-xendit-frame"
+      src="${escapeHtml(paymentUrl)}"
+      title="Xendit secure checkout"
+      loading="eager"
+      referrerpolicy="strict-origin-when-cross-origin"
+    ></iframe>
+  `;
+  checkoutXenditPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  return true;
 }
 
 function setCheckoutMessage(message = "", tone = "error") {
@@ -865,38 +894,14 @@ async function submitOrder() {
 
     localStorage.setItem(latestOrderKey, response.order.id);
     state.pendingPaymentUrl = paymentUrlForOrder(response.order);
-    applyCartPayload({
-      items: [],
-      lineItems: [],
-      subtotal: 0,
-      deliveryFee: 0,
-      shipping: {
-        distanceKm: 0,
-        bikeFare: 0,
-        serviceFee: 0,
-        total: 0
-      },
-      discount: {
-        code: "",
-        label: "",
-        amount: 0
-      },
-      tax: 0,
-      total: 0,
-      itemCount: 0,
-      fulfillmentType: state.draft.fulfillmentType,
-      perkUnlocked: false
-    });
-    setSubmitButtonState("Opening order...", true);
-    window.location.assign(state.pendingPaymentUrl);
+    if (renderEmbeddedPayment(response.order)) {
+      setCheckoutMessage("Order created. Complete the secure payment below.", "success");
+      setSubmitButtonState("Payment opened below", true);
+      return;
+    }
 
-    window.setTimeout(() => {
-      if (!state.pendingPaymentUrl) {
-        return;
-      }
-      setCheckoutMessage("Order created. Tap the button again to open the payment page if it did not open automatically.", "success");
-      setSubmitButtonState("Open Payment Page", false);
-    }, 1200);
+    setCheckoutMessage("Order created. Tap below to open the payment page.", "success");
+    setSubmitButtonState("Open Payment Page", false);
   } catch (error) {
     state.pendingPaymentUrl = "";
     if (String(error.message || "").toLowerCase().includes("basket is empty")) {

@@ -1007,11 +1007,12 @@ async function addToCart(itemId, triggerButton = null) {
     triggerButton.setAttribute("aria-live", "polite");
   }
   try {
-    await request("/api/cart", {
+    const cartPayload = await request("/api/cart", {
       method: "POST",
       body: JSON.stringify({ itemId, quantity: 1 })
     });
-    await refreshCart({ renderProducts: false });
+    state.cart = cartPayload;
+    renderCartSummary();
   } catch (error) {
     adjustVisibleAddBadges(itemId, -1);
     throw error;

@@ -4025,10 +4025,12 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
   storeState.orders.unshift(order);
   upsertCustomerFromCheckout(order);
   saveOrders(ordersPathForMode(mode), storeState.orders);
-  cartState.cart.clear();
-  if (cartOverride && cartSessionId) {
-    storeState.carts.set(cartSessionId, cartState.cart);
-    saveSessionCarts(cartsPathForMode(mode), storeState.carts);
+  if (isZeroTotalOrder) {
+    cartState.cart.clear();
+    if (cartOverride && cartSessionId) {
+      storeState.carts.set(cartSessionId, cartState.cart);
+      saveSessionCarts(cartsPathForMode(mode), storeState.carts);
+    }
   }
   return enrichOrder(order);
 }
