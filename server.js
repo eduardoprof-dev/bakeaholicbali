@@ -111,6 +111,8 @@ const DEFAULT_BRAND_STORY = {
 const customersPath = path.join(dataDir, "customers.json");
 const ordersLivePath = path.join(dataDir, "orders-live.json");
 const ordersTestPath = path.join(dataDir, "orders-test.json");
+const cartsLivePath = path.join(dataDir, "carts-live.json");
+const cartsTestPath = path.join(dataDir, "carts-test.json");
 const biteshipWebhookLogPath = path.join(dataDir, "biteship-webhook-log.json");
 const PAYMENT_METHODS = [
   {
@@ -1732,6 +1734,49 @@ function saveOrders(targetPath, orders) {
   fs.writeFileSync(targetPath, `${JSON.stringify(orders, null, 2)}\n`, "utf8");
 }
 
+function loadSessionCarts(targetPath) {
+  if (!fs.existsSync(targetPath)) {
+    return new Map();
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(targetPath, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return new Map();
+    }
+    return new Map(
+      Object.entries(parsed)
+        .filter(([sessionId, items]) => /^[a-f0-9]{32}$/i.test(sessionId) && items && typeof items === "object")
+        .map(([sessionId, items]) => [
+          sessionId.toLowerCase(),
+          new Map(
+            Object.entries(items)
+              .map(([itemId, quantity]) => [itemId, Number(quantity)])
+              .filter(([itemId, quantity]) => findMenuItem(itemId) && Number.isFinite(quantity) && quantity > 0)
+          )
+        ])
+    );
+  } catch (_error) {
+    return new Map();
+  }
+}
+
+function saveSessionCarts(targetPath, carts) {
+  const payload = {};
+  for (const [sessionId, cart] of carts.entries()) {
+    const items = {};
+    for (const [itemId, quantity] of cart.entries()) {
+      if (quantity > 0) {
+        items[itemId] = quantity;
+      }
+    }
+    if (Object.keys(items).length) {
+      payload[sessionId] = items;
+    }
+  }
+  writeJsonFile(targetPath, payload);
+}
+
 function loadJsonArray(targetPath) {
   if (!fs.existsSync(targetPath)) {
     return [];
@@ -1759,16 +1804,20 @@ function ordersPathForMode(mode) {
   return mode === "test" ? ordersTestPath : ordersLivePath;
 }
 
+function cartsPathForMode(mode) {
+  return mode === "test" ? cartsTestPath : cartsLivePath;
+}
+
 const stores = {
   live: {
     cart: new Map(),
-    carts: new Map(),
+    carts: loadSessionCarts(cartsLivePath),
     orders: loadOrders(ordersLivePath),
     registrations: new Map()
   },
   test: {
     cart: new Map(),
-    carts: new Map(),
+    carts: loadSessionCarts(cartsTestPath),
     orders: loadOrders(ordersTestPath),
     registrations: new Map()
   }
@@ -2079,6 +2128,7 @@ function ensureCartSession(request, response) {
 function getSessionCartState(mode, request, response) {
   const storeState = getStoreState(mode);
   const sessionId = ensureCartSession(request, response);
+  storeState.carts = loadSessionCarts(cartsPathForMode(mode));
   if (!storeState.carts.has(sessionId)) {
     storeState.carts.set(sessionId, new Map());
   }
@@ -3833,7 +3883,7 @@ function verifyRegistration(storeState, input = {}) {
   };
 }
 
-async function createOrder(mode, payload, cartOverride = null) {
+async function createOrder(mode, payload, cartOverride = null, cartSessionId = "") {
   const draft = normalizeCheckoutDraft(payload);
   const storeState = getStoreState(mode);
   const cartState = cartOverride
@@ -3917,10 +3967,14 @@ async function createOrder(mode, payload, cartOverride = null) {
   upsertCustomerFromCheckout(order);
   saveOrders(ordersPathForMode(mode), storeState.orders);
   cartState.cart.clear();
+  if (cartOverride && cartSessionId) {
+    storeState.carts.set(cartSessionId, cartState.cart);
+    saveSessionCarts(cartsPathForMode(mode), storeState.carts);
+  }
   return enrichOrder(order);
 }
 
-async function createOrderForSession(mode, payload, session, cartOverride = null) {
+async function createOrderForSession(mode, payload, session, cartOverride = null, cartSessionId = "") {
   if (!session?.phone) {
     throw new Error("Please log in again to continue");
   }
@@ -3932,7 +3986,7 @@ async function createOrderForSession(mode, payload, session, cartOverride = null
       phoneVerifiedAt: session.verifiedAt || new Date().toISOString()
     }
   };
-  return createOrder(mode, body, cartOverride);
+  return createOrder(mode, body, cartOverride, cartSessionId);
 }
 
 function findOrder(mode, orderId) {
@@ -4017,9 +4071,10 @@ function resetStore(mode) {
   storeState.orders.length = 0;
   storeState.registrations.clear();
   saveOrders(ordersPathForMode(mode), storeState.orders);
+  saveSessionCarts(cartsPathForMode(mode), storeState.carts);
 }
 
-function handleCartUpsert(storeState, response, body, strategy, cartSessionId = "") {
+function handleCartUpsert(mode, storeState, response, body, strategy, cartSessionId = "") {
   const item = findMenuItem(body.itemId);
   if (!item) {
     sendJson(response, 404, { error: "Unknown menu item" });
@@ -4035,6 +4090,7 @@ function handleCartUpsert(storeState, response, body, strategy, cartSessionId = 
   const nextQuantity = strategy(item, quantity);
   if (nextQuantity <= 0) {
     storeState.cart.delete(item.id);
+    saveSessionCarts(cartsPathForMode(mode), getStoreState(mode).carts);
     sendJson(response, 200, buildCartSummary(storeState, { cartSessionId }));
     return;
   }
@@ -4050,6 +4106,7 @@ function handleCartUpsert(storeState, response, body, strategy, cartSessionId = 
   }
 
   storeState.cart.set(item.id, nextQuantity);
+  saveSessionCarts(cartsPathForMode(mode), getStoreState(mode).carts);
   sendJson(response, 200, buildCartSummary(storeState, { cartSessionId }));
 }
 
@@ -4466,7 +4523,10 @@ function handleApi(requestUrl, request, response) {
     parseBody(request)
       .then((body) => {
         const saved = saveCatalog(body);
-        Object.values(stores).forEach((entry) => clampAllCartsToStock(entry));
+        Object.entries(stores).forEach(([storeMode, entry]) => {
+          clampAllCartsToStock(entry);
+          saveSessionCarts(cartsPathForMode(storeMode), entry.carts);
+        });
         sendJson(response, 200, { ok: true, catalog: saved });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -4492,6 +4552,7 @@ function handleApi(requestUrl, request, response) {
     parseBody(request)
       .then((body) =>
         handleCartUpsert(
+          mode,
           cartState,
           response,
           body,
@@ -4507,7 +4568,7 @@ function handleApi(requestUrl, request, response) {
     const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
       .then((body) =>
-        handleCartUpsert(cartState, response, body, (_item, quantity) => quantity, sessionId)
+        handleCartUpsert(mode, cartState, response, body, (_item, quantity) => quantity, sessionId)
       )
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
@@ -4622,10 +4683,10 @@ function handleApi(requestUrl, request, response) {
     if (!session) {
       return true;
     }
-    const { cartState } = getSessionCartState(mode, request, response);
+    const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
       .then(async (body) => {
-        const order = await createOrderForSession(mode, body, session, cartState.cart);
+        const order = await createOrderForSession(mode, body, session, cartState.cart, sessionId);
         sendJson(response, 201, { order });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
