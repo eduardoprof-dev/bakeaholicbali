@@ -137,7 +137,7 @@ const PAYMENT_METHODS = [
     kind: "card",
     logoText: "CARD",
     description: "Visa, Mastercard, JCB, Amex",
-    xenditChannelCode: "CREDIT_CARD"
+    xenditChannelCode: "CARDS"
   }
 ];
 const BANK_TRANSFER_CHANNELS = [
@@ -3413,26 +3413,40 @@ function buildXenditInvoicePayload(order) {
     invoice_duration: 15 * 60
   };
 
-  if (
-    Array.isArray(order.payment?.xenditPaymentMethods)
-    && order.payment.xenditPaymentMethods.length
-  ) {
-    payload.payment_methods = order.payment.xenditPaymentMethods;
+  const invoicePaymentMethods = xenditInvoicePaymentMethodsForOrder(order);
+  if (invoicePaymentMethods.length) {
+    payload.payment_methods = invoicePaymentMethods;
   }
 
   return payload;
+}
+
+function xenditInvoicePaymentMethodsForOrder(order) {
+  if (Array.isArray(order.payment?.xenditPaymentMethods) && order.payment.xenditPaymentMethods.length) {
+    return order.payment.xenditPaymentMethods;
+  }
+  if (order.payment?.kind === "qris") {
+    return ["QRIS"];
+  }
+  if (order.payment?.kind === "card") {
+    return ["CREDIT_CARD"];
+  }
+  if (order.payment?.kind === "va" && order.payment?.xenditChannelCode) {
+    return [order.payment.xenditChannelCode];
+  }
+  return [];
 }
 
 function buildXenditPaymentRequestPayload(order) {
   const returnUrl = getPublicOrderUrl(order);
   const expiresAt = order.expiresAt || new Date(Date.now() + 15 * 60 * 1000).toISOString();
   const channelProperties = {
-    expires_at: expiresAt,
     success_return_url: returnUrl,
     failure_return_url: returnUrl
   };
 
   if (order.payment?.kind === "va") {
+    channelProperties.expires_at = expiresAt;
     channelProperties.customer_name = order.customer?.name || "Bakeaholic Customer";
   }
 
