@@ -4083,6 +4083,42 @@ body.cart-is-empty .checkout-shell .cart-layout {
   overflow-wrap: anywhere;
 }
 
+.bank-choice-panel {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.bank-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.bank-choice-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 12px;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+  border-radius: 14px;
+  background: #fffaf4;
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bank-choice-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .payment-page-actions {
   display: flex;
   justify-content: center;
@@ -4393,6 +4429,10 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
   .waiting-payment-card {
     padding: 20px;
+  }
+
+  .bank-choice-grid {
+    grid-template-columns: 1fr;
   }
 
   .waiting-icon {

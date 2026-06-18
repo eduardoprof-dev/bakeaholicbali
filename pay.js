@@ -93,6 +93,47 @@ function actionValue(action) {
   return String(value || "");
 }
 
+function qrImageSource(value) {
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value) || /^data:image\//i.test(value)) {
+    return value;
+  }
+  return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(value)}`;
+}
+
+function bankOptionsMarkup(payment) {
+  const banks = Array.isArray(payment.bankOptions) && payment.bankOptions.length
+    ? payment.bankOptions
+    : [
+      { code: "BCA", label: "BCA" },
+      { code: "BNI", label: "BNI" },
+      { code: "BRI", label: "BRI" },
+      { code: "MANDIRI", label: "Mandiri" },
+      { code: "PERMATA", label: "Permata" },
+      { code: "CIMB", label: "CIMB Niaga" }
+    ];
+
+  return `
+    <div class="bank-choice-panel">
+      <div class="xendit-present-head">
+        <div>
+          <h3>Choose your bank</h3>
+          <p>Select a bank to generate your virtual account number.</p>
+        </div>
+        <span class="payment-countdown">${formatRemainingTime(state.order.expiresAt)}</span>
+      </div>
+      <div class="bank-choice-grid">
+        ${banks.map((bank) => `
+          <button class="bank-choice-button" type="button" data-bank-code="${escapeHtml(bank.code)}">
+            <span class="payment-logo">${escapeHtml(bank.code)}</span>
+            <strong>${escapeHtml(bank.label)}</strong>
+          </button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function paymentActionMarkup(payment) {
   const actions = Array.isArray(payment.actions) ? payment.actions : [];
   const presentAction = actions.find((action) => action.type === "PRESENT_TO_CUSTOMER");
@@ -102,8 +143,12 @@ function paymentActionMarkup(payment) {
   const presentValue = actionValue(presentAction);
   const redirectValue = actionValue(redirectAction);
 
+  if (payment.kind === "va" && !presentAction) {
+    return bankOptionsMarkup(payment);
+  }
+
   if (presentAction && payment.kind === "qris") {
-    const isImage = /^https?:\/\//i.test(presentValue) || /^data:image\//i.test(presentValue);
+    const imageSource = qrImageSource(presentValue);
     return `
       <div class="xendit-present-box">
         <div class="xendit-present-head">
@@ -114,13 +159,10 @@ function paymentActionMarkup(payment) {
           <span class="payment-countdown">${formatRemainingTime(state.order.expiresAt)}</span>
         </div>
         <div class="qris-display">
-          ${isImage
-            ? `<img class="qris-image" src="${escapeHtml(presentValue)}" alt="QRIS payment code" />`
-            : `<div class="qr-data-fallback">
-                <strong>QR data received from Xendit</strong>
-                <p>A local QR renderer is needed if Xendit returns raw QR text instead of an image URL.</p>
-                <button class="secondary-button" type="button" data-copy="${escapeHtml(presentValue)}">Copy QR data</button>
-              </div>`}
+          <img class="qris-image" src="${escapeHtml(imageSource)}" alt="QRIS payment code" />
+          ${/^https?:\/\//i.test(presentValue) || /^data:image\//i.test(presentValue)
+            ? ""
+            : `<button class="secondary-button" type="button" data-copy="${escapeHtml(presentValue)}">Copy QR data</button>`}
         </div>
       </div>
     `;
@@ -137,7 +179,7 @@ function paymentActionMarkup(payment) {
           <span class="payment-countdown">${formatRemainingTime(state.order.expiresAt)}</span>
         </div>
         <div class="virtual-account-box">
-          <span>${payment.kind === "va" ? "Virtual Account Number" : "Payment Code"}</span>
+          <span>${payment.kind === "va" ? `${payment.selectedBankLabel || payment.logoText || "Bank"} Virtual Account Number` : "Payment Code"}</span>
           <strong>${escapeHtml(presentValue)}</strong>
           <button class="secondary-button" type="button" data-copy="${escapeHtml(presentValue)}">Copy</button>
         </div>
@@ -145,10 +187,18 @@ function paymentActionMarkup(payment) {
     `;
   }
 
+  if (redirectValue && payment.kind === "card") {
+    return `
+      <a class="primary-button button-link full-width" href="${escapeHtml(redirectValue)}">
+        Add credit card details
+      </a>
+    `;
+  }
+
   if (redirectValue) {
     return `
       <a class="primary-button button-link full-width" href="${escapeHtml(redirectValue)}">
-        Complete payment
+        Open secure payment
       </a>
     `;
   }
@@ -370,6 +420,41 @@ function renderPending() {
         button.textContent = "Copied";
       } catch (_error) {
         button.textContent = "Copy failed";
+      }
+    });
+  });
+
+  paymentApp.querySelectorAll("[data-bank-code]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const originalText = button.textContent;
+      try {
+        paymentApp.querySelectorAll("[data-bank-code]").forEach((entry) => {
+          entry.disabled = true;
+        });
+        button.textContent = "Generating...";
+        const response = await request("/api/order/select-bank", {
+          method: "POST",
+          body: JSON.stringify({
+            id: orderId,
+            token: orderToken,
+            bankCode: button.dataset.bankCode
+          })
+        });
+        state.order = response.order;
+        localStorage.setItem(latestOrderKey, state.order.id);
+        render();
+      } catch (error) {
+        button.textContent = originalText;
+        paymentApp.querySelectorAll("[data-bank-code]").forEach((entry) => {
+          entry.disabled = false;
+        });
+        const panel = paymentApp.querySelector(".bank-choice-panel");
+        if (panel && !panel.querySelector(".payment-alert")) {
+          panel.insertAdjacentHTML(
+            "beforeend",
+            `<p class="payment-alert">${escapeHtml(error.message || "Unable to generate virtual account.")}</p>`
+          );
+        }
       }
     });
   });

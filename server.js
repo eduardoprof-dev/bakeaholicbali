@@ -140,6 +140,14 @@ const PAYMENT_METHODS = [
     xenditChannelCode: "CREDIT_CARD"
   }
 ];
+const BANK_TRANSFER_CHANNELS = [
+  { code: "BCA", label: "BCA" },
+  { code: "BNI", label: "BNI" },
+  { code: "BRI", label: "BRI" },
+  { code: "MANDIRI", label: "Mandiri" },
+  { code: "PERMATA", label: "Permata" },
+  { code: "CIMB", label: "CIMB Niaga" }
+];
 const MAX_DELIVERY_DISTANCE_KM = 100;
 
 const DEMO_VOUCHERS = [
@@ -899,6 +907,9 @@ function ensurePaymentReminderFlow(order) {
 
 async function refreshUnpaidOrderFromXendit(order) {
   if (!order || order.status !== "awaiting_payment") {
+    return order;
+  }
+  if (order.payment?.provider === "xendit_pending_bank") {
     return order;
   }
   const previousStatus = order.status;
@@ -3415,6 +3426,16 @@ function buildXenditInvoicePayload(order) {
 function buildXenditPaymentRequestPayload(order) {
   const returnUrl = getPublicOrderUrl(order);
   const expiresAt = order.expiresAt || new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const channelProperties = {
+    expires_at: expiresAt,
+    success_return_url: returnUrl,
+    failure_return_url: returnUrl
+  };
+
+  if (order.payment?.kind === "va") {
+    channelProperties.customer_name = order.customer?.name || "Bakeaholic Customer";
+  }
+
   return {
     reference_id: order.id,
     type: "PAY",
@@ -3423,11 +3444,7 @@ function buildXenditPaymentRequestPayload(order) {
     request_amount: order.pricing.total,
     capture_method: "AUTOMATIC",
     channel_code: order.payment.xenditChannelCode,
-    channel_properties: {
-      expires_at: expiresAt,
-      success_return_url: returnUrl,
-      failure_return_url: returnUrl
-    },
+    channel_properties: channelProperties,
     description: `Bakeaholic Bali order ${order.id}`,
     metadata: {
       order_id: order.id,
@@ -3709,6 +3726,7 @@ function buildPaymentDetails(orderId, methodId, total) {
   const method = PAYMENT_METHODS.find((entry) => entry.id === methodId) || PAYMENT_METHODS[0];
   return {
     ...method,
+    bankOptions: method.kind === "va" ? BANK_TRANSFER_CHANNELS : [],
     status: "pending",
     instructions: `${method.description} Payment is processed securely by Xendit.`
   };
@@ -3969,7 +3987,13 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
     payment
   };
 
-  if (!isZeroTotalOrder) {
+  if (!isZeroTotalOrder && order.payment.kind === "va") {
+    order.payment.provider = "xendit_pending_bank";
+    order.payment.status = "pending";
+    order.payment.paymentUrl = "";
+    order.payment.actions = [];
+    order.payment.instructions = "Choose your bank to generate a virtual account number.";
+  } else if (!isZeroTotalOrder) {
     const xenditPayment = await createXenditPayment(enrichOrder(order));
     order.payment = xenditPayment.kind === "invoice"
       ? applyXenditInvoiceToPayment(order.payment, xenditPayment.payload)
@@ -4029,6 +4053,10 @@ async function updateOrderPaymentStatus(mode, orderId) {
     return enrichOrder(order);
   }
 
+  if (order.payment?.provider === "xendit_pending_bank") {
+    return enrichOrder(order);
+  }
+
   const previousStatus = order.status;
 
   const xenditStatus = await fetchXenditInvoiceStatus(order);
@@ -4062,6 +4090,47 @@ async function updateOrderPaymentStatusForSession(mode, orderId, session) {
     throw new Error("Order not found");
   }
   return updateOrderPaymentStatus(mode, orderId);
+}
+
+async function selectOrderBankTransferChannel(mode, orderId, bankCode, session, token = "") {
+  const order = findOrder(mode, orderId);
+  const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
+  const customerOwns = session && order && customerOwnsOrder(session, order);
+  if (!order || (!tokenMatches && !customerOwns)) {
+    throw new Error("Order not found");
+  }
+
+  if (order.status !== "awaiting_payment" || order.payment?.kind !== "va") {
+    throw new Error("Bank transfer is not available for this order");
+  }
+
+  const bank = BANK_TRANSFER_CHANNELS.find((entry) => entry.code === String(bankCode || "").toUpperCase());
+  if (!bank) {
+    throw new Error("Please choose a supported bank");
+  }
+
+  order.payment = {
+    ...order.payment,
+    xenditChannelCode: bank.code,
+    selectedBankCode: bank.code,
+    selectedBankLabel: bank.label,
+    label: `${bank.label} Virtual Account`,
+    logoText: bank.code,
+    instructions: `Transfer to the ${bank.label} virtual account number below. Payment is processed securely by Xendit.`
+  };
+
+  const xenditPayment = await createXenditPayment(enrichOrder(order));
+  order.payment = xenditPayment.kind === "invoice"
+    ? applyXenditInvoiceToPayment(order.payment, xenditPayment.payload)
+    : applyXenditPaymentRequestToPayment(order.payment, xenditPayment.payload);
+  order.payment.selectedBankCode = bank.code;
+  order.payment.selectedBankLabel = bank.label;
+  order.payment.label = `${bank.label} Virtual Account`;
+  order.payment.logoText = bank.code;
+  order.whatsappUrl = buildWhatsappUrl(order);
+
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return enrichOrder(order);
 }
 
 async function cancelOrder(mode, orderId) {
@@ -4738,6 +4807,23 @@ function handleApi(requestUrl, request, response) {
           })
           : await updateOrderPaymentStatusForSession(mode, orderId, session);
         sendJson(response, 200, { order: updatedOrder });
+      })
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/order/select-bank") {
+    parseBody(request)
+      .then(async (body) => {
+        const session = currentCustomerSession(request);
+        const order = await selectOrderBankTransferChannel(
+          mode,
+          String(body.id || "").trim(),
+          String(body.bankCode || "").trim(),
+          session,
+          String(body.token || "").trim()
+        );
+        sendJson(response, 200, { order });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
