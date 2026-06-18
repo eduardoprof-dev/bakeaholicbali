@@ -3796,6 +3796,19 @@ body.has-cart-items .storefront-content {
   font-size: 0.9rem;
 }
 
+.checkout-xendit-loading {
+  display: grid;
+  gap: 4px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #fffaf4;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+}
+
+.checkout-xendit-loading span {
+  color: var(--muted);
+}
+
 .checkout-xendit-frame {
   width: 100%;
   min-height: 680px;

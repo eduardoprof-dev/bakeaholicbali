@@ -3403,7 +3403,7 @@ function getPublicOrderUrl(order) {
 function buildXenditInvoicePayload(order) {
   const returnUrl = getPublicOrderUrl(order);
   const payload = {
-    external_id: order.id,
+    external_id: order.payment?.externalId || order.id,
     amount: order.pricing.total,
     currency: "IDR",
     description: `Bakeaholic Bali order ${order.id}`,
@@ -4054,6 +4054,24 @@ function findOrder(mode, orderId) {
   return getStoreState(mode).orders.find((order) => order.id === orderId) || null;
 }
 
+function findOrderByXenditExternalId(externalId) {
+  const id = String(externalId || "").trim();
+  if (!id) {
+    return null;
+  }
+  for (const modeName of ["live", "test"]) {
+    const order = getStoreState(modeName).orders.find((entry) => (
+      entry.id === id
+      || entry.payment?.externalId === id
+      || id.startsWith(`${entry.id}-`)
+    ));
+    if (order) {
+      return order;
+    }
+  }
+  return null;
+}
+
 async function updateOrderPaymentStatus(mode, orderId) {
   const order = findOrder(mode, orderId);
   if (!order) {
@@ -4166,6 +4184,36 @@ async function ensureOrderHostedPayment(mode, orderId, session, token = "") {
 
   const xenditInvoice = await createXenditInvoice(enrichOrder(order));
   order.payment = applyXenditInvoiceToPayment(order.payment, xenditInvoice);
+  order.whatsappUrl = buildWhatsappUrl(order);
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return enrichOrder(order);
+}
+
+async function updateOrderPaymentMethod(mode, orderId, methodId, session, token = "") {
+  const order = findOrder(mode, orderId);
+  const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
+  const customerOwns = session && order && customerOwnsOrder(session, order);
+  if (!order || (!tokenMatches && !customerOwns)) {
+    throw new Error("Order not found");
+  }
+
+  if (order.status !== "awaiting_payment") {
+    throw new Error("Payment method can only be changed before payment is completed");
+  }
+
+  const nextPayment = buildPaymentDetails(order.id, methodId, order.pricing.total);
+  if (order.pricing.total > 0) {
+    nextPayment.externalId = `${order.id}-${Date.now()}`;
+    order.expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const xenditInvoice = await createXenditInvoice(enrichOrder({
+      ...order,
+      payment: nextPayment
+    }));
+    order.payment = applyXenditInvoiceToPayment(nextPayment, xenditInvoice);
+  } else {
+    order.payment = nextPayment;
+  }
+
   order.whatsappUrl = buildWhatsappUrl(order);
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
@@ -4883,6 +4931,23 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "POST" && pathname === "/api/order/payment-method") {
+    parseBody(request)
+      .then(async (body) => {
+        const session = currentCustomerSession(request);
+        const order = await updateOrderPaymentMethod(
+          mode,
+          String(body.id || "").trim(),
+          String(body.paymentMethodId || "").trim(),
+          session,
+          String(body.token || "").trim()
+        );
+        sendJson(response, 200, { order });
+      })
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
   if (request.method === "POST" && pathname === "/api/order/cancel") {
     const session = requireCustomerSession(request, response);
     if (!session) {
@@ -4916,7 +4981,7 @@ function handleApi(requestUrl, request, response) {
           ? { ...body.data, event: body.event }
           : null;
         const orderId = String(paymentEvent?.reference_id || body.external_id || "").trim();
-        const order = findOrder("live", orderId) || findOrder("test", orderId);
+        const order = findOrder("live", orderId) || findOrder("test", orderId) || findOrderByXenditExternalId(orderId);
         if (!order) {
           sendJson(response, 200, {
             ok: true,

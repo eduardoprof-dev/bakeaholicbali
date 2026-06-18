@@ -21,6 +21,7 @@ const state = {
   vouchers: [],
   cart: null,
   pendingPaymentUrl: "",
+  currentOrder: null,
   draft: loadDraft()
 };
 
@@ -324,6 +325,36 @@ function renderEmbeddedPayment(order) {
     ></iframe>
   `;
   checkoutXenditPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  return true;
+}
+
+async function updateCurrentOrderPaymentMethod(methodId) {
+  const orderId = state.currentOrder?.id || localStorage.getItem(latestOrderKey) || "";
+  if (!orderId || !checkoutXenditPanel || checkoutXenditPanel.hidden) {
+    return false;
+  }
+
+  setSubmitButtonState("Updating payment...", true);
+  checkoutXenditPanel.innerHTML = `
+    <div class="checkout-xendit-loading">
+      <strong>Updating payment method...</strong>
+      <span>Keeping the same order and refreshing the secure payment form.</span>
+    </div>
+  `;
+  checkoutXenditPanel.hidden = false;
+
+  const response = await request("/api/order/payment-method", {
+    method: "POST",
+    body: JSON.stringify({
+      id: orderId,
+      paymentMethodId: methodId
+    })
+  });
+  state.currentOrder = response.order;
+  localStorage.setItem(latestOrderKey, response.order.id);
+  state.pendingPaymentUrl = paymentUrlForOrder(response.order);
+  renderEmbeddedPayment(response.order);
+  setSubmitButtonState("Payment opened below", true);
   return true;
 }
 
@@ -802,14 +833,22 @@ function paymentMethodMarkup(method) {
 function bindPaymentMethodButtons(container) {
   if (!container) return;
   container.querySelectorAll("[data-method-id]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       state.draft.paymentMethodId = button.dataset.methodId;
-      state.pendingPaymentUrl = "";
       persistDraft();
       renderPaymentChoice();
       setCheckoutMessage("");
-      setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
       closeModal(paymentModal);
+      try {
+        const updatedExistingOrder = await updateCurrentOrderPaymentMethod(state.draft.paymentMethodId);
+        if (!updatedExistingOrder) {
+          state.pendingPaymentUrl = "";
+          setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
+        }
+      } catch (error) {
+        setCheckoutMessage(error.message || "Unable to update payment method.");
+        setSubmitButtonState(submitButtonLabel(), false);
+      }
     });
   });
 }
@@ -862,8 +901,8 @@ async function syncSessionProfile() {
 
 async function submitOrder() {
   try {
-    if (state.pendingPaymentUrl) {
-      window.location.assign(state.pendingPaymentUrl);
+    if (state.currentOrder && !checkoutXenditPanel.hidden) {
+      await updateCurrentOrderPaymentMethod(state.draft.paymentMethodId);
       return;
     }
 
@@ -896,6 +935,7 @@ async function submitOrder() {
     });
 
     localStorage.setItem(latestOrderKey, response.order.id);
+    state.currentOrder = response.order;
     state.pendingPaymentUrl = paymentUrlForOrder(response.order);
     if (renderEmbeddedPayment(response.order)) {
       setCheckoutMessage("");
