@@ -442,6 +442,10 @@ function renderPending() {
         });
         state.order = response.order;
         localStorage.setItem(latestOrderKey, state.order.id);
+        if (state.order.payment?.provider === "xendit" && state.order.payment?.paymentUrl) {
+          window.location.assign(state.order.payment.paymentUrl);
+          return;
+        }
         render();
       } catch (error) {
         button.textContent = originalText;

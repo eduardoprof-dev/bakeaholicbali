@@ -291,7 +291,7 @@ function currentPaymentMethod() {
 }
 
 function paymentUrlForOrder(order) {
-  if (order?.payment?.kind === "card" && order.payment.paymentUrl) {
+  if (order?.payment?.kind !== "va" && order?.payment?.paymentUrl) {
     return order.payment.paymentUrl;
   }
   const localPaymentUrl = `/pay.html${modeQuery ? `${modeQuery}&order=${order.id}` : `?order=${order.id}`}`;
