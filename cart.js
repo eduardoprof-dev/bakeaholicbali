@@ -304,6 +304,14 @@ function xenditCheckoutUrlForOrder(order) {
   return order?.payment?.paymentUrl || "";
 }
 
+function receiptUrlForOrder(order) {
+  if (order?.documentUrl) {
+    return order.documentUrl;
+  }
+  const token = order?.receiptToken ? `&token=${encodeURIComponent(order.receiptToken)}` : "";
+  return `/invoice.html?order=${encodeURIComponent(order?.id || "")}${token}${modeQuery ? "&mode=test" : ""}`;
+}
+
 function actionValue(action) {
   const value = action?.value;
   if (value && typeof value === "object") {
@@ -613,6 +621,7 @@ function bindCheckoutPaymentPanel(order) {
         if (response.order.status === "paid" || response.order.status === "preparing") {
           setCheckoutMessage("Payment received. Your order is confirmed.", "success");
           button.textContent = "Payment confirmed";
+          window.location.assign(receiptUrlForOrder(response.order));
         } else {
           setCheckoutMessage("Payment is still waiting. Please complete it below.", "success");
           button.disabled = false;

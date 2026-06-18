@@ -799,12 +799,12 @@ async function sendWhatsappPaymentReceipt(order) {
 
   return sendWhatsappTemplateMessage(order.customer.phone, templateName, receiptWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-    headerDocumentUrl: whatsappDocumentAttachmentUrl(xenditInvoiceUrl(order)),
+    headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
     headerDocumentFilename: `${order.id}-payment-receipt.pdf`,
     urlButtonParameters: [
       {
         index: "0",
-        text: xenditCheckoutButtonToken(order)
+        text: publicDocumentButtonQuery(order)
       }
     ]
   });
@@ -917,12 +917,16 @@ async function refreshUnpaidOrderFromXendit(order) {
     ? await fetchXenditPaymentRequestStatus(order).catch(() => null)
     : order.payment?.provider === "xendit_virtual_account"
       ? await fetchXenditVirtualAccountStatus(order).catch(() => null)
-      : await fetchXenditInvoiceStatus(order).catch(() => null);
+      : order.payment?.provider === "xendit_qr_code"
+        ? await fetchXenditQrCodeStatus(order).catch(() => null)
+        : await fetchXenditInvoiceStatus(order).catch(() => null);
   if (xenditStatus) {
     if (order.payment?.provider === "xendit_payments_api") {
       applyXenditPaymentRequestStatusToOrder(order, xenditStatus);
     } else if (order.payment?.provider === "xendit_virtual_account") {
       applyXenditVirtualAccountStatusToOrder(order, xenditStatus);
+    } else if (order.payment?.provider === "xendit_qr_code") {
+      applyXenditQrCodeStatusToOrder(order, xenditStatus);
     } else {
       applyXenditInvoiceStatusToOrder(order, xenditStatus);
     }
@@ -3979,6 +3983,28 @@ async function fetchXenditVirtualAccountStatus(order) {
   return payload;
 }
 
+async function fetchXenditQrCodeStatus(order) {
+  const qrReference = order.payment?.externalId || order.payment?.transactionId || "";
+  if (!isXenditReady() || order.payment?.provider !== "xendit_qr_code" || !qrReference) {
+    return null;
+  }
+
+  const response = await fetch(`https://api.xendit.co/qr_codes/${encodeURIComponent(qrReference)}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: xenditAuthHeader()
+    }
+  });
+
+  const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error_code || "Unable to check Xendit QRIS status");
+  }
+
+  return payload;
+}
+
 function applyXenditInvoiceStatusToOrder(order, invoice) {
   order.payment = applyXenditInvoiceToPayment(order.payment, invoice);
   const status = String(invoice.status || "").toUpperCase();
@@ -3990,6 +4016,38 @@ function applyXenditInvoiceStatusToOrder(order, invoice) {
   } else if (status === "EXPIRED") {
     order.status = "expired";
     order.payment.status = "expired";
+  } else {
+    order.status = "awaiting_payment";
+    order.payment.status = status.toLowerCase() || "pending";
+  }
+
+  order.whatsappUrl = buildWhatsappUrl(order);
+  return order;
+}
+
+function applyXenditQrCodeStatusToOrder(order, qrCode = {}) {
+  order.payment = applyXenditQrCodeToPayment(order.payment, {
+    ...qrCode,
+    qr_string: qrCode.qr_string || order.payment?.qrCodeData || ""
+  });
+  const status = String(qrCode.status || qrCode.payment_status || "").toUpperCase();
+  const hasPaymentSignal = Boolean(
+    qrCode.payment_id
+    || qrCode.payment_amount
+    || qrCode.paid_amount
+    || qrCode.amount_paid
+    || qrCode.paid_at
+    || qrCode.business_id
+    || String(qrCode.event || "").toLowerCase().includes("payment")
+  );
+
+  if (status === "COMPLETED" || status === "PAID" || status === "SETTLED" || hasPaymentSignal) {
+    order.status = "paid";
+    order.payment.status = "paid";
+    order.paidAt = order.paidAt || new Date().toISOString();
+  } else if (status === "INACTIVE" || status === "EXPIRED") {
+    order.status = "expired";
+    order.payment.status = status.toLowerCase();
   } else {
     order.status = "awaiting_payment";
     order.payment.status = status.toLowerCase() || "pending";
@@ -4432,7 +4490,7 @@ async function updateOrderPaymentStatus(mode, orderId) {
     throw new Error("Order not found");
   }
 
-  if (order.status === "cancelled") {
+  if (order.status !== "awaiting_payment") {
     return enrichOrder(order);
   }
 
@@ -4446,12 +4504,16 @@ async function updateOrderPaymentStatus(mode, orderId) {
     ? await fetchXenditPaymentRequestStatus(order)
     : order.payment?.provider === "xendit_virtual_account"
       ? await fetchXenditVirtualAccountStatus(order)
-      : await fetchXenditInvoiceStatus(order);
+      : order.payment?.provider === "xendit_qr_code"
+        ? await fetchXenditQrCodeStatus(order)
+        : await fetchXenditInvoiceStatus(order);
   if (xenditStatus) {
     if (order.payment?.provider === "xendit_payments_api") {
       applyXenditPaymentRequestStatusToOrder(order, xenditStatus);
     } else if (order.payment?.provider === "xendit_virtual_account") {
       applyXenditVirtualAccountStatusToOrder(order, xenditStatus);
+    } else if (order.payment?.provider === "xendit_qr_code") {
+      applyXenditQrCodeStatusToOrder(order, xenditStatus);
     } else {
       applyXenditInvoiceStatusToOrder(order, xenditStatus);
     }
@@ -5367,7 +5429,15 @@ function handleApi(requestUrl, request, response) {
         const paymentEvent = body.data && typeof body.data === "object"
           ? { ...body.data, event: body.event }
           : null;
-        const orderId = String(paymentEvent?.reference_id || paymentEvent?.external_id || body.external_id || "").trim();
+        const orderId = String(
+          paymentEvent?.reference_id
+          || paymentEvent?.external_id
+          || paymentEvent?.qr_code?.external_id
+          || body.external_id
+          || body.qr_code?.external_id
+          || body.qr_code_id
+          || ""
+        ).trim();
         const order = findOrder("live", orderId) || findOrder("test", orderId) || findOrderByXenditExternalId(orderId);
         if (!order) {
           sendJson(response, 200, {
@@ -5379,7 +5449,9 @@ function handleApi(requestUrl, request, response) {
         }
 
         const previousStatus = order.status;
-        if (order.payment?.provider === "xendit_virtual_account") {
+        if (order.payment?.provider === "xendit_qr_code") {
+          applyXenditQrCodeStatusToOrder(order, paymentEvent || body);
+        } else if (order.payment?.provider === "xendit_virtual_account") {
           applyXenditVirtualAccountStatusToOrder(order, paymentEvent || body);
         } else if (paymentEvent || order.payment?.provider === "xendit_payments_api") {
           applyXenditPaymentRequestStatusToOrder(order, paymentEvent || body);
