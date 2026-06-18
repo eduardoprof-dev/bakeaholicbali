@@ -123,6 +123,7 @@ let locationPicker;
 let pendingOtpPhone = "";
 let otpResendAvailableAt = 0;
 let otpTimerId = 0;
+let paymentCountdownTimerId = 0;
 let submitAfterLogin = false;
 
 const whatsappIcon = `
@@ -309,6 +310,9 @@ function actionValue(action) {
     return value.qr_string
       || value.qr_code
       || value.qr_code_url
+      || value.qr_code_string
+      || value.qr_checkout_string
+      || value.qr_content
       || value.virtual_account_number
       || value.account_number
       || value.payment_code
@@ -316,6 +320,33 @@ function actionValue(action) {
       || JSON.stringify(value);
   }
   return String(value || "");
+}
+
+function findNestedPaymentValue(input, preferredKeys = []) {
+  if (!input || typeof input !== "object") {
+    return "";
+  }
+  const queue = [input];
+  const seen = new Set();
+  const normalizedKeys = preferredKeys.map((key) => key.toLowerCase());
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object" || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    for (const key of Object.keys(current)) {
+      const value = current[key];
+      if (normalizedKeys.includes(key.toLowerCase()) && typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+      if (value && typeof value === "object") {
+        queue.push(value);
+      }
+    }
+  }
+  return "";
 }
 
 function qrImageSource(value) {
@@ -341,7 +372,20 @@ function paymentPresentAction(payment) {
 }
 
 function paymentPresentValue(payment) {
-  return actionValue(paymentPresentAction(payment));
+  return actionValue(paymentPresentAction(payment))
+    || payment?.qrCodeData
+    || payment?.accountNumber
+    || findNestedPaymentValue(payment, [
+      "qr_string",
+      "qr_code",
+      "qr_code_url",
+      "qr_code_string",
+      "qr_checkout_string",
+      "qr_content",
+      "virtual_account_number",
+      "account_number",
+      "payment_code"
+    ]);
 }
 
 function paymentStatusButtonMarkup(order) {
@@ -466,19 +510,37 @@ function nativePaymentMarkup(order) {
 
   if (paymentUrl) {
     return `
-      <div class="checkout-xendit-head checkout-card-head">
-        <div>
-          <strong>Card payment</strong>
-          <span>Enter your card details securely below.</span>
+      <div class="checkout-native-payment checkout-native-card">
+        <div class="checkout-native-head">
+          <div class="checkout-card-title">
+            <span class="card-method-icon" aria-hidden="true">▭</span>
+            <strong>Credit / Debit Card</strong>
+          </div>
+          <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
         </div>
+        <label class="checkout-card-field">
+          <span>Cardholder name</span>
+          <input type="text" value="${escapeHtml(order.customer?.name || "")}" autocomplete="cc-name" />
+        </label>
+        <label class="checkout-card-field">
+          <span>Card number</span>
+          <input type="text" inputmode="numeric" placeholder="0000 0000 0000 0000" autocomplete="cc-number" />
+        </label>
+        <div class="checkout-card-field-row">
+          <label class="checkout-card-field">
+            <span>Expiry</span>
+            <input type="text" inputmode="numeric" placeholder="MM / YY" autocomplete="cc-exp" />
+          </label>
+          <label class="checkout-card-field">
+            <span>CVV</span>
+            <input type="password" inputmode="numeric" placeholder="123" autocomplete="cc-csc" />
+          </label>
+        </div>
+        <button class="primary-button full-width checkout-payment-status-button checkout-card-pay-button" type="button" data-card-payment-url="${escapeHtml(paymentUrl)}">
+          Pay ${formatRupiah.format(order.pricing.total)}
+        </button>
+        <p class="checkout-native-note">Secured by Xendit - your card details never touch our server.</p>
       </div>
-      <iframe
-        class="checkout-xendit-frame checkout-card-frame"
-        src="${escapeHtml(paymentUrl)}"
-        title="Xendit secure card checkout"
-        loading="eager"
-        referrerpolicy="strict-origin-when-cross-origin"
-      ></iframe>
     `;
   }
 
@@ -491,6 +553,8 @@ function nativePaymentMarkup(order) {
 }
 
 function bindCheckoutPaymentPanel(order) {
+  startPaymentCountdown(order);
+
   checkoutXenditPanel.querySelectorAll("[data-change-payment-method]").forEach((button) => {
     button.addEventListener("click", () => showPaymentMethodChooser());
   });
@@ -538,8 +602,11 @@ function bindCheckoutPaymentPanel(order) {
         renderEmbeddedPayment(response.order, false);
         if (response.order.status === "paid" || response.order.status === "preparing") {
           setCheckoutMessage("Payment received. Your order is confirmed.", "success");
+          button.textContent = "Payment confirmed";
         } else {
           setCheckoutMessage("Payment is still waiting. Please complete it below.", "success");
+          button.disabled = false;
+          button.textContent = "Still waiting - check again";
         }
       } catch (error) {
         setCheckoutMessage(error.message || "Unable to check payment status.");
@@ -548,9 +615,33 @@ function bindCheckoutPaymentPanel(order) {
       }
     });
   });
+
+  checkoutXenditPanel.querySelectorAll("[data-card-payment-url]").forEach((button) => {
+    button.addEventListener("click", () => {
+      window.open(button.dataset.cardPaymentUrl, "_blank", "noopener,noreferrer");
+      setCheckoutMessage("Secure card payment opened in Xendit.", "success");
+    });
+  });
+}
+
+function startPaymentCountdown(order) {
+  if (paymentCountdownTimerId) {
+    window.clearInterval(paymentCountdownTimerId);
+  }
+  const update = () => {
+    document.querySelectorAll(".payment-countdown").forEach((entry) => {
+      entry.textContent = formatRemainingTime(order.expiresAt);
+    });
+  };
+  update();
+  paymentCountdownTimerId = window.setInterval(update, 1000);
 }
 
 function showPaymentMethodChooser() {
+  if (paymentCountdownTimerId) {
+    window.clearInterval(paymentCountdownTimerId);
+    paymentCountdownTimerId = 0;
+  }
   if (checkoutPaymentTitle) checkoutPaymentTitle.textContent = "Choose payment method";
   if (changePaymentMethodButton) changePaymentMethodButton.hidden = true;
   if (inlinePaymentMethodList) inlinePaymentMethodList.hidden = false;

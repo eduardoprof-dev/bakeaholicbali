@@ -3925,6 +3925,62 @@ body.has-cart-items .storefront-content {
   padding: 16px;
 }
 
+.checkout-card-title {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 12px;
+}
+
+.card-method-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  border-radius: 5px;
+  border: 2px solid #64748b;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.checkout-card-field {
+  display: grid;
+  gap: 8px;
+}
+
+.checkout-card-field span {
+  color: #374151;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.checkout-card-field input {
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  padding: 0 16px;
+}
+
+.checkout-card-field input::placeholder {
+  color: #9ca3af;
+}
+
+.checkout-card-field-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.checkout-card-pay-button {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 .checkout-native-total {
   display: flex;
   align-items: center;

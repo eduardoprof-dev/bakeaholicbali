@@ -3533,6 +3533,48 @@ function normalizeXenditPaymentActions(actions = []) {
     : [];
 }
 
+function findNestedPaymentValue(input, preferredKeys = []) {
+  if (!input || typeof input !== "object") {
+    return "";
+  }
+  const queue = [input];
+  const seen = new Set();
+  const normalizedKeys = preferredKeys.map((key) => key.toLowerCase());
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object" || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+
+    for (const key of Object.keys(current)) {
+      const value = current[key];
+      if (normalizedKeys.includes(key.toLowerCase()) && typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+      if (value && typeof value === "object") {
+        queue.push(value);
+      }
+    }
+  }
+
+  return "";
+}
+
+function ensurePaymentRequestPresentAction(actions, paymentRequest, keys, descriptor) {
+  const hasPresentAction = actions.some((action) => (
+    action.type === "PRESENT_TO_CUSTOMER" && action.value
+  ));
+  if (hasPresentAction) {
+    return actions;
+  }
+  const value = findNestedPaymentValue(paymentRequest, keys);
+  return value
+    ? [...actions, { type: "PRESENT_TO_CUSTOMER", descriptor, value }]
+    : actions;
+}
+
 function xenditRedirectAction(actions = []) {
   return actions.find((action) => action.type === "REDIRECT_CUSTOMER" && action.value);
 }
@@ -3719,8 +3761,19 @@ function applyXenditPaymentRequestToPayment(payment, paymentRequest) {
   if (!paymentRequest) {
     return payment;
   }
-  const actions = normalizeXenditPaymentActions(paymentRequest.actions);
+  let actions = normalizeXenditPaymentActions(paymentRequest.actions);
+  if (payment.kind === "qris") {
+    actions = ensurePaymentRequestPresentAction(
+      actions,
+      paymentRequest,
+      ["qr_string", "qr_code", "qr_code_url", "qr_code_string", "qr_checkout_string", "qr_content"],
+      "QR_CODE"
+    );
+  }
   const redirectAction = xenditRedirectAction(actions);
+  const qrCodeData = payment.kind === "qris"
+    ? findNestedPaymentValue(paymentRequest, ["qr_string", "qr_code", "qr_code_url", "qr_code_string", "qr_checkout_string", "qr_content"])
+    : "";
   return {
     ...payment,
     provider: "xendit_payments_api",
@@ -3732,6 +3785,7 @@ function applyXenditPaymentRequestToPayment(payment, paymentRequest) {
     invoiceUrl: "",
     paymentUrl: redirectAction?.value || "",
     actions,
+    qrCodeData,
     rawStatus: paymentRequest.status || "",
     instructions: "Complete the payment instructions shown below. Payment is processed securely by Xendit."
   };
