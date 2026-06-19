@@ -2138,11 +2138,9 @@ function ensureCartSession(request, response) {
   const cookies = parseCookies(request);
   const existingId = String(cookies[CART_SESSION_COOKIE] || "");
   const fallbackId = String(request.headers[CART_SESSION_HEADER] || "");
-  const sessionId = /^[a-f0-9]{32}$/i.test(existingId)
-    ? existingId.toLowerCase()
-    : /^[a-f0-9]{32}$/i.test(fallbackId)
-      ? fallbackId.toLowerCase()
-    : crypto.randomBytes(16).toString("hex");
+  const explicitId = /^[a-f0-9]{32}$/i.test(fallbackId) ? fallbackId.toLowerCase() : "";
+  const cookieId = /^[a-f0-9]{32}$/i.test(existingId) ? existingId.toLowerCase() : "";
+  const sessionId = explicitId || cookieId || crypto.randomBytes(16).toString("hex");
 
   appendSetCookie(response, serializeCookie(CART_SESSION_COOKIE, sessionId, {
     maxAge: SESSION_TTL_SECONDS,
