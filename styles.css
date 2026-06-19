@@ -3981,6 +3981,26 @@ body.has-cart-items .storefront-content {
   border-color: var(--accent);
 }
 
+.checkout-card-secure-box {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+  color: #374151;
+}
+
+.checkout-card-secure-box strong {
+  color: #111827;
+  font-size: 1rem;
+}
+
+.checkout-card-secure-box span {
+  color: #6b7280;
+  line-height: 1.45;
+}
+
 .checkout-native-total {
   display: flex;
   align-items: center;
@@ -4126,10 +4146,12 @@ body.has-cart-items .storefront-content {
 }
 
 .checkout-va-number strong {
-  overflow-wrap: anywhere;
+  display: block;
+  overflow-wrap: normal;
+  white-space: nowrap;
   color: #111827;
-  font-size: clamp(1.45rem, 3vw, 1.95rem);
-  letter-spacing: 0.04em;
+  font-size: 1.85rem;
+  letter-spacing: 0.03em;
 }
 
 .checkout-va-number .compact-button {
@@ -4846,6 +4868,27 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
   .payment-countdown {
     align-self: flex-start;
+  }
+
+  .checkout-va-number {
+    align-items: stretch;
+    gap: 10px;
+    padding: 16px;
+  }
+
+  .checkout-va-number > div {
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .checkout-va-number strong {
+    font-size: 1.24rem;
+    letter-spacing: 0.02em;
+  }
+
+  .checkout-va-number .compact-button {
+    min-width: 88px;
+    height: auto;
   }
 
   .waiting-icon {

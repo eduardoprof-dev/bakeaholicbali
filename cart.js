@@ -300,6 +300,18 @@ function paymentUrlForOrder(order) {
   return localPaymentUrl;
 }
 
+function orderStatusUrlForOrder(order) {
+  const params = new URLSearchParams();
+  if (modeQuery) {
+    params.set("mode", "test");
+  }
+  params.set("order", order?.id || "");
+  if (order?.receiptToken) {
+    params.set("token", order.receiptToken);
+  }
+  return `/pay.html?${params.toString()}`;
+}
+
 function xenditCheckoutUrlForOrder(order) {
   return order?.payment?.paymentUrl || "";
 }
@@ -526,26 +538,12 @@ function nativePaymentMarkup(order) {
           </div>
           <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
         </div>
-        <label class="checkout-card-field">
-          <span>Cardholder name</span>
-          <input type="text" value="${escapeHtml(order.customer?.name || "")}" autocomplete="cc-name" />
-        </label>
-        <label class="checkout-card-field">
-          <span>Card number</span>
-          <input type="text" inputmode="numeric" placeholder="0000 0000 0000 0000" autocomplete="cc-number" />
-        </label>
-        <div class="checkout-card-field-row">
-          <label class="checkout-card-field">
-            <span>Expiry</span>
-            <input type="text" inputmode="numeric" placeholder="MM / YY" autocomplete="cc-exp" />
-          </label>
-          <label class="checkout-card-field">
-            <span>CVV</span>
-            <input type="password" inputmode="numeric" placeholder="123" autocomplete="cc-csc" />
-          </label>
+        <div class="checkout-card-secure-box">
+          <strong>Secure card payment</strong>
+          <span>Xendit collects the card details securely. We will not ask for the same card details on this page.</span>
         </div>
         <button class="primary-button full-width checkout-payment-status-button checkout-card-pay-button" type="button" data-card-payment-url="${escapeHtml(paymentUrl)}">
-          Pay ${formatRupiah.format(order.pricing.total)}
+          Continue to secure card payment
         </button>
         <p class="checkout-native-note">Secured by Xendit - your card details never touch our server.</p>
       </div>
@@ -617,12 +615,13 @@ function bindCheckoutPaymentPanel(order) {
           body: JSON.stringify({ id: order.id })
         });
         state.currentOrder = response.order;
-        renderEmbeddedPayment(response.order, false);
         if (response.order.status === "paid" || response.order.status === "preparing") {
           setCheckoutMessage("Payment received. Your order is confirmed.", "success");
           button.textContent = "Payment confirmed";
-          window.location.assign(receiptUrlForOrder(response.order));
+          window.location.assign(orderStatusUrlForOrder(response.order));
+          return;
         } else {
+          renderEmbeddedPayment(response.order, false);
           setCheckoutMessage("Payment is still waiting. Please complete it below.", "success");
           button.disabled = false;
           button.textContent = "Still waiting - check again";
