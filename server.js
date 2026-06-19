@@ -3406,6 +3406,10 @@ function isXenditReady() {
   return Boolean(getIntegrationConfig().xenditSecretKey);
 }
 
+function isXenditTestEnvironment() {
+  return getIntegrationConfig().xenditEnvironment !== "live";
+}
+
 function getPublicOrderUrl(order) {
   const baseUrl = String(process.env.PUBLIC_SITE_URL || "https://bakeaholicbali.com").replace(/\/+$/, "");
   const modeParam = order.mode === "test" ? "&mode=test" : "";
@@ -4225,6 +4229,28 @@ function applyXenditVirtualAccountStatusToOrder(order, virtualAccount = {}) {
   return order;
 }
 
+function canSimulateDirectXenditPayment(order, options = {}) {
+  return Boolean(
+    options.simulateTestPayment
+    && isXenditTestEnvironment()
+    && order?.status === "awaiting_payment"
+    && (order.payment?.provider === "xendit_qr_code" || order.payment?.provider === "xendit_virtual_account")
+  );
+}
+
+function applyXenditTestPaymentSimulation(order) {
+  order.status = "paid";
+  order.payment = {
+    ...(order.payment || {}),
+    status: "paid",
+    rawStatus: "TEST_SIMULATED_PAID",
+    testSimulatedAt: new Date().toISOString()
+  };
+  order.paidAt = order.paidAt || new Date().toISOString();
+  order.whatsappUrl = buildWhatsappUrl(order);
+  return order;
+}
+
 function applyXenditPaymentRequestStatusToOrder(order, paymentRequest = {}) {
   order.payment = applyXenditPaymentRequestToPayment(order.payment, paymentRequest);
   const status = String(paymentRequest.status || "").toUpperCase();
@@ -4648,7 +4674,7 @@ function findOrderByXenditExternalId(externalId) {
   return null;
 }
 
-async function updateOrderPaymentStatus(mode, orderId) {
+async function updateOrderPaymentStatus(mode, orderId, options = {}) {
   const order = findOrder(mode, orderId);
   if (!order) {
     throw new Error("Order not found");
@@ -4664,32 +4690,33 @@ async function updateOrderPaymentStatus(mode, orderId) {
 
   const previousStatus = order.status;
 
-  const xenditStatus = order.payment?.provider === "xendit_payments_api"
-    ? await fetchXenditPaymentRequestStatus(order)
-    : order.payment?.provider === "xendit_components"
-      ? await fetchXenditPaymentSessionStatus(order)
-      : order.payment?.provider === "xendit_virtual_account"
-        ? await fetchXenditVirtualAccountStatus(order)
-        : order.payment?.provider === "xendit_qr_code"
-          ? await fetchXenditQrCodeStatus(order)
-          : await fetchXenditInvoiceStatus(order);
-  if (xenditStatus) {
-    if (order.payment?.provider === "xendit_payments_api") {
-      applyXenditPaymentRequestStatusToOrder(order, xenditStatus);
-    } else if (order.payment?.provider === "xendit_components") {
-      applyXenditPaymentSessionStatusToOrder(order, xenditStatus);
-    } else if (order.payment?.provider === "xendit_virtual_account") {
-      applyXenditVirtualAccountStatusToOrder(order, xenditStatus);
-    } else if (order.payment?.provider === "xendit_qr_code") {
-      applyXenditQrCodeStatusToOrder(order, xenditStatus);
-    } else {
-      applyXenditInvoiceStatusToOrder(order, xenditStatus);
-    }
+  if (canSimulateDirectXenditPayment(order, options)) {
+    applyXenditTestPaymentSimulation(order);
   } else {
-    order.status = "paid";
-    order.payment.status = "paid";
-    order.paidAt = new Date().toISOString();
-    order.whatsappUrl = buildWhatsappUrl(order);
+    const xenditStatus = order.payment?.provider === "xendit_payments_api"
+      ? await fetchXenditPaymentRequestStatus(order)
+      : order.payment?.provider === "xendit_components"
+        ? await fetchXenditPaymentSessionStatus(order)
+        : order.payment?.provider === "xendit_virtual_account"
+          ? await fetchXenditVirtualAccountStatus(order)
+          : order.payment?.provider === "xendit_qr_code"
+            ? await fetchXenditQrCodeStatus(order)
+            : await fetchXenditInvoiceStatus(order);
+    if (xenditStatus) {
+      if (order.payment?.provider === "xendit_payments_api") {
+        applyXenditPaymentRequestStatusToOrder(order, xenditStatus);
+      } else if (order.payment?.provider === "xendit_components") {
+        applyXenditPaymentSessionStatusToOrder(order, xenditStatus);
+      } else if (order.payment?.provider === "xendit_virtual_account") {
+        applyXenditVirtualAccountStatusToOrder(order, xenditStatus);
+      } else if (order.payment?.provider === "xendit_qr_code") {
+        applyXenditQrCodeStatusToOrder(order, xenditStatus);
+      } else {
+        applyXenditInvoiceStatusToOrder(order, xenditStatus);
+      }
+    } else {
+      order.payment.status = order.payment.status || "pending";
+    }
   }
 
   if (order.status !== "awaiting_payment") {
@@ -4707,12 +4734,12 @@ async function updateOrderPaymentStatus(mode, orderId) {
   return enrichOrder(order);
 }
 
-async function updateOrderPaymentStatusForSession(mode, orderId, session) {
+async function updateOrderPaymentStatusForSession(mode, orderId, session, options = {}) {
   const order = findOrder(mode, orderId);
   if (!order || !customerOwnsOrder(session, order)) {
     throw new Error("Order not found");
   }
-  return updateOrderPaymentStatus(mode, orderId);
+  return updateOrderPaymentStatus(mode, orderId, options);
 }
 
 async function selectOrderBankTransferChannel(mode, orderId, bankCode, session, token = "") {
@@ -5496,6 +5523,7 @@ function handleApi(requestUrl, request, response) {
         const session = currentCustomerSession(request);
         const orderId = String(body.id || "").trim();
         const token = String(body.token || "").trim();
+        const simulateTestPayment = Boolean(body.simulateTestPayment);
         const order = findOrder(mode, orderId);
         const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
         if (!tokenMatches && !session) {
@@ -5503,11 +5531,8 @@ function handleApi(requestUrl, request, response) {
           return;
         }
         const updatedOrder = tokenMatches
-          ? await refreshUnpaidOrderFromXendit(order).then((entry) => {
-            saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
-            return enrichOrder(entry);
-          })
-          : await updateOrderPaymentStatusForSession(mode, orderId, session);
+          ? await updateOrderPaymentStatus(mode, orderId, { simulateTestPayment })
+          : await updateOrderPaymentStatusForSession(mode, orderId, session, { simulateTestPayment });
         sendJson(response, 200, { order: updatedOrder });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));

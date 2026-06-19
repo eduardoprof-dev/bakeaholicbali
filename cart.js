@@ -654,7 +654,7 @@ function bindCheckoutPaymentPanel(order) {
       try {
         const response = await request("/api/order/payment-status", {
           method: "POST",
-          body: JSON.stringify({ id: order.id })
+          body: JSON.stringify({ id: order.id, simulateTestPayment: true })
         });
         state.currentOrder = response.order;
         if (response.order.status === "paid" || response.order.status === "preparing") {
@@ -755,7 +755,7 @@ function mountXenditCardComponents(order) {
         submitButton.textContent = "Confirming payment...";
         const response = await request("/api/order/payment-status", {
           method: "POST",
-          body: JSON.stringify({ id: order.id })
+          body: JSON.stringify({ id: order.id, simulateTestPayment: true })
         });
         state.currentOrder = response.order;
         if (response.order.status === "paid" || response.order.status === "preparing") {
