@@ -391,6 +391,17 @@ function formatRemainingTime(expiresAt) {
   return `${minutes}:${seconds} remaining`;
 }
 
+function paymentExpiryAt(order) {
+  if (order?.expiresAt) {
+    return order.expiresAt;
+  }
+  const createdAt = Date.parse(order?.createdAt || "");
+  if (Number.isFinite(createdAt)) {
+    return new Date(createdAt + 15 * 60 * 1000).toISOString();
+  }
+  return new Date(Date.now() + 15 * 60 * 1000).toISOString();
+}
+
 function paymentPresentAction(payment) {
   return (payment?.actions || []).find((action) =>
     String(action.type || "").toUpperCase() === "PRESENT_TO_CUSTOMER"
@@ -448,7 +459,7 @@ function bankOptionsMarkup(order) {
           <strong>Choose your bank</strong>
           <span>Select a bank to generate your virtual account number.</span>
         </div>
-        <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
+        <span class="payment-countdown">${formatRemainingTime(paymentExpiryAt(order))}</span>
       </div>
       <div class="checkout-bank-grid">
         ${banks.map((bank) => `
@@ -477,7 +488,7 @@ function nativePaymentMarkup(order) {
             <strong>QRIS payment</strong>
             <span>Scan with your e-wallet or banking app.</span>
           </div>
-          <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
+          <span class="payment-countdown">${formatRemainingTime(paymentExpiryAt(order))}</span>
         </div>
         <div class="checkout-qris-box">
           ${qrSource
@@ -513,7 +524,7 @@ function nativePaymentMarkup(order) {
               <small>Transfer exactly to this virtual account.</small>
             </span>
           </div>
-          <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
+          <span class="payment-countdown">${formatRemainingTime(paymentExpiryAt(order))}</span>
         </div>
         <div class="checkout-va-number">
           <div>
@@ -544,7 +555,7 @@ function nativePaymentMarkup(order) {
               <span class="card-method-icon" aria-hidden="true">▭</span>
               <strong>Credit / Debit Card</strong>
             </div>
-            <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
+            <span class="payment-countdown">${formatRemainingTime(paymentExpiryAt(order))}</span>
           </div>
           <div class="checkout-card-secure-box">
             <strong>Secure card payment</strong>
@@ -570,7 +581,7 @@ function nativePaymentMarkup(order) {
               <span class="card-method-icon" aria-hidden="true">▭</span>
               <strong>Credit / Debit Card</strong>
             </div>
-            <span class="payment-countdown">${formatRemainingTime(order.expiresAt)}</span>
+            <span class="payment-countdown">${formatRemainingTime(paymentExpiryAt(order))}</span>
           </div>
           <div class="checkout-card-secure-box">
             <strong>Secure card payment</strong>
@@ -832,7 +843,7 @@ function startPaymentCountdown(order) {
   }
   const update = () => {
     document.querySelectorAll(".payment-countdown").forEach((entry) => {
-      entry.textContent = formatRemainingTime(order.expiresAt);
+      entry.textContent = formatRemainingTime(paymentExpiryAt(order));
     });
   };
   update();
