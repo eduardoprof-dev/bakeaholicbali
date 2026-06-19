@@ -604,16 +604,10 @@ function bindCheckoutPaymentPanel(order) {
   startPaymentCountdown(order);
 
   checkoutXenditPanel.querySelectorAll("[data-change-bank]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      button.disabled = true;
-      button.textContent = "Loading banks...";
-      try {
-        await updateCurrentOrderPaymentMethod("xendit-va");
-      } catch (error) {
-        setCheckoutMessage(error.message || "Unable to load bank options.");
-        button.disabled = false;
-        button.textContent = "Change bank";
-      }
+    button.addEventListener("click", () => {
+      checkoutXenditPanel.innerHTML = bankOptionsMarkup(order);
+      bindCheckoutPaymentPanel(order);
+      setCheckoutMessage("");
     });
   });
 
