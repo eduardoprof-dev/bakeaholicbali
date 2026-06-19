@@ -4014,6 +4014,18 @@ body.has-cart-items .storefront-content {
   display: none;
 }
 
+.checkout-xendit-action-component {
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.checkout-xendit-action-component[hidden] {
+  display: none;
+}
+
 .checkout-native-total {
   display: flex;
   align-items: center;
