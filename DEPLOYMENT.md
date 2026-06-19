@@ -54,6 +54,13 @@ For admin alerts, use a Meta-approved template whose body variables match the va
 
 Customer payment reminders should use the app's WhatsApp templates. The payment reminder template button should point to `https://bakeaholicbali.com/pay.html?ref={{1}}`; the app sends a secure order reference so customers land on the Bakeaholic waiting-payment page first. Receipt buttons should point to `https://bakeaholicbali.com/invoice.html?ref={{1}}`.
 
+For the `payment_receipt` WhatsApp template, set the dynamic website button in Meta to:
+
+- Website URL: `https://bakeaholicbali.com/invoice.html?ref={{1}}`
+- Sample URL: `https://bakeaholicbali.com/invoice.html?ref=BAK-0001.abc123`
+
+Do not use `https://checkout.xendit.co/{{1}}` for receipt templates. The app sends a short secure reference such as `BAK-0001.<receipt-token>`; Meta owns the fixed URL prefix, so the template prefix must be Bakeaholic for the button to open the Bakeaholic receipt.
+
 For shipping updates, use a Meta-approved template whose body variables match the values the app sends: order id, courier name, waybill/tracking number, tracking link, and Biteship document/link. Add a dynamic website button with base URL `https://bakeaholicbali.com/invoice.html?{{1}}`; the app sends the order document query into that button so customer/admin can open tracking, invoice, and print details.
 
 Daily delivery approval can happen from WhatsApp. The admin alert template should include quick-reply buttons named `Approve` and `Cancel`; the app sends hidden payloads like `APPROVE BAK-0001` and `CANCEL BAK-0001`. After admin taps a button, the app waits 60 seconds and sends an `Undo` button. If admin does not undo, approve creates the Biteship delivery order; cancel cancels the order and attempts a Xendit refund when a payment id is available, otherwise it marks the refund as manual-required for the Xendit dashboard.

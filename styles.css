@@ -4001,6 +4001,19 @@ body.has-cart-items .storefront-content {
   line-height: 1.45;
 }
 
+.checkout-xendit-card-component {
+  min-height: 260px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  color: #6b7280;
+}
+
+.checkout-xendit-card-component:empty {
+  display: none;
+}
+
 .checkout-native-total {
   display: flex;
   align-items: center;
