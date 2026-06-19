@@ -4008,9 +4008,20 @@ body.has-cart-items .storefront-content {
   border-radius: 12px;
   background: #fff;
   color: #6b7280;
+  overflow: hidden;
 }
 
 .checkout-xendit-card-component:empty {
+  display: none;
+}
+
+.checkout-xendit-card-component iframe {
+  max-width: 100% !important;
+  overflow: hidden !important;
+  scrollbar-width: none;
+}
+
+.checkout-xendit-card-component iframe::-webkit-scrollbar {
   display: none;
 }
 
@@ -4639,6 +4650,100 @@ body.cart-is-empty .checkout-shell .cart-layout {
   font-weight: 800;
 }
 
+.paid-status-banner {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  background: rgba(238, 248, 241, 0.96);
+  border: 1px solid rgba(32, 137, 72, 0.18);
+  border-radius: 18px;
+  padding: 26px;
+  margin-bottom: 18px;
+}
+
+.paid-status-banner h1,
+.paid-status-banner p {
+  margin: 0;
+}
+
+.paid-status-banner p {
+  margin-top: 6px;
+  color: #64748b;
+}
+
+.paid-status-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: #dcfce7;
+  color: #16803b;
+  font-weight: 900;
+  font-size: 1.25rem;
+}
+
+.paid-order-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.paid-delivery-card {
+  overflow: hidden;
+  padding: 0;
+}
+
+.paid-delivery-map {
+  width: 100%;
+  height: 260px;
+  display: block;
+  border: 0;
+  background: #eef2f7;
+}
+
+.paid-delivery-map-empty {
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.paid-delivery-copy {
+  padding: 22px;
+}
+
+.paid-delivery-copy h2,
+.paid-delivery-copy p {
+  margin: 0;
+}
+
+.paid-delivery-copy span {
+  display: block;
+  margin: 8px 0;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.paid-delivery-copy p {
+  line-height: 1.5;
+}
+
+.paid-payment-card {
+  margin-bottom: 14px;
+}
+
+.paid-method-label {
+  color: #64748b;
+  font-weight: 800;
+}
+
+.paid-items-card {
+  margin-top: 18px;
+}
+
 .status-footer {
   display: grid;
   gap: 14px;
@@ -4866,8 +4971,18 @@ body.cart-is-empty .checkout-shell .cart-layout {
   }
 
   .payment-detail-layout,
+  .paid-order-layout,
   .waiting-payment-card {
     grid-template-columns: 1fr;
+  }
+
+  .paid-status-banner {
+    align-items: flex-start;
+    padding: 20px;
+  }
+
+  .paid-delivery-map {
+    height: 220px;
   }
 
   .order-total-card {
@@ -5381,6 +5496,9 @@ body.cart-is-empty .checkout-shell .cart-layout {
   body,
   .invoice-body {
     background: #fff;
+    color: #111;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   .print-hide,
@@ -5394,9 +5512,22 @@ body.cart-is-empty .checkout-shell .cart-layout {
   }
 
   .invoice-sheet {
+    display: block;
     border: 0;
     border-radius: 0;
     box-shadow: none;
     padding: 0;
+    color: #111;
+    background: #fff;
+  }
+
+  .invoice-header,
+  .invoice-title-row,
+  .invoice-grid,
+  .invoice-table,
+  .invoice-totals,
+  .invoice-footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }

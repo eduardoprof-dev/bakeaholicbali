@@ -33,6 +33,27 @@ function formatDate(value) {
   });
 }
 
+function humanizeStatus(value = "") {
+  const status = String(value || "").trim();
+  if (!status) return "-";
+  return status
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function paymentLabel(order) {
+  const payment = order.payment || {};
+  if (payment.kind === "qris") {
+    return "QRIS";
+  }
+  if (payment.kind === "va") {
+    return payment.selectedBankLabel
+      ? `${payment.selectedBankLabel} Virtual Account`
+      : payment.label || "Bank Transfer";
+  }
+  return payment.label || "-";
+}
+
 async function requestDocument() {
   const search = new URLSearchParams({ id: orderId });
   if (token) search.set("token", token);
@@ -106,7 +127,7 @@ function renderDocument(payload) {
           <h1>${escapeHtml(order.id)}</h1>
         </div>
         <div class="invoice-status">
-          <span>${escapeHtml(order.status || "")}</span>
+          <span>${escapeHtml(humanizeStatus(order.status))}</span>
           <strong>${formatRupiah.format(order.pricing?.total || 0)}</strong>
         </div>
       </div>
@@ -125,7 +146,7 @@ function renderDocument(payload) {
         </div>
         <div>
           <h2>Payment</h2>
-          <p>${escapeHtml(order.payment?.label || "")}</p>
+          <p>${escapeHtml(paymentLabel(order))}</p>
           <p>Paid at: ${order.paidAt ? escapeHtml(formatDate(order.paidAt)) : "-"}</p>
         </div>
         <div>

@@ -737,7 +737,10 @@ function mountXenditCardComponents(order) {
         iframeFieldAppearance: {
           inputStyles: {
             color: "#2d2018",
-            fontSize: "16px"
+            fontSize: "16px",
+            lineHeight: "24px",
+            height: "44px",
+            overflow: "hidden"
           },
           placeholderStyles: {
             color: "#9b8776"

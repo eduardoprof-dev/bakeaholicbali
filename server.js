@@ -660,6 +660,10 @@ function xenditInvoiceUrl(order) {
   return order.payment?.invoiceUrl || order.payment?.paymentUrl || getPublicDocumentUrl(order);
 }
 
+function adminOrderDocumentUrl(order) {
+  return biteshipDocumentUrl(order) || getPublicDocumentUrl(order);
+}
+
 function xenditCheckoutButtonToken(order) {
   const receiptUrl = xenditInvoiceUrl(order);
   try {
@@ -726,7 +730,7 @@ async function sendWhatsappOrderUpdate(order) {
 }
 
 function adminWhatsappParameters(order, eventLabel = "") {
-  const documentUrl = biteshipDocumentUrl(order) || xenditInvoiceUrl(order);
+  const documentUrl = adminOrderDocumentUrl(order);
   return [
     eventLabel || humanizeOrderStatus(order),
     order.id,
@@ -780,8 +784,8 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
 
   return sendWhatsappTemplateMessage(adminNumber, templateName, adminWhatsappParameters(order, eventLabel), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-    headerDocumentUrl: whatsappDocumentAttachmentUrl(xenditInvoiceUrl(order)),
-    headerDocumentFilename: `${order.id}-xendit-invoice.pdf`,
+    headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
+    headerDocumentFilename: `${order.id}-bakeaholic-receipt.pdf`,
     quickReplyButtons: order.status === "paid"
       ? [
           { payload: `APPROVE ${order.id}` },
@@ -3407,7 +3411,9 @@ function isXenditReady() {
 }
 
 function isXenditTestEnvironment() {
-  return getIntegrationConfig().xenditEnvironment !== "live";
+  const { xenditEnvironment, xenditSecretKey } = getIntegrationConfig();
+  const key = String(xenditSecretKey || "").toLowerCase();
+  return xenditEnvironment !== "live" || key.includes("development") || key.includes("test");
 }
 
 function getPublicOrderUrl(order) {
@@ -4620,8 +4626,8 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
   }
   if (isZeroTotalOrder) {
     await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
+    await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
   }
-  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:created`, "Order created");
 
   storeState.orders.unshift(order);
   upsertCustomerFromCheckout(order);

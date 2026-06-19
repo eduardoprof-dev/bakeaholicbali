@@ -78,6 +78,63 @@ function lineItemsMarkup() {
     .join("");
 }
 
+function deliveryMapMarkup() {
+  const location = state.order.fulfillment?.location || {};
+  const address = state.order.fulfillment?.address || state.order.customer?.address || "";
+  const lat = Number(location.lat);
+  const lng = Number(location.lng);
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+  const mapQuery = hasCoords
+    ? `${lat},${lng}`
+    : address;
+  const mapSrc = mapQuery
+    ? `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`
+    : "";
+  return `
+    <section class="payment-page-card paid-delivery-card">
+      ${mapSrc
+        ? `<iframe class="paid-delivery-map" src="${escapeHtml(mapSrc)}" title="Delivery location" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`
+        : `<div class="paid-delivery-map paid-delivery-map-empty">Delivery map</div>`}
+      <div class="paid-delivery-copy">
+        <h2>Delivery</h2>
+        <span>${escapeHtml(state.order.fulfillment?.type || "Delivery")}</span>
+        <p>${escapeHtml(address || "Delivery address not available")}</p>
+        ${state.order.fulfillment?.deliveryNotes ? `<p>${escapeHtml(state.order.fulfillment.deliveryNotes)}</p>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function paymentSummaryMarkup() {
+  const paymentLabel = state.order.payment?.label || "Payment";
+  return `
+    <section class="payment-page-card paid-payment-card">
+      <div class="section-title-wrap">
+        <h2>Payment</h2>
+        <span class="paid-method-label">${escapeHtml(paymentLabel)}</span>
+      </div>
+      <div class="summary-list">
+        <div class="summary-row">
+          <span>Subtotal</span>
+          <strong>${formatRupiah.format(state.order.pricing.subtotal)}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Delivery fee</span>
+          <strong>${formatRupiah.format(state.order.pricing.deliveryFee || 0)}</strong>
+        </div>
+        <div class="summary-row">
+          <span>Tax</span>
+          <strong>${formatRupiah.format(state.order.pricing.tax || 0)}</strong>
+        </div>
+        <div class="summary-row total-row">
+          <span>Total</span>
+          <strong>${formatRupiah.format(state.order.pricing.total)}</strong>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function actionValue(action) {
   const value = action?.value;
   if (value && typeof value === "object") {
@@ -273,56 +330,52 @@ function renderPaid() {
   document.title = `Order ${state.order.id} Paid`;
   const shipment = state.order.fulfillment?.shipment || {};
   const trackingUrl = shipment.trackingLink || `/orders.html${appMode === "test" ? "?mode=test" : ""}`;
+  const documentUrl = state.order.documentUrl || `/invoice.html?order=${encodeURIComponent(state.order.id)}${orderToken ? `&token=${encodeURIComponent(orderToken)}` : ""}${appMode === "test" ? "&mode=test" : ""}`;
   const shipmentMessage = state.order.fulfillment?.shipment?.orderId
     ? `<p class="success-note">Delivery order sent to Biteship. ID: ${escapeHtml(shipment.orderId)}</p>`
     : state.order.fulfillment?.shipmentError
       ? `<p class="payment-alert">${escapeHtml(state.order.fulfillment.shipmentError)}</p>`
       : "";
-  const whatsappMessage = state.order.whatsappNotificationError
-    ? `<p class="payment-alert">${escapeHtml(state.order.whatsappNotificationError)}</p>`
-      : state.order.whatsappNotifications?.lastStatusSent
-        ? `<p class="success-note">WhatsApp order update sent.</p>`
-        : "";
-  const documentLink = state.order.documentUrl
-    ? `<a class="secondary-link" href="${escapeHtml(state.order.documentUrl)}" target="_blank" rel="noreferrer">Open payment receipt</a>`
-    : "";
   const isPreparing = state.order.status === "preparing";
   paymentApp.innerHTML = `
-    <section class="status-hero">
-      <div class="status-steps">
-        <span class="status-step active">Preparing Order</span>
-        <span class="status-step${shipment.orderId ? " active" : ""}">On Deliver</span>
-        <span class="status-step">Order Complete</span>
+    <section class="payment-order-heading">
+      <a class="secondary-link" href="/orders.html${appMode === "test" ? "?mode=test" : ""}">← Orders</a>
+      <div>
+        <strong>Order ${escapeHtml(state.order.id)}</strong>
+        <span>${new Date(state.order.createdAt || Date.now()).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
       </div>
-      <h1>Payment received</h1>
-      <p>${isPreparing ? "Your order is being prepared and delivery has been requested." : "Your order is confirmed. Our team will prepare, pack, print the invoice, and then request delivery."}</p>
     </section>
 
-    <section class="payment-page-card">
-      <div class="section-title-wrap">
-        <h2>Order overview</h2>
+    <section class="paid-status-banner">
+      <span class="paid-status-icon" aria-hidden="true">✓</span>
+      <div>
+        <h1>${isPreparing ? "Order is being prepared" : "Payment received"}</h1>
+        <p>${isPreparing ? "Your order is being prepared and delivery has been requested." : "Your order is paid. We will prepare it and update the delivery status here."}</p>
       </div>
-      <div class="overview-list">
-        <div class="overview-row">
-          <span>Payment method</span>
-          <strong>${escapeHtml(state.order.payment.label)}</strong>
-        </div>
-        <div class="overview-row">
-          <span>Total payment</span>
-          <strong>${formatRupiah.format(state.order.pricing.total)}</strong>
-        </div>
-        <div class="overview-row">
-          <span>Fulfillment</span>
-          <strong>${escapeHtml(state.order.fulfillment.type)}</strong>
-        </div>
+    </section>
+
+    <section class="paid-order-layout">
+      <div>
+        ${deliveryMapMarkup()}
+        <section class="payment-page-card paid-items-card">
+          <div class="section-title-wrap">
+            <h2>Your order</h2>
+            <span>${state.order.itemCount} item${state.order.itemCount === 1 ? "" : "s"}</span>
+          </div>
+          <div class="purchase-summary">
+            ${lineItemsMarkup()}
+          </div>
+        </section>
       </div>
-      <div class="purchase-summary">
-        ${lineItemsMarkup()}
+      <div>
+        ${paymentSummaryMarkup()}
+        <a class="primary-button button-link full-width" href="${escapeHtml(trackingUrl)}" ${shipment.trackingLink ? 'target="_blank" rel="noreferrer"' : ""}>Track order</a>
+        <div class="payment-page-actions">
+          <a class="secondary-link" href="${escapeHtml(documentUrl)}">View receipt</a>
+          <a class="secondary-link" href="/orders.html${appMode === "test" ? "?mode=test" : ""}">All orders</a>
+        </div>
+        ${shipmentMessage}
       </div>
-      ${shipmentMessage}
-      ${whatsappMessage}
-      ${documentLink}
-      <a class="secondary-link" href="${escapeHtml(trackingUrl)}" ${shipment.trackingLink ? 'target="_blank" rel="noreferrer"' : ""}>Track your order</a>
     </section>
   `;
 }
