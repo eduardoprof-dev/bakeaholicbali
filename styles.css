@@ -4016,6 +4016,8 @@ body.has-cart-items .storefront-content {
 }
 
 .checkout-xendit-card-component iframe {
+  display: block;
+  height: 44px !important;
   max-width: 100% !important;
   overflow: hidden !important;
   scrollbar-width: none;
