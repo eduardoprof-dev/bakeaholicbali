@@ -5493,8 +5493,17 @@ body.cart-is-empty .checkout-shell .cart-layout {
 }
 
 @media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
   body,
   .invoice-body {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
     background: #fff;
     color: #111;
     -webkit-print-color-adjust: exact;
@@ -5508,7 +5517,9 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
   .invoice-page {
     max-width: none;
+    margin: 0;
     padding: 0;
+    overflow: visible;
   }
 
   .invoice-sheet {
