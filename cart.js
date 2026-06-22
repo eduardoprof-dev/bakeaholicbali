@@ -490,7 +490,7 @@ function bankLogoMarkup(bank) {
   if (!logoPath) {
     return `<span class="bank-logo bank-logo-fallback" aria-label="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
   }
-  return `<span class="bank-logo bank-logo-${escapeHtml(code.toLowerCase())}"><img src="${logoPath}?v=20260622-bank-logos" alt="${escapeHtml(label)} logo" /></span>`;
+  return `<span class="bank-logo bank-logo-${escapeHtml(code.toLowerCase())}"><img src="${logoPath}?v=20260622-bank-logos-mime" alt="${escapeHtml(label)} logo" /></span>`;
 }
 
 function bankOptionsMarkup(order) {
