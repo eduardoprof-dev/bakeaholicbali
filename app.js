@@ -9,11 +9,11 @@ const appMode = params.get("mode") === "test" ? "test" : "live";
 const modeQuery = appMode === "test" ? "?mode=test" : "";
 const assetVersion = "20260422-bliss-lifestyle-photos";
 const shopperStateVersion = "20260604-session-cart";
-const cartStateVersion = "20260622-cart-reset";
+const cartStateVersion = "20260623-cart-24h";
 const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
 const latestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
 const cartSessionKey = `bakeaholic-cart-session-${cartStateVersion}-${appMode}`;
-const cartSessionMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
+const cartSessionMaxAgeMs = 24 * 60 * 60 * 1000;
 
 const state = {
   appMode,

@@ -3688,6 +3688,7 @@ body.has-cart-items .storefront-content {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 120px;
   padding-inline: 18px;
   white-space: nowrap;
 }
@@ -4741,6 +4742,22 @@ body.cart-is-empty .checkout-shell .cart-layout {
   grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
   gap: 18px;
   align-items: start;
+  padding-bottom: 42px;
+}
+
+.paid-order-layout .payment-page-actions {
+  margin-top: 20px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+.payment-issue-card .purchase-summary {
+  margin-bottom: 26px;
+}
+
+.payment-issue-card .primary-button + .secondary-link {
+  display: inline-block;
+  margin-top: 20px;
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
 }
 
 .paid-delivery-card {

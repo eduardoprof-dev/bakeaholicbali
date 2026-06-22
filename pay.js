@@ -18,7 +18,7 @@ if (orderRef && !orderId) {
 }
 
 const shopperStateVersion = "20260604-session-cart";
-const cartStateVersion = "20260622-cart-reset";
+const cartStateVersion = "20260623-cart-24h";
 const latestOrderKey = `bakeaholic-latest-order-${appMode}`;
 const checkoutLatestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
 const xenditComponentsSdkUrl = "https://cdn.jsdelivr.net/npm/xendit-components-web@0.0.24/sdk/dist/index.umd.js";
@@ -425,7 +425,7 @@ function renderPaymentIssue() {
     ? "Payment expired"
     : "Payment could not be completed";
   paymentApp.innerHTML = `
-    <section class="payment-page-card">
+    <section class="payment-page-card payment-issue-card">
       <h1>${escapeHtml(statusLabel)}</h1>
       <p class="payment-alert">This order is no longer awaiting payment. Please place a new order or contact us for help.</p>
       <div class="purchase-summary">
