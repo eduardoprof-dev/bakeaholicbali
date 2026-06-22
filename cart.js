@@ -781,7 +781,17 @@ function mountXenditCardComponents(order) {
       if (!XenditComponents) {
         throw new Error("Xendit card component did not initialize.");
       }
-      const components = new XenditComponents({ componentsSdkKey });
+      const components = new XenditComponents({
+        componentsSdkKey,
+        iframeFieldAppearance: {
+          inputStyles: {
+            fontSize: window.matchMedia("(max-width: 620px)").matches ? "14px" : "16px"
+          },
+          placeholderStyles: {
+            fontSize: window.matchMedia("(max-width: 620px)").matches ? "14px" : "16px"
+          }
+        }
+      });
       const suppressFieldScrollbars = () => {
         mount.querySelectorAll("iframe").forEach((frame) => {
           frame.setAttribute("scrolling", "no");
