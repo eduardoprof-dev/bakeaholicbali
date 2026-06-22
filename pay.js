@@ -21,6 +21,7 @@ const shopperStateVersion = "20260604-session-cart";
 const cartStateVersion = "20260622-cart-reset";
 const latestOrderKey = `bakeaholic-latest-order-${appMode}`;
 const checkoutLatestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
+const xenditComponentsSdkUrl = "https://cdn.jsdelivr.net/npm/xendit-components-web@0.0.24/sdk/dist/index.umd.js";
 
 const paymentApp = document.getElementById("paymentApp");
 const modalScrim = document.getElementById("modalScrim");
@@ -31,6 +32,8 @@ const confirmCancelButton = document.getElementById("confirmCancelButton");
 let state = {
   order: null
 };
+let xenditComponentsSdkPromise = null;
+let paymentCheckMessage = "";
 
 function request(path, options = {}) {
   return fetch(path, {
@@ -211,6 +214,28 @@ function xenditEmbeddedCheckoutMarkup(paymentUrl) {
   `;
 }
 
+function xenditCardMarkup(payment) {
+  return `
+    <div class="checkout-native-payment checkout-native-card pay-card-component">
+      <div class="checkout-native-head">
+        <div class="checkout-card-title">
+          <span class="card-method-icon" aria-hidden="true">▭</span>
+          <strong>Credit / Debit Card</strong>
+        </div>
+        <span class="payment-countdown">${formatRemainingTime(state.order.expiresAt)}</span>
+      </div>
+      <div class="checkout-xendit-card-component" data-xendit-card-component>
+        Loading secure card fields...
+      </div>
+      <div class="checkout-xendit-action-component" data-xendit-card-action hidden></div>
+      <button class="primary-button full-width checkout-payment-status-button checkout-card-pay-button" type="button" data-xendit-card-submit disabled>
+        Pay ${formatRupiah.format(state.order.pricing.total)}
+      </button>
+      <p class="secure-note">Secured by Xendit. Card details never touch our server.</p>
+    </div>
+  `;
+}
+
 function paymentActionMarkup(payment) {
   const actions = Array.isArray(payment.actions) ? payment.actions : [];
   const presentAction = actions.find((action) => action.type === "PRESENT_TO_CUSTOMER");
@@ -222,6 +247,10 @@ function paymentActionMarkup(payment) {
 
   if (payment.provider === "xendit" && payment.paymentUrl) {
     return xenditEmbeddedCheckoutMarkup(payment.paymentUrl);
+  }
+
+  if (payment.kind === "card" && payment.provider === "xendit_components" && payment.componentsSdkKey) {
+    return xenditCardMarkup(payment);
   }
 
   if (payment.kind === "va" && !presentAction) {
@@ -286,7 +315,7 @@ function paymentActionMarkup(payment) {
 
   return `
     <div class="instruction-box">
-      Payment is being prepared. Tap check status in a moment.
+      Secure payment is still being prepared. Check the status again in a moment.
     </div>
   `;
 }
@@ -455,16 +484,19 @@ function renderPending() {
           <span class="payment-logo large">${escapeHtml(payment.logoText)}</span>
         </div>
         ${paymentLinkBlock}
-        <div class="instruction-box${payment.provider === "xendit" && payment.paymentUrl ? " xendit-embed-note" : ""}">
-          ${escapeHtml(payment.instructions)}
-          ${payment.provider === "xendit" ? "<br />Payment is processed securely by Xendit." : ""}
-        </div>
-        <button class="secondary-link link-button centered-link" id="cancelOrderButton" type="button">
-          Cancel your order
-        </button>
-        <div class="payment-page-actions">
-          <a class="secondary-link" href="${escapeHtml(documentUrl)}">View receipt</a>
-          <a class="secondary-link" href="/orders.html${appMode === "test" ? "?mode=test" : ""}">All orders</a>
+        ${payment.kind === "card" && payment.provider === "xendit_components"
+          ? ""
+          : `<div class="instruction-box${payment.provider === "xendit" && payment.paymentUrl ? " xendit-embed-note" : ""}">
+              ${escapeHtml(payment.instructions)}
+              ${payment.provider === "xendit" ? "<br />Payment is processed securely by Xendit." : ""}
+            </div>`}
+        ${paymentCheckMessage ? `<p class="payment-check-feedback" role="status">${escapeHtml(paymentCheckMessage)}</p>` : ""}
+        <div class="payment-customer-actions">
+          <button class="secondary-link link-button centered-link" id="cancelOrderButton" type="button">Cancel your order</button>
+          <div class="payment-page-actions">
+            <a class="secondary-link" href="${escapeHtml(documentUrl)}">View receipt</a>
+            <a class="secondary-link" href="/orders.html${appMode === "test" ? "?mode=test" : ""}">All orders</a>
+          </div>
         </div>
       </div>
 
@@ -549,19 +581,158 @@ function renderPending() {
   });
 
   document.getElementById("checkStatusButton")?.addEventListener("click", async () => {
-        const response = await request("/api/order/payment-status", {
-      method: "POST",
-      body: JSON.stringify({ id: orderId, token: orderToken })
-    });
-    state.order = response.order;
-    localStorage.setItem(latestOrderKey, state.order.id);
-    render();
+    const button = document.getElementById("checkStatusButton");
+    button.disabled = true;
+    button.textContent = "Checking...";
+    try {
+      const response = await request("/api/order/payment-status", {
+        method: "POST",
+        body: JSON.stringify({
+          id: orderId,
+          token: orderToken,
+          simulateTestPayment: appMode === "test"
+        })
+      });
+      state.order = response.order;
+      localStorage.setItem(latestOrderKey, state.order.id);
+      paymentCheckMessage = state.order.status === "awaiting_payment"
+        ? "Payment is still waiting. Complete the payment details above, then check again."
+        : "";
+      render();
+    } catch (error) {
+      paymentCheckMessage = error.message || "Unable to check the payment status.";
+      button.disabled = false;
+      button.textContent = "Check Payment Status";
+      const detailCard = paymentApp.querySelector(".payment-page-card");
+      detailCard?.insertAdjacentHTML("beforeend", `<p class="payment-check-feedback" role="alert">${escapeHtml(paymentCheckMessage)}</p>`);
+    }
   });
 
   document.getElementById("cancelOrderButton")?.addEventListener("click", () => {
     modalScrim.hidden = false;
     cancelModal.hidden = false;
   });
+
+  mountXenditCardComponents();
+}
+
+function getXenditComponentsConstructor() {
+  const exported = window.Xendit || window.XenditComponents || window.XenditComponentsWeb;
+  if (typeof exported === "function") return exported;
+  return exported?.XenditComponents || exported?.default || null;
+}
+
+function loadXenditComponentsSdk() {
+  if (getXenditComponentsConstructor()) return Promise.resolve();
+  if (!xenditComponentsSdkPromise) {
+    xenditComponentsSdkPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = xenditComponentsSdkUrl;
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error("Unable to load secure card payment."));
+      document.head.appendChild(script);
+    });
+  }
+  return xenditComponentsSdkPromise;
+}
+
+function mountXenditCardComponents() {
+  const payment = state.order?.payment || {};
+  const mount = paymentApp.querySelector("[data-xendit-card-component]");
+  const actionMount = paymentApp.querySelector("[data-xendit-card-action]");
+  const submitButton = paymentApp.querySelector("[data-xendit-card-submit]");
+  if (!mount || !submitButton || !payment.componentsSdkKey) return;
+
+  loadXenditComponentsSdk()
+    .then(() => {
+      const XenditComponents = getXenditComponentsConstructor();
+      if (!XenditComponents) throw new Error("Secure card payment did not initialize.");
+      const components = new XenditComponents({
+        componentsSdkKey: payment.componentsSdkKey,
+        iframeFieldAppearance: {
+          inputStyles: { fontSize: window.matchMedia("(max-width: 620px)").matches ? "14px" : "16px" },
+          placeholderStyles: { fontSize: window.matchMedia("(max-width: 620px)").matches ? "14px" : "16px" }
+        }
+      });
+      const suppressFieldScrollbars = () => {
+        mount.querySelectorAll("iframe").forEach((frame) => {
+          frame.setAttribute("scrolling", "no");
+          frame.style.overflow = "hidden";
+        });
+      };
+      new MutationObserver(suppressFieldScrollbars).observe(mount, { childList: true, subtree: true });
+      const confirmPayment = async () => {
+        submitButton.disabled = true;
+        submitButton.textContent = "Confirming payment...";
+        const response = await request("/api/order/payment-status", {
+          method: "POST",
+          body: JSON.stringify({ id: orderId, token: orderToken })
+        });
+        state.order = response.order;
+        paymentCheckMessage = state.order.status === "awaiting_payment"
+          ? "Payment is still processing. Check again in a moment."
+          : "";
+        render();
+      };
+      components.addEventListener("submission-ready", () => { submitButton.disabled = false; });
+      components.addEventListener("submission-not-ready", () => { submitButton.disabled = true; });
+      components.addEventListener("submission-begin", () => {
+        submitButton.disabled = true;
+        submitButton.textContent = "Processing...";
+      });
+      components.addEventListener("submission-end", () => {
+        submitButton.textContent = `Pay ${formatRupiah.format(state.order.pricing.total)}`;
+      });
+      components.addEventListener("session-complete", () => {
+        confirmPayment().catch((error) => {
+          paymentCheckMessage = error.message || "Unable to confirm card payment.";
+          render();
+        });
+      });
+      components.addEventListener("session-expired-or-canceled", () => {
+        paymentCheckMessage = "Card payment expired or was cancelled. Please place a new order.";
+        render();
+      });
+      components.addEventListener("action-begin", () => {
+        if (!actionMount || typeof components.createActionContainerComponent !== "function") return;
+        actionMount.hidden = false;
+        actionMount.replaceChildren(components.createActionContainerComponent());
+      });
+      components.addEventListener("action-end", () => {
+        if (!actionMount) return;
+        actionMount.hidden = true;
+        actionMount.replaceChildren();
+      });
+      components.addEventListener("init", () => {
+        const cardChannels = typeof components.getActiveChannels === "function"
+          ? components.getActiveChannels({ filter: "CARDS" })
+          : [];
+        const allChannels = Array.isArray(cardChannels) && cardChannels.length
+          ? cardChannels
+          : (typeof components.getActiveChannels === "function" ? components.getActiveChannels() : []);
+        const cardChannel = (allChannels || []).find((channel) => (
+          String(channel.channelCode || channel.code || channel.id || "").toUpperCase() === "CARDS"
+        )) || allChannels?.[0];
+        const component = cardChannel && typeof components.createChannelComponent === "function"
+          ? components.createChannelComponent(cardChannel)
+          : components.createChannelPickerComponent();
+        mount.replaceChildren(component);
+        suppressFieldScrollbars();
+      });
+      submitButton.addEventListener("click", () => {
+        try {
+          components.submit();
+        } catch (error) {
+          paymentCheckMessage = error.message || "Please complete the card details.";
+          render();
+        }
+      });
+    })
+    .catch((error) => {
+      mount.textContent = error.message || "Unable to load secure card payment.";
+      submitButton.hidden = true;
+    });
 }
 
 function render() {
@@ -610,7 +781,7 @@ keepOrderButton.addEventListener("click", () => {
 confirmCancelButton.addEventListener("click", async () => {
   const response = await request("/api/order/cancel", {
     method: "POST",
-    body: JSON.stringify({ id: orderId })
+    body: JSON.stringify({ id: orderId, token: orderToken })
   });
   state.order = response.order;
   cancelModal.hidden = true;

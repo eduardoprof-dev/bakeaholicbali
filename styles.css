@@ -1167,6 +1167,12 @@ body::before {
   gap: 18px;
 }
 
+.invoice-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .invoice-header,
 .invoice-title-row {
   align-items: center;
@@ -4606,6 +4612,32 @@ body.cart-is-empty .checkout-shell .cart-layout {
   margin-top: 4px;
 }
 
+.payment-customer-actions {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.payment-check-feedback {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff4dc;
+  color: #7a4b16;
+  font-weight: 700;
+}
+
+.pay-card-component {
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+  border-radius: 16px;
+  background: #fff;
+}
+
 .qr-block {
   display: grid;
   justify-items: center;
@@ -5004,6 +5036,15 @@ body.cart-is-empty .checkout-shell .cart-layout {
   .checkout-xendit-card-component {
     width: calc(100% + 8px);
     margin-inline: -4px;
+  }
+
+  .pay-card-component {
+    padding: 16px 8px;
+  }
+
+  .invoice-header-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   .payment-order-heading {

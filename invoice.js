@@ -125,7 +125,10 @@ function renderDocument(payload) {
             <span>${escapeHtml(store.perkTitle || "")}</span>
           </div>
         </div>
-        <button class="admin-button print-hide" type="button" id="printInvoiceButton">Print</button>
+        <div class="invoice-header-actions print-hide">
+          <button class="admin-button" type="button" id="printInvoiceButton">Print</button>
+          <a class="admin-button secondary" id="openInvoiceBrowserButton" href="${escapeHtml(window.location.href)}" target="_blank" rel="noreferrer" hidden>Open in browser</a>
+        </div>
       </header>
 
       <div class="invoice-title-row">
@@ -189,7 +192,14 @@ function renderDocument(payload) {
       </footer>
     </section>
   `;
-  document.getElementById("printInvoiceButton")?.addEventListener("click", () => window.print());
+  const printButton = document.getElementById("printInvoiceButton");
+  const openInBrowserButton = document.getElementById("openInvoiceBrowserButton");
+  const isInAppBrowser = /WhatsApp|FBAN|FBAV|Instagram/i.test(navigator.userAgent || "");
+  if (isInAppBrowser && printButton && openInBrowserButton) {
+    printButton.hidden = true;
+    openInBrowserButton.hidden = false;
+  }
+  printButton?.addEventListener("click", () => window.print());
 }
 
 requestDocument()

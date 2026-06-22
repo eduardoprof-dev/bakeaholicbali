@@ -5618,14 +5618,20 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/order/cancel") {
-    const session = requireCustomerSession(request, response);
-    if (!session) {
-      return true;
-    }
     parseBody(request)
       .then(async (body) => {
-        const order = await cancelOrderForSession(mode, String(body.id || "").trim(), session);
-        sendJson(response, 200, { order });
+        const session = currentCustomerSession(request);
+        const orderId = String(body.id || "").trim();
+        const token = String(body.token || "").trim();
+        const order = findOrder(mode, orderId);
+        const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
+        if (!tokenMatches && !session) {
+          throw new Error("Please open the order link again to cancel this order");
+        }
+        const updatedOrder = tokenMatches
+          ? await cancelOrder(mode, orderId)
+          : await cancelOrderForSession(mode, orderId, session);
+        sendJson(response, 200, { order: updatedOrder });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
