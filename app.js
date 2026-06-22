@@ -9,9 +9,11 @@ const appMode = params.get("mode") === "test" ? "test" : "live";
 const modeQuery = appMode === "test" ? "?mode=test" : "";
 const assetVersion = "20260422-bliss-lifestyle-photos";
 const shopperStateVersion = "20260604-session-cart";
+const cartStateVersion = "20260622-cart-expiry";
 const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
-const latestOrderKey = `bakeaholic-latest-order-${shopperStateVersion}-${appMode}`;
-const cartSessionKey = `bakeaholic-cart-session-${shopperStateVersion}-${appMode}`;
+const latestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
+const cartSessionKey = `bakeaholic-cart-session-${cartStateVersion}-${appMode}`;
+const cartSessionMaxAgeMs = 7 * 24 * 60 * 60 * 1000;
 
 const state = {
   appMode,
@@ -138,6 +140,7 @@ let selectedProductId = "";
 let pendingOtpPhone = "";
 let otpResendAvailableAt = 0;
 let otpTimerId = 0;
+let volatileCartSessionId = "";
 
 const whatsappIcon = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -253,16 +256,55 @@ function applyCustomerProfile(profile) {
   state.draft.customer.name = profile.name || customerFullName();
 }
 
+function createCartSessionId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID().replaceAll("-", "");
+  }
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function saveCartSessionId(sessionId) {
+  const normalized = String(sessionId || "").toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(normalized)) {
+    return "";
+  }
+  volatileCartSessionId = normalized;
+  try {
+    localStorage.setItem(cartSessionKey, JSON.stringify({ id: normalized, updatedAt: Date.now() }));
+  } catch (_error) {
+    // The in-memory session still prevents an old cookie cart from being reused this visit.
+  }
+  return normalized;
+}
+
+function storedCartSessionId() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(cartSessionKey) || "null");
+    const sessionId = String(stored?.id || "").toLowerCase();
+    const updatedAt = Number(stored?.updatedAt || 0);
+    if (/^[a-f0-9]{32}$/.test(sessionId) && updatedAt > 0 && Date.now() - updatedAt <= cartSessionMaxAgeMs) {
+      return sessionId;
+    }
+    localStorage.removeItem(cartSessionKey);
+  } catch (_error) {
+    // Legacy plain-text cart sessions are intentionally treated as expired.
+    try {
+      localStorage.removeItem(cartSessionKey);
+    } catch (_storageError) {
+      // Ignore unavailable browser storage.
+    }
+  }
+  return "";
+}
+
 function getCartSessionId() {
   const urlSessionId = String(params.get("cart_session") || "");
   if (/^[a-f0-9]{32}$/i.test(urlSessionId)) {
-    return urlSessionId.toLowerCase();
+    return saveCartSessionId(urlSessionId);
   }
-  try {
-    return localStorage.getItem(cartSessionKey) || "";
-  } catch (_error) {
-    return "";
-  }
+  return storedCartSessionId() || volatileCartSessionId || saveCartSessionId(createCartSessionId());
 }
 
 function rememberCartSession(payload) {
@@ -270,11 +312,7 @@ function rememberCartSession(payload) {
   if (!/^[a-f0-9]{32}$/i.test(sessionId)) {
     return;
   }
-  try {
-    localStorage.setItem(cartSessionKey, sessionId.toLowerCase());
-  } catch (_error) {
-    // Cookies still cover the common case.
-  }
+  saveCartSessionId(sessionId);
 }
 
 function cartPageUrl() {

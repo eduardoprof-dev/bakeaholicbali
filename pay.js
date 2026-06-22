@@ -18,8 +18,9 @@ if (orderRef && !orderId) {
 }
 
 const shopperStateVersion = "20260604-session-cart";
+const cartStateVersion = "20260622-cart-expiry";
 const latestOrderKey = `bakeaholic-latest-order-${appMode}`;
-const checkoutLatestOrderKey = `bakeaholic-latest-order-${shopperStateVersion}-${appMode}`;
+const checkoutLatestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
 
 const paymentApp = document.getElementById("paymentApp");
 const modalScrim = document.getElementById("modalScrim");
