@@ -141,6 +141,7 @@ let pendingOtpPhone = "";
 let otpResendAvailableAt = 0;
 let otpTimerId = 0;
 let volatileCartSessionId = "";
+const pendingCartAdds = new Set();
 
 const whatsappIcon = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1039,11 +1040,18 @@ function adjustVisibleAddBadges(itemId, delta) {
 }
 
 async function addToCart(itemId, triggerButton = null) {
-  adjustVisibleAddBadges(itemId, 1);
-  if (triggerButton) {
-    triggerButton.classList.add("is-updating");
-    triggerButton.setAttribute("aria-live", "polite");
+  if (pendingCartAdds.has(itemId)) {
+    return;
   }
+  pendingCartAdds.add(itemId);
+  adjustVisibleAddBadges(itemId, 1);
+  const matchingButtons = [...document.querySelectorAll("[data-item-id]")]
+    .filter((button) => button.dataset.itemId === itemId);
+  matchingButtons.forEach((button) => {
+    button.disabled = true;
+    button.classList.add("is-updating");
+    button.setAttribute("aria-live", "polite");
+  });
   try {
     const cartPayload = await request("/api/cart", {
       method: "POST",
@@ -1055,7 +1063,11 @@ async function addToCart(itemId, triggerButton = null) {
     adjustVisibleAddBadges(itemId, -1);
     throw error;
   } finally {
-    triggerButton?.classList.remove("is-updating");
+    pendingCartAdds.delete(itemId);
+    matchingButtons.forEach((button) => {
+      button.disabled = false;
+      button.classList.remove("is-updating");
+    });
   }
 }
 
