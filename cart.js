@@ -478,8 +478,19 @@ function paymentStatusButtonMarkup(order) {
 function bankLogoMarkup(bank) {
   const code = String(bank?.code || "").toUpperCase();
   const label = bank?.label || code;
-  const brand = code === "MANDIRI" ? "mandiri" : code === "PERMATA" ? "PermataBank" : code === "CIMB" ? "CIMB" : code;
-  return `<span class="bank-logo bank-logo-${escapeHtml(code.toLowerCase())}" aria-label="${escapeHtml(label)}">${escapeHtml(brand)}</span>`;
+  const logoPaths = {
+    BCA: "/assets/banks/bca.svg",
+    BNI: "/assets/banks/bni.svg",
+    BRI: "/assets/banks/bri.svg",
+    MANDIRI: "/assets/banks/mandiri.svg",
+    PERMATA: "/assets/banks/permata.svg",
+    CIMB: "/assets/banks/cimb.svg"
+  };
+  const logoPath = logoPaths[code];
+  if (!logoPath) {
+    return `<span class="bank-logo bank-logo-fallback" aria-label="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+  }
+  return `<span class="bank-logo bank-logo-${escapeHtml(code.toLowerCase())}"><img src="${logoPath}?v=20260622-bank-logos" alt="${escapeHtml(label)} logo" /></span>`;
 }
 
 function bankOptionsMarkup(order) {
@@ -861,8 +872,8 @@ function mountXenditCardComponents(order) {
         const cardChannel = (channels || []).find((channel) => (
           String(channel.channelCode || channel.code || channel.id || "").toUpperCase() === "CARDS"
         )) || channels?.[0];
-        const component = cardChannel && typeof components.createChannelComponent === "function"
-          ? components.createChannelComponent(cardChannel)
+        const component = cardChannel
+          ? components.createChannelPickerComponent(cardChannel)
           : components.createChannelPickerComponent();
         mount.replaceChildren(component);
       });
@@ -999,7 +1010,7 @@ function syncAfterHoursMessage() {
 function submitButtonLabel() {
   if (state.pendingPaymentUrl) return "Open Payment Page";
   if ((state.cart?.total || 0) <= 0 && (state.cart?.itemCount || 0) > 0) return "Place Order";
-  return "Submit Order";
+  return "Continue to payment";
 }
 
 function setSubmitButtonState(label, disabled) {
@@ -1563,8 +1574,8 @@ async function submitOrder() {
       return;
     }
 
-    setCheckoutMessage("Order created. Tap below to open the payment page.", "success");
-    setSubmitButtonState("Open Payment Page", false);
+    setCheckoutMessage("Order created. Continue to open secure payment.", "success");
+    setSubmitButtonState("Continue to secure payment", false);
   } catch (error) {
     state.pendingPaymentUrl = "";
     if (String(error.message || "").toLowerCase().includes("basket is empty")) {

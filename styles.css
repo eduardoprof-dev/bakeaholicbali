@@ -4032,31 +4032,21 @@ body.has-cart-items .storefront-content {
 }
 
 .checkout-xendit-card-component {
-  min-height: 260px;
-  padding: 16px;
+  min-height: 0;
+  padding: 0;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   background: #fff;
   color: #6b7280;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .checkout-xendit-card-component:empty {
   display: none;
 }
 
-.checkout-xendit-card-component iframe {
-  display: block;
-  height: 40px !important;
-  min-height: 40px !important;
-  border: 0 !important;
-  max-width: 100% !important;
-  overflow: hidden !important;
-  scrollbar-width: none;
-}
-
-.checkout-xendit-card-component iframe::-webkit-scrollbar {
-  display: none;
+.checkout-xendit-card-component > * {
+  max-width: 100%;
 }
 
 .checkout-xendit-action-component {
@@ -4138,39 +4128,20 @@ body.has-cart-items .storefront-content {
   border-radius: 6px;
   background: #fff;
   border: 1px solid #e5e7eb;
-  color: var(--accent);
-  font-size: 0.88rem;
-  font-weight: 900;
-  letter-spacing: 0;
   box-shadow: 0 8px 20px rgba(55, 34, 22, 0.05);
 }
 
-.bank-logo-bca {
-  background: #0066ae;
-  color: #fff;
+.bank-logo img {
+  display: block;
+  width: 78px;
+  height: 32px;
+  object-fit: contain;
 }
 
-.bank-logo-bni {
-  color: #f15a24;
-}
-
-.bank-logo-bri {
-  background: #005baa;
-  color: #fff;
-}
-
-.bank-logo-mandiri {
-  color: #003d79;
-  background: #fff;
-}
-
-.bank-logo-permata {
-  color: #2d65d9;
-}
-
-.bank-logo-cimb {
-  background: #e31d1a;
-  color: #fff;
+.bank-logo-fallback {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 900;
 }
 
 .checkout-bank-button:hover,
