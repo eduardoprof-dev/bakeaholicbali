@@ -4997,6 +4997,15 @@ body.cart-is-empty .checkout-shell .cart-layout {
 }
 
 @media (max-width: 620px) {
+  .checkout-native-payment {
+    padding: 20px 12px;
+  }
+
+  .checkout-xendit-card-component {
+    width: calc(100% + 8px);
+    margin-inline: -4px;
+  }
+
   .payment-order-heading {
     padding: 4px 0 14px;
   }
