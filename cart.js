@@ -9,7 +9,7 @@ const appMode = params.get("mode") === "test" ? "test" : "live";
 const modeQuery = appMode === "test" ? "?mode=test" : "";
 const assetVersion = "20260422-bliss-lifestyle-photos";
 const shopperStateVersion = "20260604-session-cart";
-const cartStateVersion = "20260622-cart-expiry";
+const cartStateVersion = "20260622-cart-reset";
 const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
 const latestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
 const cartSessionKey = `bakeaholic-cart-session-${cartStateVersion}-${appMode}`;
@@ -610,10 +610,6 @@ function nativePaymentMarkup(order) {
             </div>
             <span class="payment-countdown">${formatRemainingTime(paymentExpiryAt(order))}</span>
           </div>
-          <div class="checkout-card-secure-box">
-            <strong>Secure card payment</strong>
-            <span>Card details are handled by Xendit inside this checkout.</span>
-          </div>
           <div class="checkout-xendit-card-component" id="xenditCardComponent-${escapeHtml(order.id)}" data-xendit-card-component="${escapeHtml(order.id)}">
             Loading secure card fields...
           </div>
@@ -621,7 +617,6 @@ function nativePaymentMarkup(order) {
           <button class="primary-button full-width checkout-payment-status-button checkout-card-pay-button" type="button" data-xendit-card-submit="${escapeHtml(order.id)}" disabled>
             Pay ${formatRupiah.format(order.pricing.total)}
           </button>
-          <p class="checkout-native-note">Secured by Xendit - card details never touch our server.</p>
         </div>
       `;
     }
@@ -636,14 +631,9 @@ function nativePaymentMarkup(order) {
             </div>
             <span class="payment-countdown">${formatRemainingTime(paymentExpiryAt(order))}</span>
           </div>
-          <div class="checkout-card-secure-box">
-            <strong>Secure card payment</strong>
-            <span>Xendit collects the card details securely. We will not ask for the same card details on this page.</span>
-          </div>
           <button class="primary-button full-width checkout-payment-status-button checkout-card-pay-button" type="button" data-card-payment-url="${escapeHtml(paymentUrl)}">
             Continue to secure card payment
           </button>
-          <p class="checkout-native-note">Secured by Xendit - your card details never touch our server.</p>
         </div>
       `;
     }
@@ -872,8 +862,8 @@ function mountXenditCardComponents(order) {
         const cardChannel = (channels || []).find((channel) => (
           String(channel.channelCode || channel.code || channel.id || "").toUpperCase() === "CARDS"
         )) || channels?.[0];
-        const component = cardChannel
-          ? components.createChannelPickerComponent(cardChannel)
+        const component = cardChannel && typeof components.createChannelComponent === "function"
+          ? components.createChannelComponent(cardChannel)
           : components.createChannelPickerComponent();
         mount.replaceChildren(component);
       });

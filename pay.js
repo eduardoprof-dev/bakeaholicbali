@@ -18,7 +18,7 @@ if (orderRef && !orderId) {
 }
 
 const shopperStateVersion = "20260604-session-cart";
-const cartStateVersion = "20260622-cart-expiry";
+const cartStateVersion = "20260622-cart-reset";
 const latestOrderKey = `bakeaholic-latest-order-${appMode}`;
 const checkoutLatestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
 

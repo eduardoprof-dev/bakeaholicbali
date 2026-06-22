@@ -1857,7 +1857,10 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg"
+  ".jpeg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon"
 };
 
 const CUSTOMER_SESSION_COOKIE = "bakeaholic_customer_session";
