@@ -272,7 +272,11 @@ function rememberCartSession(payload) {
 
 function request(path, options = {}) {
   const cartSessionId = getCartSessionId();
-  return fetch(path, {
+  const requestUrl = new URL(path, window.location.origin);
+  if (cartSessionId) {
+    requestUrl.searchParams.set("cart_session", cartSessionId);
+  }
+  return fetch(`${requestUrl.pathname}${requestUrl.search}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
