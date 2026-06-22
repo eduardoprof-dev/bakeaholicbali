@@ -850,7 +850,6 @@ async function sendWhatsappPaymentExpired(order) {
 
 async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   const skipReason = (() => {
-    if (order.mode === "test") return "test_order";
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (!process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME) return "receipt_template_not_configured";
     if (eventKey && order.whatsappReceiptNotification?.lastNotificationKey === eventKey) return "already_sent";
@@ -941,6 +940,7 @@ async function refreshUnpaidOrderFromXendit(order) {
   }
   if (previousStatus !== order.status && order.status === "paid") {
     clearPaymentReminderTimers(order.mode || "live", order.id);
+    clearPaidOrderCart(order);
     await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     await maybeSendWhatsappAdminAlert(order, `order:${order.id}:xendit:${order.status}`, humanizeOrderStatus(order));
   }
@@ -1119,7 +1119,6 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
 
 async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = false } = {}) {
   const skipReason = (() => {
-    if (order.mode === "test") return "test_order";
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (admin && !process.env.WHATSAPP_ADMIN_NUMBER) return "admin_number_not_configured";
     if (admin && !(process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME)) return "admin_shipping_template_not_configured";
@@ -1159,7 +1158,6 @@ async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = f
 
 async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = "") {
   const skipReason = (() => {
-    if (order.mode === "test") return "test_order";
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (!process.env.WHATSAPP_ADMIN_NUMBER) return "admin_number_not_configured";
     if (!process.env.WHATSAPP_ADMIN_TEMPLATE_NAME) return "admin_template_not_configured";
@@ -1189,7 +1187,6 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
   const notificationKey = String(options.notificationKey || "").trim();
   const skipReason = (() => {
-    if (order.mode === "test") return "test_order";
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (!configuredWhatsappOrderTemplateName(order)) return "template_not_configured";
     if (previousStatus === order.status && !notificationKey) return "same_order_status";
@@ -2272,6 +2269,24 @@ function getAppMode(requestUrl, request) {
 
 function getStoreState(mode) {
   return stores[mode] || stores.live;
+}
+
+function clearPaidOrderCart(order) {
+  const mode = order?.mode || "live";
+  const sessionId = String(order?.cartSessionId || "").toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(sessionId)) {
+    return false;
+  }
+  const storeState = getStoreState(mode);
+  storeState.carts = loadSessionCarts(cartsPathForMode(mode));
+  const cart = storeState.carts.get(sessionId);
+  if (!cart) {
+    return false;
+  }
+  cart.clear();
+  storeState.carts.set(sessionId, cart);
+  saveSessionCarts(cartsPathForMode(mode), storeState.carts);
+  return true;
 }
 
 function getStoreConfig() {
@@ -4579,6 +4594,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
     status: isZeroTotalOrder ? "paid" : "awaiting_payment",
     paidAt: isZeroTotalOrder ? now.toISOString() : "",
     receiptToken: crypto.randomBytes(18).toString("hex"),
+    cartSessionId: /^[a-f0-9]{32}$/i.test(cartSessionId) ? cartSessionId.toLowerCase() : "",
     itemCount: summary.itemCount,
     items: summary.items,
     customer: draft.customer,
@@ -4632,10 +4648,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
   saveOrders(ordersPathForMode(mode), storeState.orders);
   if (isZeroTotalOrder) {
     cartState.cart.clear();
-    if (cartOverride && cartSessionId) {
-      storeState.carts.set(cartSessionId, cartState.cart);
-      saveSessionCarts(cartsPathForMode(mode), storeState.carts);
-    }
+    clearPaidOrderCart(order);
   }
   return enrichOrder(order);
 }
@@ -4725,6 +4738,9 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
 
   if (order.status !== "awaiting_payment") {
     clearPaymentReminderTimers(mode, order.id);
+  }
+  if (previousStatus !== order.status && order.status === "paid") {
+    clearPaidOrderCart(order);
   }
   await maybeSendWhatsappOrderStatus(order, previousStatus);
   if (previousStatus !== order.status) {
@@ -5663,8 +5679,10 @@ function handleApi(requestUrl, request, response) {
         }
         if (previousStatus !== order.status) {
           if (order.status === "paid") {
+            clearPaidOrderCart(order);
             await maybeSendWhatsappOrderStatus(order, previousStatus);
             await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
+            await maybeSendWhatsappAdminAlert(order, `order:${order.id}:xendit:${order.status}`, humanizeOrderStatus(order));
           } else if (order.status === "expired") {
             order.expiredAt = order.expiredAt || new Date().toISOString();
             order.paymentReminderFlow = {

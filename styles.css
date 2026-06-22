@@ -1199,6 +1199,36 @@ body::before {
   text-align: right;
 }
 
+.invoice-status span {
+  width: fit-content;
+  margin-left: auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.invoice-status strong {
+  margin-top: 7px;
+  font-size: 1.1rem;
+}
+
+.invoice-status-paid span {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.invoice-status-negative span {
+  color: #b42318;
+  background: #fee4e2;
+}
+
+.invoice-status-pending span {
+  color: #8a5a21;
+  background: #fff1d6;
+}
+
 .invoice-title-row h1 {
   margin: 4px 0 0;
 }
@@ -4017,7 +4047,9 @@ body.has-cart-items .storefront-content {
 
 .checkout-xendit-card-component iframe {
   display: block;
-  height: 44px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  border: 0 !important;
   max-width: 100% !important;
   overflow: hidden !important;
   scrollbar-width: none;
@@ -4727,6 +4759,17 @@ body.cart-is-empty .checkout-shell .cart-layout {
   margin: 8px 0;
   color: #64748b;
   font-weight: 700;
+}
+
+.disabled-tracking-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  color: #7a6d61;
+  background: #f3f0eb;
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .paid-delivery-copy p {
@@ -5496,7 +5539,8 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
 @media print {
   @page {
-    margin: 12mm;
+    size: A4 portrait;
+    margin: 10mm;
   }
 
   html,
@@ -5525,6 +5569,8 @@ body.cart-is-empty .checkout-shell .cart-layout {
   }
 
   .invoice-sheet {
+    width: 100%;
+    box-sizing: border-box;
     display: block;
     border: 0;
     border-radius: 0;
@@ -5532,6 +5578,15 @@ body.cart-is-empty .checkout-shell .cart-layout {
     padding: 0;
     color: #111;
     background: #fff;
+  }
+
+  .invoice-status span {
+    border: 1px solid currentColor;
+  }
+
+  .invoice-table th,
+  .invoice-table td {
+    padding: 8px 6px;
   }
 
   .invoice-header,

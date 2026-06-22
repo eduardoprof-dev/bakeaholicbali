@@ -665,6 +665,7 @@ function bindCheckoutPaymentPanel(order) {
         if (response.order.status === "paid" || response.order.status === "preparing") {
           setCheckoutMessage("Payment received. Your order is confirmed.", "success");
           button.textContent = "Payment confirmed";
+          clearCompletedCheckoutState();
           window.location.assign(orderStatusUrlForOrder(response.order));
           return;
         } else {
@@ -743,8 +744,8 @@ function mountXenditCardComponents(order) {
           inputStyles: {
             color: "#2d2018",
             fontSize: "16px",
-            lineHeight: "24px",
-            height: "44px",
+            lineHeight: "20px",
+            height: "40px",
             overflow: "hidden"
           },
           placeholderStyles: {
@@ -767,6 +768,7 @@ function mountXenditCardComponents(order) {
         });
         state.currentOrder = response.order;
         if (response.order.status === "paid" || response.order.status === "preparing") {
+          clearCompletedCheckoutState();
           window.location.assign(orderStatusUrlForOrder(response.order));
           return;
         }
@@ -835,6 +837,16 @@ function mountXenditCardComponents(order) {
       submitButton.hidden = true;
       setCheckoutMessage(error.message || "Unable to load secure card payment.");
     });
+}
+
+function clearCompletedCheckoutState() {
+  state.pendingPaymentUrl = "";
+  state.currentOrder = null;
+  try {
+    localStorage.removeItem(latestOrderKey);
+  } catch (_error) {
+    // The server still clears the session cart when browser storage is unavailable.
+  }
 }
 
 function startPaymentCountdown(order) {

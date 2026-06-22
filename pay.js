@@ -17,7 +17,9 @@ if (orderRef && !orderId) {
   appMode = refMode === "test" ? "test" : appMode;
 }
 
+const shopperStateVersion = "20260604-session-cart";
 const latestOrderKey = `bakeaholic-latest-order-${appMode}`;
+const checkoutLatestOrderKey = `bakeaholic-latest-order-${shopperStateVersion}-${appMode}`;
 
 const paymentApp = document.getElementById("paymentApp");
 const modalScrim = document.getElementById("modalScrim");
@@ -97,7 +99,7 @@ function deliveryMapMarkup() {
         : `<div class="paid-delivery-map paid-delivery-map-empty">Delivery map</div>`}
       <div class="paid-delivery-copy">
         <h2>Delivery</h2>
-        <span>${escapeHtml(state.order.fulfillment?.type || "Delivery")}</span>
+        <span>Your address</span>
         <p>${escapeHtml(address || "Delivery address not available")}</p>
         ${state.order.fulfillment?.deliveryNotes ? `<p>${escapeHtml(state.order.fulfillment.deliveryNotes)}</p>` : ""}
       </div>
@@ -329,7 +331,7 @@ function renderCancelled() {
 function renderPaid() {
   document.title = `Order ${state.order.id} Paid`;
   const shipment = state.order.fulfillment?.shipment || {};
-  const trackingUrl = shipment.trackingLink || `/orders.html${appMode === "test" ? "?mode=test" : ""}`;
+  const trackingUrl = shipment.trackingLink || "";
   const documentUrl = state.order.documentUrl || `/invoice.html?order=${encodeURIComponent(state.order.id)}${orderToken ? `&token=${encodeURIComponent(orderToken)}` : ""}${appMode === "test" ? "&mode=test" : ""}`;
   const shipmentMessage = state.order.fulfillment?.shipment?.orderId
     ? `<p class="success-note">Delivery order sent to Biteship. ID: ${escapeHtml(shipment.orderId)}</p>`
@@ -337,6 +339,12 @@ function renderPaid() {
       ? `<p class="payment-alert">${escapeHtml(state.order.fulfillment.shipmentError)}</p>`
       : "";
   const isPreparing = state.order.status === "preparing";
+  try {
+    localStorage.removeItem(latestOrderKey);
+    localStorage.removeItem(checkoutLatestOrderKey);
+  } catch (_error) {
+    // Receipt and tracking remain available when browser storage is blocked.
+  }
   paymentApp.innerHTML = `
     <section class="payment-order-heading">
       <a class="secondary-link" href="/orders.html${appMode === "test" ? "?mode=test" : ""}">← Orders</a>
@@ -369,7 +377,9 @@ function renderPaid() {
       </div>
       <div>
         ${paymentSummaryMarkup()}
-        <a class="primary-button button-link full-width" href="${escapeHtml(trackingUrl)}" ${shipment.trackingLink ? 'target="_blank" rel="noreferrer"' : ""}>Track order</a>
+        ${trackingUrl
+          ? `<a class="primary-button button-link full-width" href="${escapeHtml(trackingUrl)}" target="_blank" rel="noreferrer">Track order</a>`
+          : `<span class="primary-button full-width disabled-tracking-button" aria-disabled="true">Tracking will be available after dispatch</span>`}
         <div class="payment-page-actions">
           <a class="secondary-link" href="${escapeHtml(documentUrl)}">View receipt</a>
           <a class="secondary-link" href="/orders.html${appMode === "test" ? "?mode=test" : ""}">All orders</a>

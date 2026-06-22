@@ -105,6 +105,13 @@ function shipmentDetails(order) {
   `;
 }
 
+function invoiceStatusClass(status = "") {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "paid" || normalized === "preparing") return "invoice-status-paid";
+  if (["expired", "cancelled", "payment_failed"].includes(normalized)) return "invoice-status-negative";
+  return "invoice-status-pending";
+}
+
 function renderDocument(payload) {
   const { store, order } = payload;
   document.title = `Invoice ${order.id} | Bakeaholic Bali`;
@@ -126,7 +133,7 @@ function renderDocument(payload) {
           <p class="eyebrow">Invoice / Receipt</p>
           <h1>${escapeHtml(order.id)}</h1>
         </div>
-        <div class="invoice-status">
+        <div class="invoice-status ${invoiceStatusClass(order.status)}">
           <span>${escapeHtml(humanizeStatus(order.status))}</span>
           <strong>${formatRupiah.format(order.pricing?.total || 0)}</strong>
         </div>
@@ -140,7 +147,7 @@ function renderDocument(payload) {
           <p>${escapeHtml(order.customer?.email || "")}</p>
         </div>
         <div>
-          <h2>Delivery</h2>
+          <h2>Your address</h2>
           <p>${escapeHtml(order.fulfillment?.address || order.customer?.address || "-")}</p>
           <p>${escapeHtml(order.fulfillment?.deliveryNotes || "")}</p>
         </div>
