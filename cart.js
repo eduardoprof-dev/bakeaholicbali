@@ -781,21 +781,15 @@ function mountXenditCardComponents(order) {
       if (!XenditComponents) {
         throw new Error("Xendit card component did not initialize.");
       }
-      const components = new XenditComponents({
-        componentsSdkKey,
-        iframeFieldAppearance: {
-          inputStyles: {
-            color: "#2d2018",
-            fontSize: "16px",
-            lineHeight: "20px",
-            height: "40px",
-            overflow: "hidden"
-          },
-          placeholderStyles: {
-            color: "#9b8776"
-          }
-        }
-      });
+      const components = new XenditComponents({ componentsSdkKey });
+      const suppressFieldScrollbars = () => {
+        mount.querySelectorAll("iframe").forEach((frame) => {
+          frame.setAttribute("scrolling", "no");
+          frame.style.overflow = "hidden";
+        });
+      };
+      const fieldObserver = new MutationObserver(suppressFieldScrollbars);
+      fieldObserver.observe(mount, { childList: true, subtree: true });
       const enableSubmit = () => {
         submitButton.disabled = false;
       };
@@ -866,6 +860,7 @@ function mountXenditCardComponents(order) {
           ? components.createChannelComponent(cardChannel)
           : components.createChannelPickerComponent();
         mount.replaceChildren(component);
+        suppressFieldScrollbars();
       });
       submitButton.addEventListener("click", () => {
         try {
