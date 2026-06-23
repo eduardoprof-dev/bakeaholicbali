@@ -87,6 +87,7 @@ const integrationFields = {
   googleMapsApiKey: document.getElementById("googleMapsApiKeyInput"),
   biteshipApiKey: document.getElementById("biteshipApiKeyInput"),
   biteshipCouriers: document.getElementById("biteshipCouriersInput"),
+  biteshipTestDispatchEnabled: document.getElementById("biteshipTestDispatchEnabledInput"),
   xenditEnvironment: document.getElementById("xenditEnvironmentInput"),
   xenditSecretKey: document.getElementById("xenditSecretKeyInput"),
   xenditCallbackToken: document.getElementById("xenditCallbackTokenInput"),
@@ -117,6 +118,7 @@ const secretIntegrationKeys = new Set([
   "whatsappVerifyToken",
   "whatsappAppSecret"
 ]);
+const booleanIntegrationKeys = new Set(["biteshipTestDispatchEnabled"]);
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -220,6 +222,10 @@ function renderIntegrations(integrations) {
     if (secretIntegrationKeys.has(key)) {
       field.value = "";
       field.placeholder = integrations?.[key] ? "Saved. Leave blank to keep current value." : "";
+      return;
+    }
+    if (booleanIntegrationKeys.has(key)) {
+      field.checked = Boolean(integrations?.[key]);
       return;
     }
     field.value = integrations?.[key] || "";
@@ -868,6 +874,7 @@ async function saveIntegrations() {
       googleMapsApiKey: integrationFields.googleMapsApiKey.value.trim(),
       biteshipApiKey: integrationFields.biteshipApiKey.value.trim(),
       biteshipCouriers: integrationFields.biteshipCouriers.value.trim(),
+      biteshipTestDispatchEnabled: integrationFields.biteshipTestDispatchEnabled.checked,
       xenditEnvironment: integrationFields.xenditEnvironment.value,
       xenditSecretKey: integrationFields.xenditSecretKey.value.trim(),
       xenditCallbackToken: integrationFields.xenditCallbackToken.value.trim(),

@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260623-admin-discounts" />
+    <link rel="stylesheet" href="styles.css?v=20260623-test-biteship" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -252,6 +252,11 @@
               <label for="biteshipCouriersInput">Biteship couriers</label>
               <input id="biteshipCouriersInput" type="text" placeholder="gojek,grab" />
             </div>
+            <label class="admin-toggle-field admin-test-dispatch-toggle">
+              <input id="biteshipTestDispatchEnabledInput" type="checkbox" />
+              <span>Allow real Biteship delivery for test-mode orders</span>
+              <small>Off by default. When enabled, an approved test order creates a real Biteship delivery.</small>
+            </label>
             <div class="admin-field">
               <label for="xenditEnvironmentInput">Xendit environment</label>
               <select id="xenditEnvironmentInput">
@@ -562,6 +567,6 @@ DATA_DIR
         }
       });
     </script>
-    <script src="admin.js?v=20260623-mermaid-render-once"></script>
+    <script src="admin.js?v=20260623-test-biteship"></script>
   </body>
 </html>

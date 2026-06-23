@@ -210,6 +210,7 @@ function writeEnvMap(targetPath, envMap) {
     "GOOGLE_MAPS_API_KEY",
     "BITESHIP_API_KEY",
     "BITESHIP_COURIERS",
+    "BITESHIP_TEST_DISPATCH_ENABLED",
     "XENDIT_SECRET_KEY",
     "XENDIT_CALLBACK_TOKEN",
     "XENDIT_ENVIRONMENT",
@@ -273,6 +274,7 @@ function getEnvironmentIntegrationConfig() {
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || "",
     biteshipApiKey: process.env.BITESHIP_API_KEY || "",
     biteshipCouriers: process.env.BITESHIP_COURIERS || "gojek,grab",
+    biteshipTestDispatchEnabled: process.env.BITESHIP_TEST_DISPATCH_ENABLED === "true",
     xenditSecretKey: process.env.XENDIT_SECRET_KEY || "",
     xenditCallbackToken: process.env.XENDIT_CALLBACK_TOKEN || "",
     xenditEnvironment: process.env.XENDIT_ENVIRONMENT === "live" ? "live" : "test",
@@ -1601,6 +1603,9 @@ function readIntegrationSettings() {
     googleMapsApiKey: configuredValue(savedSettings.googleMapsApiKey, envMap.GOOGLE_MAPS_API_KEY, config.googleMapsApiKey),
     biteshipApiKey: configuredValue(savedSettings.biteshipApiKey, envMap.BITESHIP_API_KEY, config.biteshipApiKey),
     biteshipCouriers: configuredValue(savedSettings.biteshipCouriers, envMap.BITESHIP_COURIERS, config.biteshipCouriers) || "gojek,grab",
+    biteshipTestDispatchEnabled: typeof savedSettings.biteshipTestDispatchEnabled === "boolean"
+      ? savedSettings.biteshipTestDispatchEnabled
+      : String(envMap.BITESHIP_TEST_DISPATCH_ENABLED || config.biteshipTestDispatchEnabled || "").toLowerCase() === "true",
     xenditSecretKey: configuredValue(savedSettings.xenditSecretKey, envMap.XENDIT_SECRET_KEY, config.xenditSecretKey),
     xenditCallbackToken: configuredValue(savedSettings.xenditCallbackToken, envMap.XENDIT_CALLBACK_TOKEN, config.xenditCallbackToken),
     xenditEnvironment: configuredValue(savedSettings.xenditEnvironment, envMap.XENDIT_ENVIRONMENT, config.xenditEnvironment) || "test",
@@ -1641,6 +1646,7 @@ function saveIntegrationSettings(input = {}) {
       .map((entry) => entry.trim().toLowerCase())
       .filter(Boolean)
       .join(",") || "gojek,grab",
+    biteshipTestDispatchEnabled: input.biteshipTestDispatchEnabled === true,
     xenditSecretKey: secretValue("xenditSecretKey"),
     xenditCallbackToken: secretValue("xenditCallbackToken"),
     xenditEnvironment: String(input.xenditEnvironment || "test") === "live"
@@ -1674,6 +1680,7 @@ function saveIntegrationSettings(input = {}) {
       GOOGLE_MAPS_API_KEY: nextSettings.googleMapsApiKey,
       BITESHIP_API_KEY: nextSettings.biteshipApiKey,
       BITESHIP_COURIERS: nextSettings.biteshipCouriers,
+      BITESHIP_TEST_DISPATCH_ENABLED: nextSettings.biteshipTestDispatchEnabled ? "true" : "false",
       XENDIT_SECRET_KEY: nextSettings.xenditSecretKey,
       XENDIT_CALLBACK_TOKEN: nextSettings.xenditCallbackToken,
       XENDIT_ENVIRONMENT: nextSettings.xenditEnvironment,
@@ -1702,6 +1709,7 @@ function saveIntegrationSettings(input = {}) {
   process.env.GOOGLE_MAPS_API_KEY = nextSettings.googleMapsApiKey;
   process.env.BITESHIP_API_KEY = nextSettings.biteshipApiKey;
   process.env.BITESHIP_COURIERS = nextSettings.biteshipCouriers;
+  process.env.BITESHIP_TEST_DISPATCH_ENABLED = nextSettings.biteshipTestDispatchEnabled ? "true" : "false";
   process.env.XENDIT_SECRET_KEY = nextSettings.xenditSecretKey;
   process.env.XENDIT_CALLBACK_TOKEN = nextSettings.xenditCallbackToken;
   process.env.XENDIT_ENVIRONMENT = nextSettings.xenditEnvironment;
@@ -3236,8 +3244,10 @@ async function createBiteshipShipment(order) {
 }
 
 async function maybeCreateBiteshipShipment(order) {
+  const integrationConfig = getIntegrationConfig();
+  const testDispatchAllowed = order.mode === "test" && integrationConfig.biteshipTestDispatchEnabled;
   if (
-    order.mode !== "live" ||
+    (order.mode !== "live" && !testDispatchAllowed) ||
     order.status !== "preparing" ||
     order.fulfillment?.type !== "delivery" ||
     !order.fulfillment?.approval?.approvedAt ||
@@ -3328,7 +3338,7 @@ function findOrderByBiteshipWebhook(body = {}) {
   if (!identifiers.size) {
     return null;
   }
-  return stores.live.orders.find((entry) => (
+  return Object.values(stores).flatMap((storeState) => storeState.orders).find((entry) => (
     identifiers.has(entry.id) ||
     identifiers.has(entry.fulfillment?.shipment?.orderId)
   )) || null;
@@ -5224,7 +5234,7 @@ function handleApi(requestUrl, request, response) {
           adminWhatsappResult,
           body
         });
-        saveOrders(ordersLivePath, stores.live.orders);
+        saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);
       })
       .catch((error) => {
         recordBiteshipWebhookLog({
