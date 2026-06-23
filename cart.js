@@ -478,7 +478,6 @@ function bankLogoMarkup(bank) {
   const code = String(bank?.code || "").toUpperCase();
   const label = bank?.label || code;
   const logoPaths = {
-    BCA: "/assets/banks/bca.svg",
     BNI: "/assets/banks/bni.svg",
     BRI: "/assets/banks/bri.svg",
     MANDIRI: "/assets/banks/mandiri.svg",
@@ -494,9 +493,8 @@ function bankLogoMarkup(bank) {
 
 function bankOptionsMarkup(order) {
   const banks = Array.isArray(order.payment?.bankOptions) && order.payment.bankOptions.length
-    ? order.payment.bankOptions
+    ? order.payment.bankOptions.filter((bank) => String(bank?.code || "").toUpperCase() !== "BCA")
     : [
-      { code: "BCA", label: "BCA" },
       { code: "BNI", label: "BNI" },
       { code: "BRI", label: "BRI" },
       { code: "MANDIRI", label: "Mandiri" },

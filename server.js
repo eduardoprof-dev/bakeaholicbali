@@ -130,7 +130,7 @@ const PAYMENT_METHODS = [
     kind: "va",
     logoText: "BANK",
     description: "Mandiri, Permata, BNI, CIMB Niaga, BRI",
-    xenditChannelCode: "BCA"
+    xenditChannelCode: "BNI"
   },
   {
     id: "xendit-card",
@@ -142,7 +142,6 @@ const PAYMENT_METHODS = [
   }
 ];
 const BANK_TRANSFER_CHANNELS = [
-  { code: "BCA", label: "BCA" },
   { code: "BNI", label: "BNI" },
   { code: "BRI", label: "BRI" },
   { code: "MANDIRI", label: "Mandiri" },
