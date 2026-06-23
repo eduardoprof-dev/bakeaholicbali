@@ -5303,7 +5303,7 @@ body.cart-is-empty .checkout-shell .cart-layout {
   .brand-story-points span {
     min-height: 30px;
     gap: 4px;
-    padding: 0;
+    padding: 8mm 0 0;
     font-size: 0.65rem;
   }
 
