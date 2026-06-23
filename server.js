@@ -2127,11 +2127,11 @@ function biteshipAuthorizationValue(apiKey = "") {
 }
 
 function hasValidBiteshipWebhookHeader(request) {
-  const { biteshipWebhookHeaderName, biteshipWebhookHeaderSecret } = getIntegrationConfig();
+  const { biteshipApiKey, biteshipWebhookHeaderName, biteshipWebhookHeaderSecret } = getIntegrationConfig();
   const headerName = String(biteshipWebhookHeaderName || "").trim().toLowerCase();
   const expectedSecret = String(biteshipWebhookHeaderSecret || "").trim();
   if (!headerName || !expectedSecret) {
-    return true;
+    return !String(biteshipApiKey || "").trim();
   }
   return timingSafeEqualString(request.headers[headerName], expectedSecret);
 }
@@ -5974,7 +5974,11 @@ function handleApi(requestUrl, request, response) {
         const { xenditCallbackToken } = getIntegrationConfig();
         const expectedToken = String(xenditCallbackToken || "").trim();
         const callbackToken = String(request.headers["x-callback-token"] || "").trim();
-        if (expectedToken && !timingSafeEqualString(callbackToken, expectedToken)) {
+        if (!expectedToken) {
+          sendJson(response, 503, { error: "Xendit callback token is not configured" });
+          return;
+        }
+        if (!timingSafeEqualString(callbackToken, expectedToken)) {
           sendJson(response, 403, {
             error: "Invalid Xendit callback token",
             received: tokenDebug(callbackToken),
