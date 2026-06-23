@@ -5343,6 +5343,7 @@ function handleApi(requestUrl, request, response) {
         const quotedPrice = Number(order.pricing?.deliveryFee || 0);
         const previousActualPrice = Number(order.fulfillment?.shipment?.actualPrice);
         const priceChanged = actualPrice != null && actualPrice !== quotedPrice;
+        const merchantAbsorbedAmount = actualPrice == null ? 0 : Math.max(0, actualPrice - quotedPrice);
         order.fulfillment.shipment = {
           ...order.fulfillment.shipment,
           status: shipmentStatus,
@@ -5351,6 +5352,8 @@ function handleApi(requestUrl, request, response) {
           priceDelta: actualPrice == null ? order.fulfillment.shipment.priceDelta : actualPrice - quotedPrice,
           priceChangedAt: priceChanged && previousActualPrice !== actualPrice ? new Date().toISOString() : order.fulfillment.shipment.priceChangedAt || "",
           requiresPriceReview: priceChanged || Boolean(order.fulfillment.shipment.requiresPriceReview),
+          priceAdjustmentPolicy: "merchant_absorbs",
+          merchantAbsorbedAmount,
           waybillId:
             payload.waybill_id ||
             payload.courier_waybill_id ||
@@ -5408,7 +5411,7 @@ function handleApi(requestUrl, request, response) {
           order,
           previousShipmentStatus === shipmentStatus && previousActualPrice === actualPrice ? "" : shipmentNotificationKey,
           priceChanged
-            ? `Biteship price changed: quoted Rp ${quotedPrice.toLocaleString("id-ID")}, actual Rp ${actualPrice.toLocaleString("id-ID")}`
+            ? `Biteship price changed: quoted Rp ${quotedPrice.toLocaleString("id-ID")}, actual Rp ${actualPrice.toLocaleString("id-ID")}. Customer remains charged the quoted delivery fee.`
             : `Biteship ${shipmentStatus || "delivery update"}`
         );
         recordBiteshipWebhookLog({
@@ -5424,6 +5427,7 @@ function handleApi(requestUrl, request, response) {
           quotedPrice,
           actualPrice,
           priceChanged,
+          merchantAbsorbedAmount,
           whatsappResult,
           shippingWhatsappResult,
           adminShippingWhatsappResult,
