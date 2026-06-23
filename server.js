@@ -623,6 +623,16 @@ function humanizeOrderStatus(order) {
       return "Payment received - awaiting staff approval";
     case "preparing":
       return "Preparing order";
+    case "on_delivery":
+      return "Order is on delivery";
+    case "delivered":
+      return "Order delivered";
+    case "delivery_issue":
+      return "Delivery needs attention";
+    case "returned":
+      return "Delivery returned";
+    case "delivery_failed":
+      return "Delivery failed";
     case "cancelled":
       return "Order cancelled";
     case "expired":
@@ -1766,7 +1776,7 @@ function loadOrders(targetPath) {
 
   try {
     const parsed = JSON.parse(fs.readFileSync(targetPath, "utf8"));
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.map(stripPersistedPaymentSecrets) : [];
   } catch (_error) {
     return [];
   }
@@ -1774,7 +1784,21 @@ function loadOrders(targetPath) {
 
 function saveOrders(targetPath, orders) {
   ensureParentDir(targetPath);
-  fs.writeFileSync(targetPath, `${JSON.stringify(orders, null, 2)}\n`, "utf8");
+  fs.writeFileSync(targetPath, `${JSON.stringify(orders.map(stripPersistedPaymentSecrets), null, 2)}\n`, "utf8");
+}
+
+function stripPersistedPaymentSecrets(order = {}) {
+  const stripPayment = (payment = {}) => {
+    const { componentsSdkKey, ...safePayment } = payment || {};
+    return safePayment;
+  };
+  return {
+    ...order,
+    payment: stripPayment(order.payment),
+    paymentOptions: Object.fromEntries(
+      Object.entries(order.paymentOptions || {}).map(([key, payment]) => [key, stripPayment(payment)])
+    )
+  };
 }
 
 function loadSessionCarts(targetPath) {
@@ -1937,6 +1961,7 @@ const stores = {
 };
 const pendingAdminActionTimers = new Map();
 const pendingPaymentTimers = new Map();
+const xenditComponentsSdkKeys = new Map();
 let paymentReminderSweepInProgress = false;
 
 const contentTypes = {
@@ -2098,7 +2123,7 @@ function timingSafeEqualString(left, right) {
 
 function biteshipAuthorizationValue(apiKey = "") {
   const value = String(apiKey || "").trim();
-  return /^Bearer\s+/i.test(value) ? value : `Bearer ${value}`;
+  return value.replace(/^Bearer\s+/i, "");
 }
 
 function hasValidBiteshipWebhookHeader(request) {
@@ -3211,6 +3236,7 @@ async function createBiteshipShipment(order) {
     origin_contact_phone: storePhone,
     origin_contact_email: store.orderEmail || undefined,
     origin_address: store.kitchenAddress,
+    origin_note: store.kitchenNotes || undefined,
     origin_coordinate: {
       latitude: store.kitchenLat,
       longitude: store.kitchenLng
@@ -3219,6 +3245,7 @@ async function createBiteshipShipment(order) {
     destination_contact_phone: customerPhone,
     destination_contact_email: order.customer?.email || undefined,
     destination_address: order.customer?.address || order.fulfillment?.address,
+    destination_note: order.fulfillment?.deliveryNotes || undefined,
     destination_coordinate: {
       latitude: destination.lat,
       longitude: destination.lng
@@ -3381,7 +3408,7 @@ function findOrderByBiteshipWebhook(body = {}) {
 
 function shipmentStatusToOrderStatus(status = "") {
   const normalized = String(status || "").toLowerCase();
-  if (normalized === "confirmed") {
+  if (["confirmed", "scheduled"].includes(normalized)) {
     return "preparing";
   }
   if (["allocated", "picking_up", "picking up", "picked", "picked_up", "picked up", "successfully_pickup", "successfully pickup", "successfully_picked_up", "successfully picked up"].includes(normalized)) {
@@ -3393,10 +3420,38 @@ function shipmentStatusToOrderStatus(status = "") {
   if (["delivered", "finish", "completed"].includes(normalized)) {
     return "delivered";
   }
-  if (["cancelled", "canceled", "rejected"].includes(normalized)) {
+  if (["cancelled", "canceled"].includes(normalized)) {
     return "cancelled";
   }
+  if (["on_hold", "on hold", "courier_not_found", "courier not found", "rejected"].includes(normalized)) {
+    return "delivery_issue";
+  }
+  if (["return_in_transit", "return in transit", "returned"].includes(normalized)) {
+    return "returned";
+  }
+  if (normalized === "disposed") {
+    return "delivery_failed";
+  }
   return "";
+}
+
+function biteshipActualPrice(payload = {}, body = {}) {
+  const candidates = [
+    payload.price,
+    payload.order_price,
+    payload.total_price,
+    payload.final_price,
+    payload.courier?.price,
+    payload.courier?.price?.value,
+    body.price,
+    body.order_price,
+    body.total_price,
+    body.final_price,
+    body.courier?.price,
+    body.courier?.price?.value
+  ];
+  const price = candidates.find((value) => Number.isFinite(Number(value)) && Number(value) >= 0);
+  return price == null ? null : Number(price);
 }
 
 function computeDiscount(subtotal, deliveryFee, voucherCode, fulfillmentType) {
@@ -4151,16 +4206,24 @@ function applyXenditPaymentSessionToPayment(payment, session) {
   if (!session) {
     return payment;
   }
+  const paymentSessionId = session.payment_session_id || session.id || "";
+  const componentsSdkKey = String(session.components_sdk_key || "").trim();
+  if (paymentSessionId && componentsSdkKey) {
+    xenditComponentsSdkKeys.set(paymentSessionId, {
+      value: componentsSdkKey,
+      expiresAt: String(session.expires_at || "")
+    });
+  }
+  const { componentsSdkKey: _storedSdkKey, ...safePayment } = payment || {};
   return {
-    ...payment,
+    ...safePayment,
     provider: "xendit_components",
     status: String(session.status || "ACTIVE").toLowerCase(),
-    transactionId: session.payment_session_id || session.id || "",
-    paymentSessionId: session.payment_session_id || session.id || "",
+    transactionId: paymentSessionId,
+    paymentSessionId,
     paymentRequestId: session.payment_request_id || payment.paymentRequestId || "",
     paymentId: session.payment_id || payment.paymentId || "",
     externalId: session.reference_id || payment.externalId || "",
-    componentsSdkKey: session.components_sdk_key || payment.componentsSdkKey || "",
     invoiceUrl: "",
     paymentUrl: session.payment_link_url || "",
     rawStatus: session.status || "",
@@ -4546,6 +4609,23 @@ function paymentCacheKey(methodId, bankCode = "") {
   return bank ? `${method}:${bank}` : method;
 }
 
+function xenditComponentsSdkKeyForPayment(payment = {}) {
+  const sessionId = String(payment.paymentSessionId || payment.transactionId || "").trim();
+  if (!sessionId) {
+    return "";
+  }
+  const cached = xenditComponentsSdkKeys.get(sessionId);
+  if (!cached) {
+    return "";
+  }
+  const expiresAt = Date.parse(cached.expiresAt || "");
+  if (expiresAt && expiresAt <= Date.now()) {
+    xenditComponentsSdkKeys.delete(sessionId);
+    return "";
+  }
+  return cached.value;
+}
+
 function isOrderPaymentExpired(order) {
   const expiresAt = Date.parse(order?.expiresAt || "");
   return Boolean(expiresAt && expiresAt <= Date.now());
@@ -4571,10 +4651,19 @@ function paymentHasPresentValue(payment) {
   return true;
 }
 
-function enrichOrder(order) {
+function enrichOrder(order, options = {}) {
   if (!order) return null;
+  const payment = { ...(order.payment || {}) };
+  delete payment.componentsSdkKey;
+  if (options.includeComponentsSdkKey && payment.provider === "xendit_components") {
+    const componentsSdkKey = xenditComponentsSdkKeyForPayment(payment);
+    if (componentsSdkKey) {
+      payment.componentsSdkKey = componentsSdkKey;
+    }
+  }
   return {
     ...order,
+    payment,
     documentUrl: getPublicDocumentUrl(order),
     lineItems: order.items
       .map(({ itemId, quantity }) => {
@@ -4589,6 +4678,10 @@ function enrichOrder(order) {
       })
       .filter(Boolean)
   };
+}
+
+function enrichCheckoutOrder(order) {
+  return enrichOrder(order, { includeComponentsSdkKey: true });
 }
 
 function buildOrderDocument(order) {
@@ -4854,7 +4947,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
     cartState.cart.clear();
     clearPaidOrderCart(order);
   }
-  return enrichOrder(order);
+  return enrichCheckoutOrder(order);
 }
 
 async function createOrderForSession(mode, payload, session, cartOverride = null, cartSessionId = "") {
@@ -4902,11 +4995,11 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
   }
 
   if (order.status !== "awaiting_payment") {
-    return enrichOrder(order);
+    return enrichCheckoutOrder(order);
   }
 
   if (order.payment?.provider === "xendit_pending_bank") {
-    return enrichOrder(order);
+    return enrichCheckoutOrder(order);
   }
 
   const previousStatus = order.status;
@@ -4955,7 +5048,7 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
   }
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
-  return enrichOrder(order);
+  return enrichCheckoutOrder(order);
 }
 
 async function updateOrderPaymentStatusForSession(mode, orderId, session, options = {}) {
@@ -5002,7 +5095,7 @@ async function selectOrderBankTransferChannel(mode, orderId, bankCode, session, 
   order.whatsappUrl = buildWhatsappUrl(order);
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
-  return enrichOrder(order);
+  return enrichCheckoutOrder(order);
 }
 
 async function ensureOrderHostedPayment(mode, orderId, session, token = "") {
@@ -5014,22 +5107,22 @@ async function ensureOrderHostedPayment(mode, orderId, session, token = "") {
   }
 
   if (order.status !== "awaiting_payment") {
-    return enrichOrder(order);
+    return enrichCheckoutOrder(order);
   }
 
   if (order.payment?.provider === "xendit" && order.payment?.paymentUrl) {
-    return enrichOrder(order);
+    return enrichCheckoutOrder(order);
   }
 
   if (order.payment?.provider !== "xendit_pending_bank" && order.payment?.kind !== "va") {
-    return enrichOrder(order);
+    return enrichCheckoutOrder(order);
   }
 
   const xenditInvoice = await createXenditInvoice(enrichOrder(order));
   order.payment = applyXenditInvoiceToPayment(order.payment, xenditInvoice);
   order.whatsappUrl = buildWhatsappUrl(order);
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
-  return enrichOrder(order);
+  return enrichCheckoutOrder(order);
 }
 
 async function updateOrderPaymentMethod(mode, orderId, methodId, session, token = "", bankCode = "") {
@@ -5047,11 +5140,12 @@ async function updateOrderPaymentMethod(mode, orderId, methodId, session, token 
   const normalizedBankCode = String(bankCode || "").toUpperCase();
   const cacheKey = paymentCacheKey(methodId, normalizedBankCode);
   const cachedPayment = order.paymentOptions?.[cacheKey];
-  if (cachedPayment && paymentHasPresentValue(cachedPayment) && !isOrderPaymentExpired(order)) {
+  const cachedCardSessionAvailable = cachedPayment?.kind !== "card" || Boolean(xenditComponentsSdkKeyForPayment(cachedPayment));
+  if (cachedPayment && cachedCardSessionAvailable && paymentHasPresentValue(cachedPayment) && !isOrderPaymentExpired(order)) {
     order.payment = cachedPayment;
     order.whatsappUrl = buildWhatsappUrl(order);
     saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
-    return enrichOrder(order);
+    return enrichCheckoutOrder(order);
   }
 
   const nextPayment = buildPaymentDetails(order.id, methodId, order.pricing.total);
@@ -5083,7 +5177,7 @@ async function updateOrderPaymentMethod(mode, orderId, methodId, session, token 
 
   order.whatsappUrl = buildWhatsappUrl(order);
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
-  return enrichOrder(order);
+  return enrichCheckoutOrder(order);
 }
 
 async function cancelOrder(mode, orderId) {
@@ -5245,9 +5339,18 @@ function handleApi(requestUrl, request, response) {
         const previousShipmentStatus = order.fulfillment?.shipment?.status || "";
         const shipmentStatus = payload.status || body.status || order.fulfillment.shipment.status || "";
         const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
+        const actualPrice = biteshipActualPrice(payload, body);
+        const quotedPrice = Number(order.pricing?.deliveryFee || 0);
+        const previousActualPrice = Number(order.fulfillment?.shipment?.actualPrice);
+        const priceChanged = actualPrice != null && actualPrice !== quotedPrice;
         order.fulfillment.shipment = {
           ...order.fulfillment.shipment,
           status: shipmentStatus,
+          actualPrice: actualPrice == null ? order.fulfillment.shipment.actualPrice : actualPrice,
+          quotedPrice,
+          priceDelta: actualPrice == null ? order.fulfillment.shipment.priceDelta : actualPrice - quotedPrice,
+          priceChangedAt: priceChanged && previousActualPrice !== actualPrice ? new Date().toISOString() : order.fulfillment.shipment.priceChangedAt || "",
+          requiresPriceReview: priceChanged || Boolean(order.fulfillment.shipment.requiresPriceReview),
           waybillId:
             payload.waybill_id ||
             payload.courier_waybill_id ||
@@ -5303,8 +5406,10 @@ function handleApi(requestUrl, request, response) {
         const adminShippingWhatsappResult = await maybeSendWhatsappShippingUpdate(order, `${shipmentNotificationKey}:admin`, { admin: true });
         const adminWhatsappResult = await maybeSendWhatsappAdminAlert(
           order,
-          previousShipmentStatus === shipmentStatus ? "" : shipmentNotificationKey,
-          `Biteship ${shipmentStatus || "delivery update"}`
+          previousShipmentStatus === shipmentStatus && previousActualPrice === actualPrice ? "" : shipmentNotificationKey,
+          priceChanged
+            ? `Biteship price changed: quoted Rp ${quotedPrice.toLocaleString("id-ID")}, actual Rp ${actualPrice.toLocaleString("id-ID")}`
+            : `Biteship ${shipmentStatus || "delivery update"}`
         );
         recordBiteshipWebhookLog({
           matched: true,
@@ -5316,6 +5421,9 @@ function handleApi(requestUrl, request, response) {
           nextOrderStatus: order.status,
           previousShipmentStatus,
           shipmentStatus,
+          quotedPrice,
+          actualPrice,
+          priceChanged,
           whatsappResult,
           shippingWhatsappResult,
           adminShippingWhatsappResult,
@@ -5439,7 +5547,7 @@ function handleApi(requestUrl, request, response) {
     const orderId = String(requestUrl.searchParams.get("id") || "").trim();
     const token = String(requestUrl.searchParams.get("token") || "").trim();
     const session = currentCustomerSession(request);
-    const order = enrichOrder(findOrder(mode, orderId));
+    const order = enrichCheckoutOrder(findOrder(mode, orderId));
     const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
     const customerOwns = session && order && customerOwnsOrder(session, order);
     if (!order || (!tokenMatches && !customerOwns)) {

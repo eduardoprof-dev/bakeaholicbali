@@ -168,7 +168,6 @@ function bankOptionsMarkup(payment) {
   const banks = Array.isArray(payment.bankOptions) && payment.bankOptions.length
     ? payment.bankOptions
     : [
-      { code: "BCA", label: "BCA" },
       { code: "BNI", label: "BNI" },
       { code: "BRI", label: "BRI" },
       { code: "MANDIRI", label: "Mandiri" },
@@ -362,13 +361,32 @@ function renderPaid() {
   document.title = `Order ${state.order.id} Paid`;
   const shipment = state.order.fulfillment?.shipment || {};
   const trackingUrl = shipment.trackingLink || "";
+  const orderStatus = state.order.status;
+  const deliveryProblem = ["delivery_issue", "returned", "delivery_failed"].includes(orderStatus);
+  const statusHeading = deliveryProblem
+    ? (orderStatus === "returned" ? "Delivery returned" : "Delivery needs attention")
+    : orderStatus === "delivered"
+      ? "Order delivered"
+      : orderStatus === "on_delivery"
+        ? "Order is on delivery"
+        : orderStatus === "preparing"
+          ? "Order is being prepared"
+          : "Payment received";
+  const statusCopy = deliveryProblem
+    ? "Our team has been notified. Please contact us if you need help with this delivery."
+    : orderStatus === "delivered"
+      ? "Your order has been delivered. Thank you for ordering from Bakeaholic."
+      : orderStatus === "on_delivery"
+        ? "Your order is with the courier. Use tracking below for the latest update."
+        : orderStatus === "preparing"
+          ? "Your order is being prepared and delivery has been requested."
+          : "Your order is paid. We will prepare it and update the delivery status here.";
   const documentUrl = state.order.documentUrl || `/invoice.html?order=${encodeURIComponent(state.order.id)}${orderToken ? `&token=${encodeURIComponent(orderToken)}` : ""}${appMode === "test" ? "&mode=test" : ""}`;
   const shipmentMessage = state.order.fulfillment?.shipment?.orderId
     ? `<p class="success-note">Delivery order sent to Biteship. ID: ${escapeHtml(shipment.orderId)}</p>`
     : state.order.fulfillment?.shipmentError
       ? `<p class="payment-alert">${escapeHtml(state.order.fulfillment.shipmentError)}</p>`
       : "";
-  const isPreparing = state.order.status === "preparing";
   try {
     localStorage.removeItem(latestOrderKey);
     localStorage.removeItem(checkoutLatestOrderKey);
@@ -384,11 +402,11 @@ function renderPaid() {
       </div>
     </section>
 
-    <section class="paid-status-banner">
-      <span class="paid-status-icon" aria-hidden="true">✓</span>
+    <section class="paid-status-banner${deliveryProblem ? " delivery-problem" : ""}">
+      <span class="paid-status-icon" aria-hidden="true">${deliveryProblem ? "!" : "✓"}</span>
       <div>
-        <h1>${isPreparing ? "Order is being prepared" : "Payment received"}</h1>
-        <p>${isPreparing ? "Your order is being prepared and delivery has been requested." : "Your order is paid. We will prepare it and update the delivery status here."}</p>
+        <h1>${statusHeading}</h1>
+        <p>${statusCopy}</p>
       </div>
     </section>
 
@@ -741,7 +759,7 @@ function render() {
     return;
   }
 
-  if (state.order.status === "paid" || state.order.status === "preparing") {
+  if (["paid", "preparing", "on_delivery", "delivered", "complete", "delivery_issue", "returned", "delivery_failed"].includes(state.order.status)) {
     renderPaid();
     return;
   }

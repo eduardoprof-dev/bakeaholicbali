@@ -41,6 +41,9 @@ function statusMarkup(status) {
     shipped: "On delivery",
     delivered: "Delivered",
     complete: "Complete",
+    delivery_issue: "Delivery needs attention",
+    returned: "Returned to sender",
+    delivery_failed: "Delivery failed",
     awaiting_payment: "Awaiting payment",
     pending_payment: "Pending payment",
     cancelled: "Cancelled",
@@ -48,11 +51,11 @@ function statusMarkup(status) {
     payment_failed: "Payment failed"
   };
   const label = statusLabels[normalized] || normalized.replaceAll("_", " ");
-  const modifier = normalized === "paid" || normalized === "preparing" || normalized === "delivered" || normalized === "complete"
+  const modifier = normalized === "paid" || normalized === "preparing" || normalized === "on_delivery" || normalized === "delivered" || normalized === "complete"
     ? " status-paid"
     : normalized === "awaiting_payment" || normalized === "pending_payment"
       ? " status-pending"
-    : "";
+      : " status-negative";
   return `<span class="status-pill${modifier}">${accountCommon.escapeHtml(label)}</span>`;
 }
 

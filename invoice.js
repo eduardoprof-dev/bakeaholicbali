@@ -107,8 +107,8 @@ function shipmentDetails(order) {
 
 function invoiceStatusClass(status = "") {
   const normalized = String(status || "").toLowerCase();
-  if (normalized === "paid" || normalized === "preparing") return "invoice-status-paid";
-  if (["expired", "cancelled", "payment_failed"].includes(normalized)) return "invoice-status-negative";
+  if (["paid", "preparing", "on_delivery", "delivered", "complete"].includes(normalized)) return "invoice-status-paid";
+  if (["expired", "cancelled", "payment_failed", "delivery_issue", "returned", "delivery_failed"].includes(normalized)) return "invoice-status-negative";
   return "invoice-status-pending";
 }
 

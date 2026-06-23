@@ -2114,6 +2114,11 @@ body::before {
   color: #b96a00;
 }
 
+.status-pill.status-negative {
+  background: #fbe9e7;
+  color: #c0392b;
+}
+
 .button-link {
   text-decoration: none;
 }
@@ -4762,6 +4767,16 @@ body.cart-is-empty .checkout-shell .cart-layout {
   color: #16803b;
   font-weight: 900;
   font-size: 1.25rem;
+}
+
+.paid-status-banner.delivery-problem {
+  background: #fff2f0;
+  border-color: rgba(192, 57, 43, 0.28);
+}
+
+.paid-status-banner.delivery-problem .paid-status-icon {
+  background: #fde2df;
+  color: #c0392b;
 }
 
 .paid-order-layout {
