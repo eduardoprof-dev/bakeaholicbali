@@ -252,11 +252,14 @@
               <label for="biteshipCouriersInput">Biteship couriers</label>
               <input id="biteshipCouriersInput" type="text" placeholder="gojek,grab" />
             </div>
-            <label class="admin-toggle-field admin-test-dispatch-toggle">
-              <input id="biteshipTestDispatchEnabledInput" type="checkbox" />
-              <span>Allow real Biteship delivery for test-mode orders</span>
-              <small>Off by default. When enabled, an approved test order creates a real Biteship delivery.</small>
-            </label>
+            <div class="admin-field">
+              <label for="biteshipWebhookHeaderNameInput">Biteship webhook header name</label>
+              <input id="biteshipWebhookHeaderNameInput" type="text" placeholder="x-biteship-webhook-key" autocomplete="off" />
+            </div>
+            <div class="admin-field">
+              <label for="biteshipWebhookHeaderSecretInput">Biteship webhook header secret</label>
+              <input id="biteshipWebhookHeaderSecretInput" type="password" autocomplete="off" />
+            </div>
             <div class="admin-field">
               <label for="xenditEnvironmentInput">Xendit environment</label>
               <select id="xenditEnvironmentInput">

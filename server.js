@@ -210,7 +210,8 @@ function writeEnvMap(targetPath, envMap) {
     "GOOGLE_MAPS_API_KEY",
     "BITESHIP_API_KEY",
     "BITESHIP_COURIERS",
-    "BITESHIP_TEST_DISPATCH_ENABLED",
+    "BITESHIP_WEBHOOK_HEADER_NAME",
+    "BITESHIP_WEBHOOK_HEADER_SECRET",
     "XENDIT_SECRET_KEY",
     "XENDIT_CALLBACK_TOKEN",
     "XENDIT_ENVIRONMENT",
@@ -274,7 +275,8 @@ function getEnvironmentIntegrationConfig() {
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || "",
     biteshipApiKey: process.env.BITESHIP_API_KEY || "",
     biteshipCouriers: process.env.BITESHIP_COURIERS || "gojek,grab",
-    biteshipTestDispatchEnabled: process.env.BITESHIP_TEST_DISPATCH_ENABLED === "true",
+    biteshipWebhookHeaderName: process.env.BITESHIP_WEBHOOK_HEADER_NAME || "",
+    biteshipWebhookHeaderSecret: process.env.BITESHIP_WEBHOOK_HEADER_SECRET || "",
     xenditSecretKey: process.env.XENDIT_SECRET_KEY || "",
     xenditCallbackToken: process.env.XENDIT_CALLBACK_TOKEN || "",
     xenditEnvironment: process.env.XENDIT_ENVIRONMENT === "live" ? "live" : "test",
@@ -1603,9 +1605,8 @@ function readIntegrationSettings() {
     googleMapsApiKey: configuredValue(savedSettings.googleMapsApiKey, envMap.GOOGLE_MAPS_API_KEY, config.googleMapsApiKey),
     biteshipApiKey: configuredValue(savedSettings.biteshipApiKey, envMap.BITESHIP_API_KEY, config.biteshipApiKey),
     biteshipCouriers: configuredValue(savedSettings.biteshipCouriers, envMap.BITESHIP_COURIERS, config.biteshipCouriers) || "gojek,grab",
-    biteshipTestDispatchEnabled: typeof savedSettings.biteshipTestDispatchEnabled === "boolean"
-      ? savedSettings.biteshipTestDispatchEnabled
-      : String(envMap.BITESHIP_TEST_DISPATCH_ENABLED || config.biteshipTestDispatchEnabled || "").toLowerCase() === "true",
+    biteshipWebhookHeaderName: configuredValue(savedSettings.biteshipWebhookHeaderName, envMap.BITESHIP_WEBHOOK_HEADER_NAME, config.biteshipWebhookHeaderName),
+    biteshipWebhookHeaderSecret: configuredValue(savedSettings.biteshipWebhookHeaderSecret, envMap.BITESHIP_WEBHOOK_HEADER_SECRET, config.biteshipWebhookHeaderSecret),
     xenditSecretKey: configuredValue(savedSettings.xenditSecretKey, envMap.XENDIT_SECRET_KEY, config.xenditSecretKey),
     xenditCallbackToken: configuredValue(savedSettings.xenditCallbackToken, envMap.XENDIT_CALLBACK_TOKEN, config.xenditCallbackToken),
     xenditEnvironment: configuredValue(savedSettings.xenditEnvironment, envMap.XENDIT_ENVIRONMENT, config.xenditEnvironment) || "test",
@@ -1646,7 +1647,8 @@ function saveIntegrationSettings(input = {}) {
       .map((entry) => entry.trim().toLowerCase())
       .filter(Boolean)
       .join(",") || "gojek,grab",
-    biteshipTestDispatchEnabled: input.biteshipTestDispatchEnabled === true,
+    biteshipWebhookHeaderName: String(input.biteshipWebhookHeaderName || "").trim().toLowerCase(),
+    biteshipWebhookHeaderSecret: secretValue("biteshipWebhookHeaderSecret"),
     xenditSecretKey: secretValue("xenditSecretKey"),
     xenditCallbackToken: secretValue("xenditCallbackToken"),
     xenditEnvironment: String(input.xenditEnvironment || "test") === "live"
@@ -1680,7 +1682,8 @@ function saveIntegrationSettings(input = {}) {
       GOOGLE_MAPS_API_KEY: nextSettings.googleMapsApiKey,
       BITESHIP_API_KEY: nextSettings.biteshipApiKey,
       BITESHIP_COURIERS: nextSettings.biteshipCouriers,
-      BITESHIP_TEST_DISPATCH_ENABLED: nextSettings.biteshipTestDispatchEnabled ? "true" : "false",
+      BITESHIP_WEBHOOK_HEADER_NAME: nextSettings.biteshipWebhookHeaderName,
+      BITESHIP_WEBHOOK_HEADER_SECRET: nextSettings.biteshipWebhookHeaderSecret,
       XENDIT_SECRET_KEY: nextSettings.xenditSecretKey,
       XENDIT_CALLBACK_TOKEN: nextSettings.xenditCallbackToken,
       XENDIT_ENVIRONMENT: nextSettings.xenditEnvironment,
@@ -1709,7 +1712,8 @@ function saveIntegrationSettings(input = {}) {
   process.env.GOOGLE_MAPS_API_KEY = nextSettings.googleMapsApiKey;
   process.env.BITESHIP_API_KEY = nextSettings.biteshipApiKey;
   process.env.BITESHIP_COURIERS = nextSettings.biteshipCouriers;
-  process.env.BITESHIP_TEST_DISPATCH_ENABLED = nextSettings.biteshipTestDispatchEnabled ? "true" : "false";
+  process.env.BITESHIP_WEBHOOK_HEADER_NAME = nextSettings.biteshipWebhookHeaderName;
+  process.env.BITESHIP_WEBHOOK_HEADER_SECRET = nextSettings.biteshipWebhookHeaderSecret;
   process.env.XENDIT_SECRET_KEY = nextSettings.xenditSecretKey;
   process.env.XENDIT_CALLBACK_TOKEN = nextSettings.xenditCallbackToken;
   process.env.XENDIT_ENVIRONMENT = nextSettings.xenditEnvironment;
@@ -2090,6 +2094,21 @@ function timingSafeEqualString(left, right) {
     return false;
   }
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function biteshipAuthorizationValue(apiKey = "") {
+  const value = String(apiKey || "").trim();
+  return /^Bearer\s+/i.test(value) ? value : `Bearer ${value}`;
+}
+
+function hasValidBiteshipWebhookHeader(request) {
+  const { biteshipWebhookHeaderName, biteshipWebhookHeaderSecret } = getIntegrationConfig();
+  const headerName = String(biteshipWebhookHeaderName || "").trim().toLowerCase();
+  const expectedSecret = String(biteshipWebhookHeaderSecret || "").trim();
+  if (!headerName || !expectedSecret) {
+    return true;
+  }
+  return timingSafeEqualString(request.headers[headerName], expectedSecret);
 }
 
 function tokenDebug(value = "") {
@@ -3087,7 +3106,7 @@ async function fetchBiteshipLiveQuote(storeState, destination) {
   const response = await fetch("https://api.biteship.com/v1/rates/couriers", {
     method: "POST",
     headers: {
-      Authorization: integrationConfig.biteshipApiKey,
+      Authorization: biteshipAuthorizationValue(integrationConfig.biteshipApiKey),
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
@@ -3187,8 +3206,10 @@ async function createBiteshipShipment(order) {
   const payload = {
     shipper_contact_name: store.name || "Bakeaholic Bali",
     shipper_contact_phone: storePhone,
+    shipper_contact_email: store.orderEmail || undefined,
     origin_contact_name: store.name || "Bakeaholic Bali",
     origin_contact_phone: storePhone,
+    origin_contact_email: store.orderEmail || undefined,
     origin_address: store.kitchenAddress,
     origin_coordinate: {
       latitude: store.kitchenLat,
@@ -3196,6 +3217,7 @@ async function createBiteshipShipment(order) {
     },
     destination_contact_name: order.customer?.name || "Bakeaholic customer",
     destination_contact_phone: customerPhone,
+    destination_contact_email: order.customer?.email || undefined,
     destination_address: order.customer?.address || order.fulfillment?.address,
     destination_coordinate: {
       latitude: destination.lat,
@@ -3216,7 +3238,7 @@ async function createBiteshipShipment(order) {
   const response = await fetch("https://api.biteship.com/v1/orders", {
     method: "POST",
     headers: {
-      Authorization: integrationConfig.biteshipApiKey,
+      Authorization: biteshipAuthorizationValue(integrationConfig.biteshipApiKey),
       "Content-Type": "application/json"
     },
     body: JSON.stringify(payload)
@@ -3225,6 +3247,22 @@ async function createBiteshipShipment(order) {
   const responseText = await response.text();
   const parsed = parseJsonSafely(responseText, {});
   if (!response.ok) {
+    if (parsed?.code === 40002060 && parsed?.details?.order_id) {
+      return {
+        provider: "biteship",
+        orderId: parsed.details.order_id,
+        status: "confirmed",
+        waybillId: parsed.details.waybill_id || "",
+        labelUrl: "",
+        invoiceUrl: "",
+        waybillUrl: "",
+        courier: null,
+        trackingLink: "",
+        createdAt: new Date().toISOString(),
+        recoveredFromDuplicateReference: true,
+        raw: parsed
+      };
+    }
     throw new Error(parsed?.error || parsed?.message || `Biteship order failed with status ${response.status}`);
   }
 
@@ -3244,10 +3282,7 @@ async function createBiteshipShipment(order) {
 }
 
 async function maybeCreateBiteshipShipment(order) {
-  const integrationConfig = getIntegrationConfig();
-  const testDispatchAllowed = order.mode === "test" && integrationConfig.biteshipTestDispatchEnabled;
   if (
-    (order.mode !== "live" && !testDispatchAllowed) ||
     order.status !== "preparing" ||
     order.fulfillment?.type !== "delivery" ||
     !order.fulfillment?.approval?.approvedAt ||
@@ -3346,7 +3381,10 @@ function findOrderByBiteshipWebhook(body = {}) {
 
 function shipmentStatusToOrderStatus(status = "") {
   const normalized = String(status || "").toLowerCase();
-  if (["confirmed", "allocated", "picking_up", "picking up", "picked", "picked_up", "picked up", "successfully_pickup", "successfully pickup", "successfully_picked_up", "successfully picked up"].includes(normalized)) {
+  if (normalized === "confirmed") {
+    return "preparing";
+  }
+  if (["allocated", "picking_up", "picking up", "picked", "picked_up", "picked up", "successfully_pickup", "successfully pickup", "successfully_picked_up", "successfully picked up"].includes(normalized)) {
     return "on_delivery";
   }
   if (["dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalized)) {
@@ -3846,6 +3884,11 @@ async function createPaymentForOrder(order) {
   return applyXenditPaymentRequestToPayment(order.payment, paymentRequest);
 }
 
+function xenditIdempotencyKey(order, scope = "payment") {
+  const paymentReference = order.payment?.externalId || `${order.id}-${scope}`;
+  return `bakeaholic-${scope}-${paymentReference}`.slice(0, 100);
+}
+
 async function createXenditPaymentRequest(order) {
   if (order.pricing.total <= 0) {
     return null;
@@ -3859,7 +3902,8 @@ async function createXenditPaymentRequest(order) {
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      Authorization: xenditAuthHeader()
+      Authorization: xenditAuthHeader(),
+      "Idempotency-key": xenditIdempotencyKey(order, "payment-request")
     },
     body: JSON.stringify(buildXenditPaymentRequestPayload(enrichOrder(order)))
   });
@@ -4316,17 +4360,7 @@ function applyXenditQrCodeStatusToOrder(order, qrCode = {}) {
     qr_string: qrCode.qr_string || order.payment?.qrCodeData || ""
   });
   const status = String(qrCode.status || qrCode.payment_status || "").toUpperCase();
-  const hasPaymentSignal = Boolean(
-    qrCode.payment_id
-    || qrCode.payment_amount
-    || qrCode.paid_amount
-    || qrCode.amount_paid
-    || qrCode.paid_at
-    || qrCode.business_id
-    || String(qrCode.event || "").toLowerCase().includes("payment")
-  );
-
-  if (status === "COMPLETED" || status === "PAID" || status === "SETTLED" || hasPaymentSignal) {
+  if (isSuccessfulXenditPaymentEvent(qrCode)) {
     order.status = "paid";
     order.payment.status = "paid";
     order.paidAt = order.paidAt || new Date().toISOString();
@@ -4342,17 +4376,67 @@ function applyXenditQrCodeStatusToOrder(order, qrCode = {}) {
   return order;
 }
 
+function isSuccessfulXenditPaymentEvent(payload = {}) {
+  const status = String(payload.status || payload.payment_status || "").toUpperCase();
+  const event = String(payload.event || "").toLowerCase();
+  return ["PAID", "SETTLED", "COMPLETED", "SUCCEEDED"].includes(status)
+    || ["payment.succeeded", "payment.capture", "payment_session.completed"].includes(event);
+}
+
+function xenditPaymentAmount(payload = {}) {
+  const candidates = [
+    payload.amount,
+    payload.paid_amount,
+    payload.payment_amount,
+    payload.amount_paid,
+    payload.capture_amount,
+    payload.charge_amount
+  ];
+  const amount = candidates.find((value) => Number.isFinite(Number(value)) && Number(value) >= 0);
+  return amount == null ? null : Number(amount);
+}
+
+function validateSuccessfulXenditPayment(order, payload = {}) {
+  if (!isSuccessfulXenditPaymentEvent(payload)) {
+    return { ok: true };
+  }
+  const currency = String(payload.currency || payload.payment_currency || "").trim().toUpperCase();
+  if (currency && currency !== "IDR") {
+    return { ok: false, reason: `Unexpected payment currency ${currency}` };
+  }
+  const receivedAmount = xenditPaymentAmount(payload);
+  const expectedAmount = Number(order.pricing?.total || 0);
+  if (receivedAmount == null) {
+    return { ok: false, reason: "Successful Xendit callback did not include a payment amount" };
+  }
+  if (receivedAmount !== expectedAmount) {
+    return { ok: false, reason: `Payment amount ${receivedAmount} does not match order total ${expectedAmount}` };
+  }
+  return { ok: true };
+}
+
+function hasProcessedXenditWebhook(order, webhookId = "") {
+  const id = String(webhookId || "").trim();
+  return Boolean(id && order.payment?.processedWebhookIds?.includes(id));
+}
+
+function rememberXenditWebhook(order, webhookId = "") {
+  const id = String(webhookId || "").trim();
+  if (!id) return;
+  const existing = Array.isArray(order.payment?.processedWebhookIds)
+    ? order.payment.processedWebhookIds
+    : [];
+  order.payment = {
+    ...(order.payment || {}),
+    processedWebhookIds: [...new Set([...existing, id])].slice(-50),
+    lastWebhookAt: new Date().toISOString()
+  };
+}
+
 function applyXenditVirtualAccountStatusToOrder(order, virtualAccount = {}) {
   order.payment = applyXenditVirtualAccountToPayment(order.payment, virtualAccount);
   const status = String(virtualAccount.status || "").toUpperCase();
-  const hasPaymentSignal = Boolean(
-    virtualAccount.payment_id
-    || virtualAccount.payment_amount
-    || virtualAccount.paid_amount
-    || virtualAccount.payment_detail
-  );
-
-  if (status === "COMPLETED" || status === "PAID" || status === "SETTLED" || hasPaymentSignal) {
+  if (isSuccessfulXenditPaymentEvent(virtualAccount)) {
     order.status = "paid";
     order.payment.status = "paid";
     order.paidAt = order.paidAt || new Date().toISOString();
@@ -5133,6 +5217,10 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && isBiteshipWebhookPath) {
+    if (!hasValidBiteshipWebhookHeader(request)) {
+      sendJson(response, 403, { error: "Invalid Biteship webhook header" });
+      return true;
+    }
     sendPlainOk(response);
     parseRawBody(request)
       .then(async (body) => {
@@ -5778,7 +5866,7 @@ function handleApi(requestUrl, request, response) {
         const { xenditCallbackToken } = getIntegrationConfig();
         const expectedToken = String(xenditCallbackToken || "").trim();
         const callbackToken = String(request.headers["x-callback-token"] || "").trim();
-        if (expectedToken && callbackToken !== expectedToken) {
+        if (expectedToken && !timingSafeEqualString(callbackToken, expectedToken)) {
           sendJson(response, 403, {
             error: "Invalid Xendit callback token",
             received: tokenDebug(callbackToken),
@@ -5810,18 +5898,39 @@ function handleApi(requestUrl, request, response) {
           return;
         }
 
+        const webhookId = String(request.headers["webhook-id"] || "").trim();
+        if (hasProcessedXenditWebhook(order, webhookId)) {
+          sendJson(response, 200, { ok: true, duplicate: true });
+          return;
+        }
+
+        const callbackPayload = paymentEvent || body;
+        const paymentValidation = validateSuccessfulXenditPayment(order, callbackPayload);
+        if (!paymentValidation.ok) {
+          order.payment = {
+            ...(order.payment || {}),
+            lastCallbackError: paymentValidation.reason,
+            lastWebhookAt: new Date().toISOString()
+          };
+          rememberXenditWebhook(order, webhookId);
+          saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);
+          sendJson(response, 200, { ok: true, ignored: true, reason: paymentValidation.reason });
+          return;
+        }
+
         const previousStatus = order.status;
         if (order.payment?.provider === "xendit_qr_code") {
-          applyXenditQrCodeStatusToOrder(order, paymentEvent || body);
+          applyXenditQrCodeStatusToOrder(order, callbackPayload);
         } else if (order.payment?.provider === "xendit_virtual_account") {
-          applyXenditVirtualAccountStatusToOrder(order, paymentEvent || body);
+          applyXenditVirtualAccountStatusToOrder(order, callbackPayload);
         } else if (order.payment?.provider === "xendit_components" || String(body.event || "").startsWith("payment_session.")) {
-          applyXenditPaymentSessionStatusToOrder(order, paymentEvent || body);
+          applyXenditPaymentSessionStatusToOrder(order, callbackPayload);
         } else if (paymentEvent || order.payment?.provider === "xendit_payments_api") {
-          applyXenditPaymentRequestStatusToOrder(order, paymentEvent || body);
+          applyXenditPaymentRequestStatusToOrder(order, callbackPayload);
         } else {
           applyXenditInvoiceStatusToOrder(order, body);
         }
+        rememberXenditWebhook(order, webhookId);
         if (order.status !== "awaiting_payment") {
           clearPaymentReminderTimers(order.mode || "live", order.id);
         }
