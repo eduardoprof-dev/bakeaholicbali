@@ -3,7 +3,8 @@ const appMode = params.get("mode") === "test" ? "test" : "live";
 
 const state = {
   catalog: null,
-  orders: []
+  orders: [],
+  vouchers: []
 };
 
 const formatRupiah = new Intl.NumberFormat("id-ID", {
@@ -25,6 +26,9 @@ const categoryList = document.getElementById("categoryList");
 const productList = document.getElementById("productList");
 const adminOrderList = document.getElementById("adminOrderList");
 const refreshOrdersButton = document.getElementById("refreshOrdersButton");
+const voucherList = document.getElementById("voucherList");
+const addVoucherButton = document.getElementById("addVoucherButton");
+const saveVouchersButton = document.getElementById("saveVouchersButton");
 const adminSectionSelect = document.getElementById("adminSectionSelect");
 const adminNavButtons = document.querySelectorAll("[data-admin-target]");
 const adminSections = document.querySelectorAll("[data-admin-section]");
@@ -689,12 +693,85 @@ function renderProducts() {
   });
 }
 
+function voucherTypeOptions(selectedType) {
+  const options = [
+    ["percent", "Percentage off products"],
+    ["product_fixed", "Fixed amount off products"],
+    ["delivery", "Free delivery"],
+    ["fixed", "Fixed amount off whole order"]
+  ];
+  return options.map(([value, label]) => (
+    `<option value="${value}" ${value === selectedType ? "selected" : ""}>${label}</option>`
+  )).join("");
+}
+
+function voucherExpiryInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 16);
+}
+
+function voucherMarkup(voucher, index) {
+  return `
+    <article class="voucher-editor-card" data-voucher-index="${index}">
+      <div class="product-editor-head">
+        <h3>${escapeHtml(voucher.code || "New discount")}</h3>
+        <button class="admin-button secondary" type="button" data-remove-voucher="${index}">Remove</button>
+      </div>
+      <div class="admin-grid three">
+        <div class="admin-field">
+          <label>Code</label>
+          <input class="admin-code-input" data-voucher-field="code" type="text" maxlength="32" value="${escapeHtml(voucher.code || "")}" />
+        </div>
+        <div class="admin-field">
+          <label>Label</label>
+          <input data-voucher-field="label" type="text" maxlength="90" value="${escapeHtml(voucher.label || "")}" />
+        </div>
+        <div class="admin-field">
+          <label>Discount type</label>
+          <select data-voucher-field="type">${voucherTypeOptions(voucher.type || "percent")}</select>
+        </div>
+        <div class="admin-field">
+          <label>Value</label>
+          <input data-voucher-field="value" type="number" min="0" step="1" value="${Number(voucher.value || 0)}" />
+        </div>
+        <div class="admin-field">
+          <label>Maximum discount</label>
+          <input data-voucher-field="maxDiscount" type="number" min="0" step="1" value="${Number(voucher.maxDiscount || 0)}" />
+        </div>
+        <div class="admin-field">
+          <label>Usage limit</label>
+          <input data-voucher-field="usageLimit" type="number" min="0" step="1" value="${Number(voucher.usageLimit || 0)}" />
+        </div>
+        <div class="admin-field">
+          <label>Expires at</label>
+          <input data-voucher-field="expiresAt" type="datetime-local" value="${voucherExpiryInput(voucher.expiresAt)}" />
+        </div>
+        <label class="admin-toggle-field">
+          <input data-voucher-field="active" type="checkbox" ${voucher.active !== false ? "checked" : ""} />
+          <span>Active</span>
+        </label>
+      </div>
+    </article>
+  `;
+}
+
+function renderVouchers() {
+  if (!voucherList) return;
+  if (!state.vouchers.length) {
+    voucherList.innerHTML = `<div class="empty-state"><strong>No discount codes yet.</strong><p>Add one when you are ready to run the delivery-fee-only payment test.</p></div>`;
+    return;
+  }
+  voucherList.innerHTML = state.vouchers.map(voucherMarkup).join("");
+}
+
 function renderAll() {
   renderStore();
   renderPromo();
   renderBrandStory();
   renderCategories();
   renderProducts();
+  renderVouchers();
 }
 
 function collectStore() {
@@ -823,6 +900,48 @@ async function saveIntegrations() {
   }
 }
 
+function collectVouchers() {
+  return [...voucherList.querySelectorAll("[data-voucher-index]")].map((card) => ({
+    code: card.querySelector('[data-voucher-field="code"]')?.value.trim().toUpperCase() || "",
+    label: card.querySelector('[data-voucher-field="label"]')?.value.trim() || "",
+    type: card.querySelector('[data-voucher-field="type"]')?.value || "percent",
+    value: Number(card.querySelector('[data-voucher-field="value"]')?.value || 0),
+    maxDiscount: Number(card.querySelector('[data-voucher-field="maxDiscount"]')?.value || 0),
+    usageLimit: Number(card.querySelector('[data-voucher-field="usageLimit"]')?.value || 0),
+    expiresAt: card.querySelector('[data-voucher-field="expiresAt"]')?.value || "",
+    active: Boolean(card.querySelector('[data-voucher-field="active"]')?.checked)
+  }));
+}
+
+async function saveVouchers() {
+  try {
+    setStatus("Saving discounts...");
+    const response = await request("/api/admin/vouchers", {
+      method: "PUT",
+      body: JSON.stringify({ vouchers: collectVouchers() })
+    });
+    state.vouchers = response.vouchers || [];
+    renderVouchers();
+    setStatus("Discount codes saved.");
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+function addVoucher() {
+  state.vouchers.push({
+    code: "",
+    label: "",
+    type: "percent",
+    value: 10,
+    maxDiscount: 0,
+    usageLimit: 0,
+    expiresAt: "",
+    active: true
+  });
+  renderVouchers();
+}
+
 async function loadOrders() {
   if (!adminOrderList) return;
   try {
@@ -881,11 +1000,13 @@ function addProduct() {
 
 async function bootstrap() {
   await ensureAdminSession();
-  const [catalog, integrations] = await Promise.all([
+  const [catalog, integrations, voucherResponse] = await Promise.all([
     request("/api/admin/catalog"),
-    request("/api/admin/integrations")
+    request("/api/admin/integrations"),
+    request("/api/admin/vouchers")
   ]);
   state.catalog = catalog;
+  state.vouchers = voucherResponse.vouchers || [];
   renderAll();
   renderIntegrations(integrations);
   showAdminSection(adminSectionSelect?.value || "store");
@@ -909,12 +1030,20 @@ async function bootstrap() {
 saveCatalogButton.addEventListener("click", saveCatalog);
 saveIntegrationsButton.addEventListener("click", saveIntegrations);
 addProductButton.addEventListener("click", addProduct);
+saveVouchersButton?.addEventListener("click", saveVouchers);
+addVoucherButton?.addEventListener("click", addVoucher);
 adminLogoutButton.addEventListener("click", logoutAdmin);
 refreshOrdersButton?.addEventListener("click", loadOrders);
 adminOrderList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-approve-delivery]");
   if (!button) return;
   approveDelivery(button.dataset.approveDelivery);
+});
+voucherList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-voucher]");
+  if (!button) return;
+  state.vouchers.splice(Number(button.dataset.removeVoucher), 1);
+  renderVouchers();
 });
 adminNavButtons.forEach((button) => {
   button.addEventListener("click", () => showAdminSection(button.dataset.adminTarget));

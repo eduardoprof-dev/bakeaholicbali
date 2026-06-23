@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260601-hide-test-otp" />
+    <link rel="stylesheet" href="styles.css?v=20260623-admin-discounts" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -27,6 +27,7 @@
             </div>
           </div>
           <button class="admin-nav-button" type="button" data-admin-target="orders">Orders</button>
+          <button class="admin-nav-button" type="button" data-admin-target="discounts">Discounts</button>
           <div class="admin-nav-group">
             <button class="admin-nav-button" type="button" data-admin-target="story">Homepage</button>
             <div class="admin-subnav">
@@ -70,6 +71,7 @@
               <option value="store">Storefront</option>
               <option value="promo">Promo Spotlight</option>
               <option value="orders">Orders</option>
+              <option value="discounts">Discounts</option>
               <option value="story">Homepage</option>
               <option value="categories">Categories</option>
               <option value="catalog">Catalog</option>
@@ -213,6 +215,20 @@
             <button id="refreshOrdersButton" class="admin-button secondary" type="button">Refresh orders</button>
           </div>
           <div id="adminOrderList" class="admin-order-list"></div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="discounts" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Discount Codes</h2>
+              <p class="helper-text">Codes are checked on the server. Product discounts leave the live delivery fee payable.</p>
+            </div>
+            <div class="admin-actions">
+              <button id="addVoucherButton" class="admin-button secondary" type="button">Add discount</button>
+              <button id="saveVouchersButton" class="admin-button" type="button">Save discounts</button>
+            </div>
+          </div>
+          <div id="voucherList" class="voucher-list"></div>
         </section>
 
         <section class="admin-panel" data-admin-section="integrations" hidden>
@@ -509,6 +525,6 @@ DATA_DIR
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <script src="admin.js?v=20260613-login-form"></script>
+    <script src="admin.js?v=20260623-admin-discounts"></script>
   </body>
 </html>

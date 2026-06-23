@@ -114,6 +114,7 @@ const ordersTestPath = path.join(dataDir, "orders-test.json");
 const cartsLivePath = path.join(dataDir, "carts-live.json");
 const cartsTestPath = path.join(dataDir, "carts-test.json");
 const biteshipWebhookLogPath = path.join(dataDir, "biteship-webhook-log.json");
+const vouchersPath = path.join(dataDir, "vouchers.json");
 const PAYMENT_METHODS = [
   {
     id: "xendit-qris",
@@ -150,10 +151,9 @@ const BANK_TRANSFER_CHANNELS = [
 ];
 const MAX_DELIVERY_DISTANCE_KM = 100;
 
-const DEMO_VOUCHERS = [
-  { code: "SWEET10", label: "10% off subtotal", type: "percent", value: 10, maxDiscount: 15000 },
-  { code: "FREESHIP", label: "Free delivery", type: "delivery", value: 0 },
-  { code: "FULLTEST", label: "100% test discount", type: "fixed", value: 999999999 }
+const DEFAULT_VOUCHERS = [
+  { code: "SWEET10", label: "10% off products", type: "percent", value: 10, maxDiscount: 15000, active: true, expiresAt: "", usageLimit: 0 },
+  { code: "FREESHIP", label: "Free delivery", type: "delivery", value: 0, maxDiscount: 0, active: true, expiresAt: "", usageLimit: 0 }
 ];
 
 function loadCatalog() {
@@ -1814,6 +1814,76 @@ function loadJsonArray(targetPath) {
   }
 }
 
+function normalizeVoucher(voucher = {}) {
+  const code = String(voucher.code || "").trim().toUpperCase();
+  const label = String(voucher.label || "").trim();
+  const type = String(voucher.type || "percent").trim();
+  const allowedTypes = new Set(["percent", "product_fixed", "delivery", "fixed"]);
+  const value = Number(voucher.value || 0);
+  const maxDiscount = Number(voucher.maxDiscount || 0);
+  const usageLimit = Math.max(0, Math.floor(Number(voucher.usageLimit || 0)));
+  const expiresAt = String(voucher.expiresAt || "").trim();
+
+  if (!/^[A-Z0-9_-]{3,32}$/.test(code)) {
+    throw new Error("Discount codes use 3-32 capital letters, numbers, hyphens, or underscores");
+  }
+  if (!label || label.length > 90) {
+    throw new Error("Discount label is required and must be 90 characters or fewer");
+  }
+  if (!allowedTypes.has(type)) {
+    throw new Error("Unsupported discount type");
+  }
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("Discount value must be zero or greater");
+  }
+  if (type === "percent" && value > 100) {
+    throw new Error("Percentage discounts cannot exceed 100%");
+  }
+  if (expiresAt && Number.isNaN(new Date(expiresAt).getTime())) {
+    throw new Error("Discount expiry date is invalid");
+  }
+
+  return {
+    code,
+    label,
+    type,
+    value: Math.round(value),
+    maxDiscount: Number.isFinite(maxDiscount) && maxDiscount > 0 ? Math.round(maxDiscount) : 0,
+    active: voucher.active !== false,
+    expiresAt: expiresAt ? new Date(expiresAt).toISOString() : "",
+    usageLimit
+  };
+}
+
+function loadVouchers() {
+  const saved = loadJsonArray(vouchersPath);
+  const source = saved.length ? saved : DEFAULT_VOUCHERS;
+  try {
+    return source.map((voucher) => normalizeVoucher(voucher));
+  } catch (_error) {
+    return DEFAULT_VOUCHERS.map((voucher) => normalizeVoucher(voucher));
+  }
+}
+
+function saveVouchers(nextVouchers) {
+  if (!Array.isArray(nextVouchers)) {
+    throw new Error("Discounts must be an array");
+  }
+  const normalized = nextVouchers.map((voucher) => normalizeVoucher(voucher));
+  const codes = new Set();
+  normalized.forEach((voucher) => {
+    if (codes.has(voucher.code)) {
+      throw new Error(`Duplicate discount code: ${voucher.code}`);
+    }
+    codes.add(voucher.code);
+  });
+  writeJsonFile(vouchersPath, normalized);
+  vouchers = normalized;
+  return vouchers;
+}
+
+let vouchers = loadVouchers();
+
 function recordBiteshipWebhookLog(entry) {
   const log = loadJsonArray(biteshipWebhookLogPath);
   log.unshift({
@@ -2388,7 +2458,7 @@ function findMenuItem(itemId) {
 }
 
 function findVoucher(code) {
-  return DEMO_VOUCHERS.find((voucher) => voucher.code === code);
+  return vouchers.find((voucher) => voucher.code === code);
 }
 
 function normalizePhoneNumber(input) {
@@ -3284,6 +3354,24 @@ function computeDiscount(subtotal, deliveryFee, voucherCode, fulfillmentType) {
     return { code: voucherCode, label: "Voucher not recognized", amount: 0 };
   }
 
+  if (!voucher.active) {
+    return { code: voucherCode, label: "Voucher is inactive", amount: 0 };
+  }
+
+  if (voucher.expiresAt && new Date(voucher.expiresAt).getTime() <= Date.now()) {
+    return { code: voucherCode, label: "Voucher has expired", amount: 0 };
+  }
+
+  const usageCount = Object.values(stores)
+    .flatMap((storeState) => storeState.orders || [])
+    .filter((order) => (
+      order.pricing?.discount?.code === voucher.code
+      && ["paid", "preparing", "on_delivery", "delivered", "complete"].includes(order.status)
+    )).length;
+  if (voucher.usageLimit > 0 && usageCount >= voucher.usageLimit) {
+    return { code: voucherCode, label: "Voucher usage limit reached", amount: 0 };
+  }
+
   if (voucher.type === "delivery") {
     return {
       code: voucherCode,
@@ -3297,6 +3385,14 @@ function computeDiscount(subtotal, deliveryFee, voucherCode, fulfillmentType) {
       code: voucherCode,
       label: voucher.label,
       amount: Math.min(voucher.value, subtotal + deliveryFee)
+    };
+  }
+
+  if (voucher.type === "product_fixed") {
+    return {
+      code: voucherCode,
+      label: voucher.label,
+      amount: Math.min(voucher.value, subtotal)
     };
   }
 
@@ -5209,8 +5305,7 @@ function handleApi(requestUrl, request, response) {
       brandStory: withDefaultBrandStory(catalog.brandStory),
       categories: catalog.categories,
       items: catalog.items,
-      paymentMethods: PAYMENT_METHODS,
-      vouchers: DEMO_VOUCHERS
+      paymentMethods: PAYMENT_METHODS
     });
     return true;
   }
@@ -5315,6 +5410,15 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "GET" && pathname === "/api/admin/vouchers") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    sendJson(response, 200, { vouchers });
+    return true;
+  }
+
   if (request.method === "GET" && pathname === "/api/admin/integrations") {
     const session = requireAdminSession(request, response);
     if (!session) {
@@ -5379,6 +5483,20 @@ function handleApi(requestUrl, request, response) {
           saveSessionCarts(cartsPathForMode(storeMode), entry.carts);
         });
         sendJson(response, 200, { ok: true, catalog: saved });
+      })
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "PUT" && pathname === "/api/admin/vouchers") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    parseBody(request)
+      .then((body) => {
+        const saved = saveVouchers(body.vouchers);
+        sendJson(response, 200, { ok: true, vouchers: saved });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;

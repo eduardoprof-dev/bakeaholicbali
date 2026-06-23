@@ -22,7 +22,6 @@ const state = {
   promo: null,
   items: [],
   paymentMethods: [],
-  vouchers: [],
   cart: null,
   pendingPaymentUrl: "",
   currentOrder: null,
@@ -1600,7 +1599,6 @@ async function bootstrap() {
   state.promo = payload.promo;
   state.items = payload.items;
   state.paymentMethods = payload.paymentMethods;
-  state.vouchers = payload.vouchers;
 
   modeBanner.hidden = appMode !== "test";
   document.title = "Checkout | Bakeaholic Online Shop";

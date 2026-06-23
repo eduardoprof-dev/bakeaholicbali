@@ -1073,6 +1073,33 @@ body::before {
   gap: 12px;
 }
 
+.voucher-list {
+  display: grid;
+  gap: 14px;
+}
+
+.voucher-editor-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 16px;
+}
+
+.admin-toggle-field {
+  display: inline-flex;
+  align-items: center;
+  align-self: end;
+  gap: 9px;
+  min-height: 44px;
+  font-weight: 700;
+}
+
+.admin-toggle-field input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
 .admin-flow-card {
   border: 1px solid var(--line);
   border-radius: 8px;
