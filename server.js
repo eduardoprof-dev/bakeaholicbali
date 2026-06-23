@@ -714,7 +714,15 @@ function defaultWhatsappOrderTemplateName(order) {
 
 function configuredWhatsappOrderTemplateName(order) {
   const templateName = String(process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "").trim();
-  if (order.status !== "paid" || !templateName || templateName === "order_status_update") {
+  // Status-specific templates are the source of truth. Older installs may still
+  // carry the original generic `order_received` setting, which is not suitable
+  // for the paid confirmation.
+  if (
+    order.status !== "paid"
+    || !templateName
+    || templateName === "order_status_update"
+    || templateName === "order_received"
+  ) {
     return defaultWhatsappOrderTemplateName(order);
   }
   return templateName;
