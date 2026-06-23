@@ -1012,7 +1012,7 @@ async function bootstrap() {
   showAdminSection(adminSectionSelect?.value || "store");
   if (window.mermaid) {
     window.mermaid.initialize({
-      startOnLoad: true,
+      startOnLoad: false,
       theme: "base",
       themeVariables: {
         primaryColor: "#fffaf4",
@@ -1023,6 +1023,7 @@ async function bootstrap() {
         tertiaryColor: "#ffffff"
       }
     });
+    await window.mermaid.run({ querySelector: ".mermaid" });
   }
   setStatus("Catalog loaded. Save after making changes.");
 }

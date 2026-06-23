@@ -369,22 +369,46 @@
               <h3>Customer Order Workflow</h3>
               <pre class="mermaid">
 flowchart TD
-  A["Customer visits website"] --> B["Selects products"]
-  B --> C["Checkout: address, WhatsApp OTP, payment method"]
-  C --> D["Google Maps validates delivery location"]
-  D --> E["Biteship quote estimates Grab/Gojek delivery fee"]
-  E --> F["Customer pays with Xendit"]
-  F --> G["Xendit sends paid webhook to Bakeaholic app"]
-  G --> H["Customer receives WhatsApp payment receipt"]
-  G --> I["Admin receives WhatsApp order alert"]
-  I --> J{"Admin decision"}
-  J -->|Approve| K["60 second undo window"]
-  J -->|Cancel| L["60 second undo window"]
-  K --> M["Biteship delivery order created"]
-  L --> N["Order cancelled and Xendit refund attempted"]
-  M --> O["Admin receives shipping/print link"]
-  M --> P["Customer receives tracking link"]
-  P --> Q["Driver delivers order"]
+  A[Customer] --> B[Select products]
+  B --> C[Checkout]
+  C --> D[Address and WhatsApp verification]
+  D --> E[Delivery quote from Biteship]
+  E --> F[Secure payment with Xendit]
+  F --> G[Paid payment callback]
+  G --> H[Customer receipt message]
+  G --> I[Admin order alert]
+  I --> J{Admin decision}
+  J -->|Approve| K[Undo window]
+  J -->|Cancel| L[Undo window]
+  K --> M[Create Biteship shipment]
+  L --> N[Cancel order and refund]
+  M --> O[Customer tracking message]
+  M --> P[Admin shipping message]
+  O --> Q[Delivery completed]
+              </pre>
+            </article>
+            <article class="admin-diagram-card">
+              <h3>Approved Payment Methods</h3>
+              <pre class="mermaid">
+flowchart LR
+  A[Checkout payment choice] --> B[QRIS]
+  A --> C[Bank transfer]
+  A --> D[Credit or debit card]
+  B --> E[Xendit QRIS code]
+  C --> F[BNI]
+  C --> G[BRI]
+  C --> H[Mandiri]
+  C --> I[Permata]
+  C --> J[CIMB Niaga]
+  D --> K[Xendit card component]
+  E --> L[Xendit paid callback]
+  F --> L
+  G --> L
+  H --> L
+  I --> L
+  J --> L
+  K --> L
+  L --> M[Paid order and receipt]
               </pre>
             </article>
             <article class="admin-diagram-card">
@@ -422,21 +446,20 @@ sequenceDiagram
               <h3>WhatsApp Template Flow</h3>
               <pre class="mermaid">
 flowchart TD
-  A["Customer verifies phone"] --> B["otp_verification"]
-  C["Order created and awaiting payment"] --> D["Xendit payment page opens"]
-  D --> E["5 minutes unpaid: payment_update_order"]
-  E --> F["10 minutes unpaid: payment_update_order again"]
-  F --> G["15 minutes unpaid: order_cancelled_unpaid"]
-  H["Xendit confirms paid invoice"] --> I["payment_receipt to customer"]
-  H --> J["admin_order_alert_v2 to admin"]
-  J --> K{"Admin taps button"}
-  K -->|Approve| L["Undo button sent to admin"]
-  K -->|Cancel| M["Undo button sent to admin"]
-  L -->|No undo after 60 seconds| N["Create Biteship delivery"]
-  M -->|No undo after 60 seconds| O["Cancel order and attempt refund"]
-  N --> P["shipping_update to customer"]
-  N --> Q["admin_shipping_update to admin"]
-  R["Biteship status changes"] --> S["order_shipped or order_delivered to customer"]
+  A[Customer phone verification] --> B[otp verification]
+  C[Order awaiting payment] --> D[payment pending]
+  D --> E[payment update order]
+  E --> F[order cancelled unpaid]
+  G[Xendit payment confirmed] --> H[payment receipt]
+  G --> I[admin order alert v2]
+  I --> J{Admin action}
+  J -->|Approve| K[Undo window]
+  J -->|Cancel| L[Undo window]
+  K --> M[Create Biteship shipment]
+  L --> N[Cancel order and refund]
+  M --> O[shipping update]
+  M --> P[admin shipping update]
+  M --> Q[order delivered]
               </pre>
             </article>
           </div>
@@ -525,6 +548,6 @@ DATA_DIR
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <script src="admin.js?v=20260623-admin-discounts"></script>
+    <script src="admin.js?v=20260623-mermaid-flow"></script>
   </body>
 </html>
