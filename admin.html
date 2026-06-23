@@ -548,6 +548,20 @@ DATA_DIR
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <script src="admin.js?v=20260623-mermaid-flow"></script>
+    <script>
+      window.mermaid?.initialize({
+        startOnLoad: false,
+        theme: "base",
+        themeVariables: {
+          primaryColor: "#fffaf4",
+          primaryTextColor: "#2e211b",
+          primaryBorderColor: "#d8c7b6",
+          lineColor: "#7a4a2b",
+          secondaryColor: "#f4eadf",
+          tertiaryColor: "#ffffff"
+        }
+      });
+    </script>
+    <script src="admin.js?v=20260623-mermaid-render-once"></script>
   </body>
 </html>

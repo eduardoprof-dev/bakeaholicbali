@@ -1011,18 +1011,6 @@ async function bootstrap() {
   renderIntegrations(integrations);
   showAdminSection(adminSectionSelect?.value || "store");
   if (window.mermaid) {
-    window.mermaid.initialize({
-      startOnLoad: false,
-      theme: "base",
-      themeVariables: {
-        primaryColor: "#fffaf4",
-        primaryTextColor: "#2e211b",
-        primaryBorderColor: "#d8c7b6",
-        lineColor: "#7a4a2b",
-        secondaryColor: "#f4eadf",
-        tertiaryColor: "#ffffff"
-      }
-    });
     await window.mermaid.run({ querySelector: ".mermaid" });
   }
   setStatus("Catalog loaded. Save after making changes.");
