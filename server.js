@@ -5311,17 +5311,21 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && isBiteshipWebhookPath) {
-    if (!hasValidBiteshipWebhookHeader(request)) {
-      sendJson(response, 403, { error: "Invalid Biteship webhook header" });
-      return true;
-    }
-    sendPlainOk(response);
     parseRawBody(request)
-      .then(async (body) => {
-        if (!String(body || "").trim()) {
+      .then(async (rawBody) => {
+        const rawBodyText = String(rawBody || "").trim();
+        // Biteship validates a new endpoint with an empty JSON request before it
+        // starts sending signed delivery events. Acknowledge only that bootstrap probe.
+        if (!rawBodyText || rawBodyText === "{}") {
+          sendPlainOk(response);
           return;
         }
-        body = parseJsonSafely(body, {});
+        if (!hasValidBiteshipWebhookHeader(request)) {
+          sendJson(response, 403, { error: "Invalid Biteship webhook header" });
+          return;
+        }
+        sendPlainOk(response);
+        const body = parseJsonSafely(rawBodyText, {});
         const payload = normalizeBiteshipWebhookPayload(body);
         const order = findOrderByBiteshipWebhook(body);
         if (!order) {
