@@ -3053,6 +3053,9 @@ function buildShipmentItems(storeState) {
         category: "food_and_drink",
         value: item.price,
         quantity,
+        height: Number(item.heightCm || 5),
+        length: Number(item.lengthCm || 10),
+        width: Number(item.widthCm || 10),
         weight: defaultWeightGrams(item)
       };
     })
