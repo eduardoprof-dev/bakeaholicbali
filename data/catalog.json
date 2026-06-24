@@ -9,6 +9,9 @@
     "instagramUrl": "https://www.instagram.com/bakeaholicbali/",
     "termsUrl": "/terms.html",
     "privacyUrl": "/terms.html#privacy",
+    "kitchenLat": -8.66425,
+    "kitchenLng": 115.176172,
+    "kitchenAddress": "Bakeaholic Bali, Jl. Gunung Salak Utara No.47, Padangsambian Klod, Kec. Denpasar Bar., Kota Denpasar, Bali 80117, Indonesia",
     "testModeTitle": "Test mode is on",
     "testModeDescription": "Orders stay inside the sandbox so you can trial the full checkout flow safely."
   },

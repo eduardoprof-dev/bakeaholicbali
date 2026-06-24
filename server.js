@@ -164,7 +164,38 @@ function loadCatalog() {
 
   const sourcePath = fs.existsSync(catalogPath) ? catalogPath : bundledCatalogPath;
   const raw = fs.readFileSync(sourcePath, "utf8");
-  return JSON.parse(raw);
+  const savedCatalog = JSON.parse(raw);
+  const bundledCatalog = JSON.parse(fs.readFileSync(bundledCatalogPath, "utf8"));
+  const bundledItems = new Map((bundledCatalog.items || []).map((item) => [item.id, item]));
+  let changed = false;
+
+  for (const item of savedCatalog.items || []) {
+    const bundledItem = bundledItems.get(item.id);
+    if (!bundledItem) continue;
+    for (const key of ["lengthCm", "widthCm", "heightCm"]) {
+      if (!Number.isFinite(Number(item[key])) && Number.isFinite(Number(bundledItem[key]))) {
+        item[key] = Number(bundledItem[key]);
+        changed = true;
+      }
+    }
+  }
+
+  const bundledStore = bundledCatalog.store || {};
+  savedCatalog.store = savedCatalog.store || {};
+  for (const key of ["kitchenLat", "kitchenLng", "kitchenAddress"]) {
+    const hasValue = key === "kitchenAddress"
+      ? Boolean(String(savedCatalog.store[key] || "").trim())
+      : Number.isFinite(Number(savedCatalog.store[key]));
+    if (!hasValue && bundledStore[key] != null) {
+      savedCatalog.store[key] = bundledStore[key];
+      changed = true;
+    }
+  }
+
+  if (changed && sourcePath === catalogPath) {
+    fs.writeFileSync(catalogPath, `${JSON.stringify(savedCatalog, null, 2)}\n`, "utf8");
+  }
+  return savedCatalog;
 }
 
 function ensureParentDir(targetPath) {
@@ -2453,10 +2484,10 @@ function getStoreConfig() {
     ...catalog.store,
     deliveryFee: Number(catalog.store.deliveryFee || 21000),
     taxRate: Number(catalog.store.taxRate || 0.1),
-    kitchenLat: Number(catalog.store.kitchenLat || -8.637741),
-    kitchenLng: Number(catalog.store.kitchenLng || 115.184925),
+    kitchenLat: Number(catalog.store.kitchenLat || -8.66425),
+    kitchenLng: Number(catalog.store.kitchenLng || 115.176172),
     kitchenAddress: String(
-      catalog.store.kitchenAddress || "85PG+7H Padangsambian Klod, Denpasar City, Bali"
+      catalog.store.kitchenAddress || "Bakeaholic Bali, Jl. Gunung Salak Utara No.47, Padangsambian Klod, Kec. Denpasar Bar., Kota Denpasar, Bali 80117, Indonesia"
     ),
     addressLabel: String(catalog.store.addressLabel || "Set your delivery address"),
     defaultAddress: String(
@@ -2945,7 +2976,10 @@ function sanitizeCatalog(nextCatalog) {
       minOrder: String(item.minOrder || "").trim(),
       shelfLife: String(item.shelfLife || "").trim(),
       imagePath: String(item.imagePath || "").trim(),
-      stock: Number(item.stock)
+      stock: Number(item.stock),
+      lengthCm: Number(item.lengthCm) > 0 ? Number(item.lengthCm) : undefined,
+      widthCm: Number(item.widthCm) > 0 ? Number(item.widthCm) : undefined,
+      heightCm: Number(item.heightCm) > 0 ? Number(item.heightCm) : undefined
     }))
   };
 }
