@@ -451,6 +451,8 @@ function renderAdminOrders() {
     const canCancelDelivery = Boolean(order.fulfillment?.shipment?.orderId)
       && order.fulfillment?.type === "delivery"
       && !["delivery_issue", "delivered", "cancelled", "returned", "delivery_failed"].includes(order.status);
+    const canSyncDelivery = Boolean(order.fulfillment?.shipment?.orderId)
+      && order.fulfillment?.type === "delivery";
     const lineItems = (order.lineItems || []).map((entry) => `
       <li>${entry.quantity}x ${escapeHtml(entry.item?.name || entry.itemId)} (${formatRupiah.format(entry.lineTotal || 0)})</li>
     `).join("");
@@ -484,6 +486,7 @@ function renderAdminOrders() {
           <a class="admin-button secondary" href="${escapeHtml(order.documentUrl || "#")}" target="_blank" rel="noreferrer">Print invoice</a>
           <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">WhatsApp handoff</a>
           <button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}" ${canApprove ? "" : "disabled"}>Approve delivery</button>
+          <button class="admin-button secondary" type="button" data-sync-delivery="${escapeHtml(order.id)}" ${canSyncDelivery ? "" : "disabled"}>Sync delivery status</button>
           <button class="admin-button secondary" type="button" data-cancel-delivery="${escapeHtml(order.id)}" ${canCancelDelivery ? "" : "disabled"}>Cancel delivery</button>
           <button class="admin-button secondary" type="button" data-rebook-delivery="${escapeHtml(order.id)}" ${canRebook ? "" : "disabled"}>Check &amp; rebook</button>
         </div>
@@ -1178,6 +1181,20 @@ async function cancelDelivery(orderId) {
   }
 }
 
+async function syncDeliveryStatus(orderId) {
+  try {
+    setStatus(`Syncing Biteship delivery for ${orderId}...`);
+    await request(`/api/admin/orders/${encodeURIComponent(orderId)}/sync-delivery`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    await loadOrders();
+    setStatus(`Biteship delivery status synced for ${orderId}.`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
 function addProduct() {
   const firstCategory = state.catalog.categories[0]?.id || "";
   state.catalog.items.push({
@@ -1234,6 +1251,11 @@ adminOrderList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-approve-delivery]");
   if (button) {
     approveDelivery(button.dataset.approveDelivery);
+    return;
+  }
+  const syncButton = event.target.closest("[data-sync-delivery]");
+  if (syncButton) {
+    syncDeliveryStatus(syncButton.dataset.syncDelivery);
     return;
   }
   const cancelButton = event.target.closest("[data-cancel-delivery]");

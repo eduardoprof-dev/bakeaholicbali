@@ -3444,6 +3444,35 @@ async function cancelBiteshipDelivery(mode, orderId, session) {
   return enrichOrder(order);
 }
 
+async function syncBiteshipDeliveryStatus(mode, orderId) {
+  const order = findOrder(mode, orderId);
+  const shipment = order?.fulfillment?.shipment;
+  if (!order || !shipment?.orderId) {
+    throw new Error("This order does not have a Biteship delivery to sync");
+  }
+  const providerShipment = await fetchBiteshipShipment(shipment.orderId);
+  const shipmentStatus = String(providerShipment.status || shipment.status || "").toLowerCase();
+  const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
+  order.fulfillment = {
+    ...order.fulfillment,
+    shipment: {
+      ...shipment,
+      status: shipmentStatus,
+      waybillId: providerShipment.waybill_id || providerShipment.courier_waybill_id || shipment.waybillId || "",
+      courier: providerShipment.courier || shipment.courier || null,
+      trackingLink: providerShipment.courier?.link || providerShipment.courier_link || providerShipment.tracking_link || providerShipment.tracking_url || shipment.trackingLink || "",
+      updatedAt: new Date().toISOString(),
+      syncedAt: new Date().toISOString(),
+      raw: providerShipment
+    }
+  };
+  if (nextOrderStatus) {
+    order.status = nextOrderStatus;
+  }
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return enrichOrder(order);
+}
+
 async function rebookBiteshipDelivery(mode, orderId, session) {
   const order = findOrder(mode, orderId);
   const previousShipment = order?.fulfillment?.shipment;
@@ -5809,6 +5838,18 @@ function handleApi(requestUrl, request, response) {
     }
     const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/cancel-delivery", ""));
     cancelBiteshipDelivery(mode, orderId, session)
+      .then((order) => sendJson(response, 200, { ok: true, order }))
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/sync-delivery")) {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/sync-delivery", ""));
+    syncBiteshipDeliveryStatus(mode, orderId)
       .then((order) => sendJson(response, 200, { ok: true, order }))
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
