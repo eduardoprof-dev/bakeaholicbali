@@ -818,12 +818,13 @@ function paymentExpiredWhatsappParameters(order) {
 function shippingWhatsappParameters(order) {
   const shipment = order.fulfillment?.shipment || {};
   const courierName = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || shipment.raw?.courier?.name || "";
+  const shippingDocumentUrl = shipment.labelUrl || shipment.invoiceUrl || shipment.waybillUrl || shipment.raw?.label_url || shipment.raw?.invoice_url || shipment.raw?.waybill_url || "";
   return [
     order.id,
     courierName || "Courier",
     shipment.waybillId || "-",
     shipment.trackingLink || biteshipDocumentUrl(order) || "-",
-    biteshipDocumentUrl(order) || shipment.trackingLink || "-"
+    shippingDocumentUrl || "-"
   ];
 }
 
@@ -3254,7 +3255,7 @@ async function getCartSummaryPayload(storeState, options = {}) {
   }
 }
 
-async function createBiteshipShipment(order) {
+async function createBiteshipShipment(order, options = {}) {
   const integrationConfig = getIntegrationConfig();
   if (!integrationConfig.biteshipApiKey) {
     throw new Error("Biteship API key is not configured");
@@ -3304,9 +3305,10 @@ async function createBiteshipShipment(order) {
     courier_type: courierType,
     delivery_type: "now",
     order_note: order.fulfillment?.deliveryNotes || order.orderNotes || "",
-    reference_id: order.id,
+    reference_id: options.referenceId || order.id,
     metadata: {
       order_id: order.id,
+      delivery_attempt: Number(options.deliveryAttempt || 1),
       source: "bakeaholic-online-shop"
     },
     items
@@ -3378,6 +3380,125 @@ async function maybeCreateBiteshipShipment(order) {
   } catch (error) {
     order.fulfillment.shipmentError = error.message;
   }
+}
+
+async function fetchBiteshipShipment(orderId) {
+  const { biteshipApiKey } = getIntegrationConfig();
+  if (!biteshipApiKey || !orderId) {
+    throw new Error("Biteship shipment details are unavailable");
+  }
+  const response = await fetch(`https://api.biteship.com/v1/orders/${encodeURIComponent(orderId)}`, {
+    headers: {
+      Authorization: biteshipAuthorizationValue(biteshipApiKey)
+    }
+  });
+  const text = await response.text();
+  const payload = parseJsonSafely(text, {});
+  if (!response.ok) {
+    throw new Error(payload?.error || payload?.message || `Biteship shipment check failed with status ${response.status}`);
+  }
+  return payload;
+}
+
+async function cancelBiteshipDelivery(mode, orderId, session) {
+  const order = findOrder(mode, orderId);
+  const shipment = order?.fulfillment?.shipment;
+  if (!order || !shipment?.orderId) {
+    throw new Error("This order does not have an active Biteship delivery");
+  }
+  if (["delivered", "returned", "delivery_failed", "cancelled"].includes(order.status)) {
+    throw new Error("This delivery can no longer be cancelled");
+  }
+  const { biteshipApiKey } = getIntegrationConfig();
+  if (!biteshipApiKey) {
+    throw new Error("Biteship is not configured");
+  }
+  const response = await fetch(`https://api.biteship.com/v1/orders/${encodeURIComponent(shipment.orderId)}/cancel`, {
+    method: "POST",
+    headers: {
+      Authorization: biteshipAuthorizationValue(biteshipApiKey),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ cancellation_reason_code: "change_address" })
+  });
+  const text = await response.text();
+  const payload = parseJsonSafely(text, {});
+  if (!response.ok) {
+    throw new Error(payload?.error || payload?.message || `Biteship cancellation failed with status ${response.status}`);
+  }
+
+  order.status = "delivery_issue";
+  order.fulfillment = {
+    ...order.fulfillment,
+    shipment: {
+      ...shipment,
+      status: "cancelled",
+      cancelledAt: new Date().toISOString(),
+      cancellationReason: payload.cancellation_reason || "Pickup address needs correction",
+      cancellationRequestedBy: session?.role || "admin",
+      raw: payload
+    }
+  };
+  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-cancelled`, "Biteship delivery cancelled. Update the pickup pin, then rebook from Admin.");
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return enrichOrder(order);
+}
+
+async function rebookBiteshipDelivery(mode, orderId, session) {
+  const order = findOrder(mode, orderId);
+  const previousShipment = order?.fulfillment?.shipment;
+  if (!order) {
+    throw new Error("Order not found");
+  }
+  if (order.fulfillment?.type !== "delivery" || !previousShipment?.orderId) {
+    throw new Error("This order does not have a Biteship delivery to rebook");
+  }
+  if (["delivered", "returned", "delivery_failed", "cancelled"].includes(order.status)) {
+    throw new Error("This order can no longer be rebooked for delivery");
+  }
+
+  const providerShipment = await fetchBiteshipShipment(previousShipment.orderId);
+  const providerStatus = String(providerShipment.status || "").toLowerCase();
+  if (!['cancelled', 'rejected', 'courier_not_found'].includes(providerStatus)) {
+    throw new Error(`Biteship still shows this delivery as ${providerStatus || "active"}. Cancel it in Biteship before rebooking.`);
+  }
+
+  const history = Array.isArray(order.fulfillment.shipmentHistory)
+    ? order.fulfillment.shipmentHistory
+    : [];
+  history.push({
+    ...previousShipment,
+    status: providerStatus,
+    endedAt: new Date().toISOString(),
+    endReason: "Rebooked after Biteship cancellation"
+  });
+  const deliveryAttempt = history.length + 1;
+  order.fulfillment = {
+    ...order.fulfillment,
+    shipment: null,
+    shipmentHistory: history.slice(-10),
+    shipmentError: "",
+    approval: {
+      ...(order.fulfillment.approval || {}),
+      status: "approved",
+      approvedAt: order.fulfillment.approval?.approvedAt || new Date().toISOString(),
+      approvedBy: session?.role || "admin"
+    },
+    rebookedAt: new Date().toISOString()
+  };
+  order.status = "preparing";
+  const shipment = await createBiteshipShipment(order, {
+    referenceId: `${order.id}-R${deliveryAttempt}`,
+    deliveryAttempt
+  });
+  if (!shipment?.orderId) {
+    throw new Error("Biteship did not return a new delivery booking");
+  }
+  order.fulfillment.shipment = shipment;
+  order.whatsappUrl = buildWhatsappUrl(order);
+  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-rebooked`, `Replacement Biteship delivery booked after ${providerStatus}`);
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return enrichOrder(order);
 }
 
 async function approveOrderForDelivery(mode, orderId, session) {
@@ -3471,7 +3592,7 @@ function shipmentStatusToOrderStatus(status = "") {
     return "delivered";
   }
   if (["cancelled", "canceled"].includes(normalized)) {
-    return "cancelled";
+    return "delivery_issue";
   }
   if (["on_hold", "on hold", "courier_not_found", "courier not found", "rejected"].includes(normalized)) {
     return "delivery_issue";
@@ -5664,6 +5785,30 @@ function handleApi(requestUrl, request, response) {
     }
     const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/approve-delivery", ""));
     approveOrderForDelivery(mode, orderId, session)
+      .then((order) => sendJson(response, 200, { ok: true, order }))
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/rebook-delivery")) {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/rebook-delivery", ""));
+    rebookBiteshipDelivery(mode, orderId, session)
+      .then((order) => sendJson(response, 200, { ok: true, order }))
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/cancel-delivery")) {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/cancel-delivery", ""));
+    cancelBiteshipDelivery(mode, orderId, session)
       .then((order) => sendJson(response, 200, { ok: true, order }))
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;

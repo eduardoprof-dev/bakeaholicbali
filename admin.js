@@ -417,6 +417,9 @@ function statusLabel(status = "") {
     on_delivery: "On delivery",
     shipped: "On delivery",
     delivered: "Delivered",
+    delivery_issue: "Delivery needs attention",
+    returned: "Delivery returned",
+    delivery_failed: "Delivery failed",
     complete: "Complete",
     cancelled: "Cancelled",
     expired: "Expired",
@@ -442,6 +445,12 @@ function renderAdminOrders() {
     const canApprove = order.status === "paid"
       && order.fulfillment?.type === "delivery"
       && !order.fulfillment?.shipment?.orderId;
+    const canRebook = Boolean(order.fulfillment?.shipment?.orderId)
+      && order.fulfillment?.type === "delivery"
+      && !["delivered", "cancelled", "returned", "delivery_failed"].includes(order.status);
+    const canCancelDelivery = Boolean(order.fulfillment?.shipment?.orderId)
+      && order.fulfillment?.type === "delivery"
+      && !["delivery_issue", "delivered", "cancelled", "returned", "delivery_failed"].includes(order.status);
     const lineItems = (order.lineItems || []).map((entry) => `
       <li>${entry.quantity}x ${escapeHtml(entry.item?.name || entry.itemId)} (${formatRupiah.format(entry.lineTotal || 0)})</li>
     `).join("");
@@ -475,6 +484,8 @@ function renderAdminOrders() {
           <a class="admin-button secondary" href="${escapeHtml(order.documentUrl || "#")}" target="_blank" rel="noreferrer">Print invoice</a>
           <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">WhatsApp handoff</a>
           <button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}" ${canApprove ? "" : "disabled"}>Approve delivery</button>
+          <button class="admin-button secondary" type="button" data-cancel-delivery="${escapeHtml(order.id)}" ${canCancelDelivery ? "" : "disabled"}>Cancel delivery</button>
+          <button class="admin-button secondary" type="button" data-rebook-delivery="${escapeHtml(order.id)}" ${canRebook ? "" : "disabled"}>Check &amp; rebook</button>
         </div>
       </article>
     `;
@@ -1139,6 +1150,34 @@ async function approveDelivery(orderId) {
   }
 }
 
+async function rebookDelivery(orderId) {
+  try {
+    setStatus(`Checking Biteship delivery for ${orderId}...`);
+    await request(`/api/admin/orders/${encodeURIComponent(orderId)}/rebook-delivery`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    await loadOrders();
+    setStatus(`Replacement delivery booked for ${orderId}.`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function cancelDelivery(orderId) {
+  try {
+    setStatus(`Cancelling Biteship delivery for ${orderId}...`);
+    await request(`/api/admin/orders/${encodeURIComponent(orderId)}/cancel-delivery`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    await loadOrders();
+    setStatus(`Delivery cancelled for ${orderId}. Update the pickup pin, then rebook.`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
 function addProduct() {
   const firstCategory = state.catalog.categories[0]?.id || "";
   state.catalog.items.push({
@@ -1193,8 +1232,19 @@ adminLogoutButton.addEventListener("click", logoutAdmin);
 refreshOrdersButton?.addEventListener("click", loadOrders);
 adminOrderList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-approve-delivery]");
-  if (!button) return;
-  approveDelivery(button.dataset.approveDelivery);
+  if (button) {
+    approveDelivery(button.dataset.approveDelivery);
+    return;
+  }
+  const cancelButton = event.target.closest("[data-cancel-delivery]");
+  if (cancelButton) {
+    cancelDelivery(cancelButton.dataset.cancelDelivery);
+    return;
+  }
+  const rebookButton = event.target.closest("[data-rebook-delivery]");
+  if (rebookButton) {
+    rebookDelivery(rebookButton.dataset.rebookDelivery);
+  }
 });
 voucherList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-remove-voucher]");
