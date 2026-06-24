@@ -453,6 +453,27 @@ function renderAdminOrders() {
       && !["delivery_issue", "delivered", "cancelled", "returned", "delivery_failed"].includes(order.status);
     const canSyncDelivery = Boolean(order.fulfillment?.shipment?.orderId)
       && order.fulfillment?.type === "delivery";
+    const isDeliveryIssue = order.status === "delivery_issue";
+    const statusClass = ["delivery_issue", "returned", "delivery_failed", "cancelled", "expired", "payment_failed"].includes(order.status)
+      ? "status-negative"
+      : order.status === "paid"
+        ? "status-pending"
+        : ["preparing", "on_delivery", "shipped", "delivered", "complete"].includes(order.status)
+          ? "status-paid"
+          : "";
+    const deliveryActions = canApprove
+      ? `<button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}">Approve delivery</button>`
+      : isDeliveryIssue
+        ? `
+          <button class="admin-button secondary" type="button" data-sync-delivery="${escapeHtml(order.id)}">Sync delivery status</button>
+          <button class="admin-button" type="button" data-rebook-delivery="${escapeHtml(order.id)}" ${canRebook ? "" : "disabled"}>Check &amp; rebook</button>
+        `
+        : canSyncDelivery
+          ? `
+            <button class="admin-button secondary" type="button" data-sync-delivery="${escapeHtml(order.id)}">Sync delivery status</button>
+            <button class="admin-button secondary" type="button" data-cancel-delivery="${escapeHtml(order.id)}" ${canCancelDelivery ? "" : "disabled"}>Cancel delivery</button>
+          `
+          : "";
     const lineItems = (order.lineItems || []).map((entry) => `
       <li>${entry.quantity}x ${escapeHtml(entry.item?.name || entry.itemId)} (${formatRupiah.format(entry.lineTotal || 0)})</li>
     `).join("");
@@ -465,7 +486,7 @@ function renderAdminOrders() {
       <article class="admin-order-card" data-order-id="${escapeHtml(order.id)}">
         <div class="admin-order-main">
           <div>
-            <span class="status-pill ${order.status === "paid" ? "status-pending" : order.status === "preparing" ? "status-paid" : ""}">${escapeHtml(statusLabel(order.status))}</span>
+            <span class="status-pill ${statusClass}">${escapeHtml(statusLabel(order.status))}</span>
             <h3>${escapeHtml(order.id)}</h3>
             <p>${escapeHtml(order.customer?.name || "Customer")} · ${escapeHtml(order.customer?.phone || "")}</p>
           </div>
@@ -485,11 +506,9 @@ function renderAdminOrders() {
         <div class="admin-order-actions">
           <a class="admin-button secondary" href="${escapeHtml(order.documentUrl || "#")}" target="_blank" rel="noreferrer">Print invoice</a>
           <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">WhatsApp handoff</a>
-          <button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}" ${canApprove ? "" : "disabled"}>Approve delivery</button>
-          <button class="admin-button secondary" type="button" data-sync-delivery="${escapeHtml(order.id)}" ${canSyncDelivery ? "" : "disabled"}>Sync delivery status</button>
-          <button class="admin-button secondary" type="button" data-cancel-delivery="${escapeHtml(order.id)}" ${canCancelDelivery ? "" : "disabled"}>Cancel delivery</button>
-          <button class="admin-button secondary" type="button" data-rebook-delivery="${escapeHtml(order.id)}" ${canRebook ? "" : "disabled"}>Check &amp; rebook</button>
+          ${deliveryActions}
         </div>
+        ${isDeliveryIssue ? `<p class="admin-delivery-note">The courier booking was cancelled. Payment is still paid. Rebook after correcting the pickup location, or process a refund through the verified refund workflow.</p>` : ""}
       </article>
     `;
   }).join("");

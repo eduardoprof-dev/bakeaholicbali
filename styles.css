@@ -887,15 +887,11 @@ body::before {
 }
 
 .admin-topbar {
-  position: sticky;
-  top: 0;
-  z-index: 8;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px 18px;
   align-items: center;
-  padding: 14px 0 18px;
-  background: linear-gradient(180deg, var(--page) 80%, rgba(255, 248, 239, 0));
+  padding: 0 0 6px;
 }
 
 .admin-topbar h1 {
@@ -1202,6 +1198,17 @@ body::before {
 .admin-order-grid ul {
   margin: 0;
   color: var(--muted);
+}
+
+.admin-delivery-note {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(192, 57, 43, 0.22);
+  border-radius: 8px;
+  color: #a93324;
+  background: #fff7f5;
+  font-size: 0.92rem;
+  line-height: 1.45;
 }
 
 .admin-order-grid {
