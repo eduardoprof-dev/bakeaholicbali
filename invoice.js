@@ -83,7 +83,7 @@ function lineItemRows(order) {
 function shipmentDetails(order) {
   const shipment = order.fulfillment?.shipment || {};
   const courierName = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || shipment.raw?.courier?.name || "";
-  const trackingLink = shipment.trackingLink || shipment.raw?.courier?.link || "";
+  const trackingLink = shipment.trackingLink || shipment.raw?.courier?.link || (shipment.orderId ? "https://track.biteship.com" : "");
   const documentLink = shipment.labelUrl || shipment.invoiceUrl || shipment.waybillUrl || shipment.raw?.label_url || shipment.raw?.invoice_url || shipment.raw?.waybill_url || "";
   if (!shipment.orderId && !shipment.status && !courierName && !trackingLink && !documentLink) {
     return "";

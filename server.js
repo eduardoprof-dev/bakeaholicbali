@@ -2126,14 +2126,27 @@ function biteshipAuthorizationValue(apiKey = "") {
   return value.replace(/^Bearer\s+/i, "");
 }
 
-function hasValidBiteshipWebhookHeader(request) {
+function validateBiteshipWebhookHeader(request) {
   const { biteshipApiKey, biteshipWebhookHeaderName, biteshipWebhookHeaderSecret } = getIntegrationConfig();
   const headerName = String(biteshipWebhookHeaderName || "").trim().toLowerCase();
   const expectedSecret = String(biteshipWebhookHeaderSecret || "").trim();
   if (!headerName || !expectedSecret) {
-    return !String(biteshipApiKey || "").trim();
+    return {
+      valid: !String(biteshipApiKey || "").trim(),
+      headerName,
+      headerPresent: false,
+      reason: "server_signature_not_configured"
+    };
   }
-  return timingSafeEqualString(request.headers[headerName], expectedSecret);
+  const receivedValue = request.headers[headerName];
+  return {
+    valid: timingSafeEqualString(receivedValue, expectedSecret),
+    headerName,
+    headerPresent: typeof receivedValue === "string" && receivedValue.length > 0,
+    reason: typeof receivedValue === "string" && receivedValue.length > 0
+      ? "signature_secret_mismatch"
+      : "signature_header_missing"
+  };
 }
 
 function tokenDebug(value = "") {
@@ -5323,8 +5336,21 @@ function handleApi(requestUrl, request, response) {
           sendPlainOk(response);
           return;
         }
-        if (!hasValidBiteshipWebhookHeader(request)) {
-          sendJson(response, 403, { error: "Invalid Biteship webhook header" });
+        const headerValidation = validateBiteshipWebhookHeader(request);
+        if (!headerValidation.valid) {
+          recordBiteshipWebhookLog({
+            accepted: false,
+            error: "Invalid Biteship webhook header",
+            headerName: headerValidation.headerName,
+            headerPresent: headerValidation.headerPresent,
+            reason: headerValidation.reason
+          });
+          sendJson(response, 403, {
+            error: "Invalid Biteship webhook header",
+            expectedHeader: headerValidation.headerName || "not configured",
+            headerPresent: headerValidation.headerPresent,
+            reason: headerValidation.reason
+          });
           return;
         }
         sendPlainOk(response);

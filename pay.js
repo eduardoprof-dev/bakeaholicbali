@@ -360,7 +360,7 @@ function renderCancelled() {
 function renderPaid() {
   document.title = `Order ${state.order.id} Paid`;
   const shipment = state.order.fulfillment?.shipment || {};
-  const trackingUrl = shipment.trackingLink || "";
+  const trackingUrl = shipment.trackingLink || (shipment.orderId ? "https://track.biteship.com" : "");
   const orderStatus = state.order.status;
   const deliveryProblem = ["delivery_issue", "returned", "delivery_failed"].includes(orderStatus);
   const statusHeading = deliveryProblem
