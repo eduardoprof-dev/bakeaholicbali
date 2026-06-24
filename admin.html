@@ -159,6 +159,21 @@
               <label for="defaultAddressInput">Default delivery address</label>
               <input id="defaultAddressInput" type="text" />
             </div>
+            <section class="admin-location-editor">
+              <div class="admin-location-editor-head">
+                <div>
+                  <h3>Bakeaholic pickup location</h3>
+                  <p class="helper-text">This pin is sent to Biteship as the courier pickup point. Search for a new address or click the map, then save storefront settings.</p>
+                </div>
+                <a id="openKitchenMapLink" class="secondary-link" href="#" target="_blank" rel="noreferrer" hidden>Open in Google Maps</a>
+              </div>
+              <label class="admin-location-search" for="kitchenMapSearchInput">
+                <span>Find a location</span>
+                <input id="kitchenMapSearchInput" type="search" placeholder="Search Bakeaholic or paste an address" autocomplete="off" />
+              </label>
+              <div id="kitchenLocationMap" class="admin-kitchen-map" aria-label="Bakeaholic pickup location map"></div>
+              <p id="kitchenMapStatus" class="helper-text">Loading pickup map...</p>
+            </section>
             <div class="admin-field">
               <label for="kitchenAddressInput">Kitchen address</label>
               <input id="kitchenAddressInput" type="text" />
@@ -570,6 +585,6 @@ DATA_DIR
         }
       });
     </script>
-    <script src="admin.js?v=20260623-test-biteship"></script>
+    <script src="admin.js?v=20260624-pickup-map"></script>
   </body>
 </html>

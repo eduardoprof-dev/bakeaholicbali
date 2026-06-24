@@ -61,6 +61,20 @@ const storeFields = {
   businessHoursTimezone: document.getElementById("businessHoursTimezoneInput")
 };
 const numericStoreFields = new Set(["deliveryFee", "taxRate", "kitchenLat", "kitchenLng"]);
+const kitchenMapElements = {
+  search: document.getElementById("kitchenMapSearchInput"),
+  map: document.getElementById("kitchenLocationMap"),
+  status: document.getElementById("kitchenMapStatus"),
+  openLink: document.getElementById("openKitchenMapLink")
+};
+const kitchenMapState = {
+  map: null,
+  marker: null,
+  geocoder: null,
+  autocomplete: null,
+  mapsApi: null
+};
+let adminGoogleMapsLoaderPromise;
 
 const promoFields = {
   itemId: document.getElementById("promoItemId"),
@@ -216,6 +230,12 @@ function showAdminSection(sectionName) {
   if (sectionName === "orders") {
     loadOrders();
   }
+  if (sectionName === "store" && kitchenMapState.mapsApi && kitchenMapState.map) {
+    window.setTimeout(() => {
+      kitchenMapState.mapsApi.event.trigger(kitchenMapState.map, "resize");
+      syncKitchenMapFromFields();
+    }, 0);
+  }
 }
 
 function renderIntegrations(integrations) {
@@ -233,6 +253,147 @@ function renderStore() {
   Object.entries(storeFields).forEach(([key, field]) => {
     field.value = state.catalog.store[key] || "";
   });
+  syncKitchenMapFromFields();
+}
+
+function kitchenLocationFromFields() {
+  const lat = Number(storeFields.kitchenLat.value);
+  const lng = Number(storeFields.kitchenLng.value);
+  return {
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+    address: storeFields.kitchenAddress.value.trim()
+  };
+}
+
+function kitchenGoogleMapsUrl(location = kitchenLocationFromFields()) {
+  if (!Number.isFinite(location.lat) || !Number.isFinite(location.lng)) return "";
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${location.lat},${location.lng}`)}`;
+}
+
+function updateKitchenMapLink(location = kitchenLocationFromFields()) {
+  const url = kitchenGoogleMapsUrl(location);
+  kitchenMapElements.openLink.hidden = !url;
+  kitchenMapElements.openLink.href = url || "#";
+}
+
+function syncKitchenMapFromFields() {
+  const location = kitchenLocationFromFields();
+  updateKitchenMapLink(location);
+  if (!kitchenMapState.map || !Number.isFinite(location.lat) || !Number.isFinite(location.lng)) return;
+  const point = { lat: location.lat, lng: location.lng };
+  kitchenMapState.map.setCenter(point);
+  kitchenMapState.marker.setPosition(point);
+}
+
+function updateKitchenLocation(location, message = "Pickup pin updated. Save storefront settings to use it for new Biteship orders.") {
+  const lat = Number(location?.lat);
+  const lng = Number(location?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  const point = { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+  storeFields.kitchenLat.value = String(point.lat);
+  storeFields.kitchenLng.value = String(point.lng);
+  if (location?.address) {
+    storeFields.kitchenAddress.value = String(location.address).trim();
+  }
+  updateKitchenMapLink({ ...point, address: storeFields.kitchenAddress.value.trim() });
+  if (kitchenMapState.map) {
+    kitchenMapState.map.setCenter(point);
+    kitchenMapState.marker.setPosition(point);
+  }
+  kitchenMapElements.status.textContent = message;
+}
+
+function loadAdminGoogleMaps(apiKey) {
+  if (!apiKey) return Promise.resolve(null);
+  if (window.google?.maps) return Promise.resolve(window.google.maps);
+  if (adminGoogleMapsLoaderPromise) return adminGoogleMapsLoaderPromise;
+
+  adminGoogleMapsLoaderPromise = new Promise((resolve, reject) => {
+    const callbackName = "__bakeaholicAdminGoogleMapsReady";
+    window[callbackName] = () => {
+      resolve(window.google.maps);
+      delete window[callbackName];
+    };
+    const script = document.createElement("script");
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&loading=async&callback=${callbackName}`;
+    script.onerror = () => {
+      delete window[callbackName];
+      reject(new Error("Google Maps could not load"));
+    };
+    document.head.appendChild(script);
+  });
+  return adminGoogleMapsLoaderPromise;
+}
+
+async function reverseGeocodeKitchenLocation(position) {
+  if (!kitchenMapState.geocoder) return;
+  const response = await kitchenMapState.geocoder.geocode({ location: position });
+  const address = response.results?.[0]?.formatted_address || storeFields.kitchenAddress.value.trim();
+  updateKitchenLocation({ ...position, address });
+}
+
+async function initializeKitchenMap(apiKey) {
+  if (!kitchenMapElements.map || kitchenMapState.map) return;
+  const location = kitchenLocationFromFields();
+  updateKitchenMapLink(location);
+  if (!Number.isFinite(location.lat) || !Number.isFinite(location.lng)) {
+    kitchenMapElements.status.textContent = "Add a valid pickup latitude and longitude to load the map.";
+    return;
+  }
+
+  try {
+    const mapsApi = await loadAdminGoogleMaps(apiKey);
+    if (!mapsApi) {
+      kitchenMapElements.status.textContent = "Google Maps key is not configured. Add it under Integrations to edit the pickup pin.";
+      return;
+    }
+    const point = { lat: location.lat, lng: location.lng };
+    kitchenMapState.mapsApi = mapsApi;
+    kitchenMapState.geocoder = new mapsApi.Geocoder();
+    kitchenMapState.map = new mapsApi.Map(kitchenMapElements.map, {
+      center: point,
+      zoom: 17,
+      streetViewControl: false,
+      mapTypeControl: false,
+      fullscreenControl: true
+    });
+    kitchenMapState.marker = new mapsApi.Marker({
+      map: kitchenMapState.map,
+      position: point,
+      draggable: true,
+      title: "Bakeaholic pickup location"
+    });
+    kitchenMapState.map.addListener("click", (event) => reverseGeocodeKitchenLocation({
+      lat: event.latLng.lat(),
+      lng: event.latLng.lng()
+    }).catch(() => updateKitchenLocation({ lat: event.latLng.lat(), lng: event.latLng.lng() })));
+    kitchenMapState.marker.addListener("dragend", (event) => reverseGeocodeKitchenLocation({
+      lat: event.latLng.lat(),
+      lng: event.latLng.lng()
+    }).catch(() => updateKitchenLocation({ lat: event.latLng.lat(), lng: event.latLng.lng() })));
+    kitchenMapState.autocomplete = new mapsApi.places.Autocomplete(kitchenMapElements.search, {
+      componentRestrictions: { country: "id" },
+      fields: ["formatted_address", "geometry", "name"]
+    });
+    kitchenMapState.autocomplete.addListener("place_changed", () => {
+      const place = kitchenMapState.autocomplete.getPlace();
+      if (!place.geometry?.location) {
+        kitchenMapElements.status.textContent = "Choose an address from the Google Maps suggestions.";
+        return;
+      }
+      updateKitchenLocation({
+        lat: place.geometry.location.lat(),
+        lng: place.geometry.location.lng(),
+        address: place.formatted_address || place.name || kitchenMapElements.search.value
+      });
+    });
+    kitchenMapElements.status.textContent = "Search, click, or drag the pin. Save storefront settings when the point is correct.";
+  } catch (error) {
+    kitchenMapElements.status.textContent = `${error.message}. You can still use the latitude and longitude fields.`;
+  }
 }
 
 function renderPromoOptions() {
@@ -1005,15 +1166,17 @@ function addProduct() {
 
 async function bootstrap() {
   await ensureAdminSession();
-  const [catalog, integrations, voucherResponse] = await Promise.all([
+  const [catalog, integrations, voucherResponse, publicConfig] = await Promise.all([
     request("/api/admin/catalog"),
     request("/api/admin/integrations"),
-    request("/api/admin/vouchers")
+    request("/api/admin/vouchers"),
+    request("/api/public-config")
   ]);
   state.catalog = catalog;
   state.vouchers = voucherResponse.vouchers || [];
   renderAll();
   renderIntegrations(integrations);
+  await initializeKitchenMap(publicConfig.googleMapsApiKey);
   showAdminSection(adminSectionSelect?.value || "store");
   if (window.mermaid) {
     await window.mermaid.run({ querySelector: ".mermaid" });
@@ -1042,6 +1205,9 @@ voucherList?.addEventListener("click", (event) => {
 adminNavButtons.forEach((button) => {
   button.addEventListener("click", () => showAdminSection(button.dataset.adminTarget));
 });
+storeFields.kitchenLat.addEventListener("change", syncKitchenMapFromFields);
+storeFields.kitchenLng.addEventListener("change", syncKitchenMapFromFields);
+storeFields.kitchenAddress.addEventListener("change", updateKitchenMapLink);
 adminSectionSelect?.addEventListener("change", () => showAdminSection(adminSectionSelect.value));
 brandStorySlideList.addEventListener("input", (event) => {
   if (event.target.matches('[data-story-field="imagePath"]')) {

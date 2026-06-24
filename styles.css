@@ -991,6 +991,58 @@ body::before {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.admin-location-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.admin-location-editor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 14px;
+}
+
+.admin-location-editor h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+
+.admin-location-editor .helper-text {
+  margin: 0;
+}
+
+.admin-location-search {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.admin-location-search input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font: inherit;
+  color: var(--text);
+  background: #fff;
+}
+
+.admin-kitchen-map {
+  min-height: 330px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(45, 32, 25, 0.05);
+}
+
 .admin-field {
   display: grid;
   gap: 8px;
