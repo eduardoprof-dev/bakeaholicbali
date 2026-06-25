@@ -3487,11 +3487,6 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
     String(shipmentStatus || "synced").toLowerCase()
   ].filter(Boolean).join(":");
   await notifyShipmentUpdate(order, shipmentNotificationKey);
-  await maybeSendWhatsappAdminAlert(
-    order,
-    previousStatus === order.status && shipment.status === shipmentStatus ? "" : shipmentNotificationKey,
-    `Biteship ${shipmentStatus || "delivery synced"}`
-  );
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
 }
