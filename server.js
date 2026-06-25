@@ -1248,6 +1248,23 @@ async function notifyShipmentUpdate(order, eventKey = "") {
   return { customer };
 }
 
+function shouldAlertAdminForBiteshipWebhook({ shipmentStatus = "", priceChanged = false } = {}) {
+  const normalizedStatus = String(shipmentStatus || "").toLowerCase();
+  return priceChanged || [
+    "cancelled",
+    "canceled",
+    "on_hold",
+    "on hold",
+    "courier_not_found",
+    "courier not found",
+    "rejected",
+    "return_in_transit",
+    "return in transit",
+    "returned",
+    "disposed"
+  ].includes(normalizedStatus);
+}
+
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
   const notificationKey = String(options.notificationKey || "").trim();
   const skipReason = (() => {
@@ -5642,13 +5659,15 @@ function handleApi(requestUrl, request, response) {
           notificationKey: previousShipmentStatus === shipmentStatus ? "" : shipmentNotificationKey
         });
         const shippingWhatsappResult = await maybeSendWhatsappShippingUpdate(order, shipmentNotificationKey);
-        const adminWhatsappResult = await maybeSendWhatsappAdminAlert(
-          order,
-          previousShipmentStatus === shipmentStatus && previousActualPrice === actualPrice ? "" : shipmentNotificationKey,
-          priceChanged
-            ? `Biteship price changed: quoted Rp ${quotedPrice.toLocaleString("id-ID")}, actual Rp ${actualPrice.toLocaleString("id-ID")}. Customer remains charged the quoted delivery fee.`
-            : `Biteship ${shipmentStatus || "delivery update"}`
-        );
+        const adminWhatsappResult = shouldAlertAdminForBiteshipWebhook({ shipmentStatus, priceChanged })
+          ? await maybeSendWhatsappAdminAlert(
+              order,
+              previousShipmentStatus === shipmentStatus && previousActualPrice === actualPrice ? "" : shipmentNotificationKey,
+              priceChanged
+                ? `Biteship price changed: quoted Rp ${quotedPrice.toLocaleString("id-ID")}, actual Rp ${actualPrice.toLocaleString("id-ID")}. Customer remains charged the quoted delivery fee.`
+                : `Biteship ${shipmentStatus || "delivery update"}`
+            )
+          : { sent: false, skipped: true, reason: "normal_biteship_status" };
         recordBiteshipWebhookLog({
           matched: true,
           event: payload.event || body.event || "",
