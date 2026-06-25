@@ -705,7 +705,7 @@ function xenditInvoiceUrl(order) {
 }
 
 function adminOrderDocumentUrl(order) {
-  return biteshipDocumentUrl(order) || getPublicDocumentUrl(order);
+  return getPublicDocumentUrl(order);
 }
 
 function xenditCheckoutButtonToken(order) {
@@ -1235,6 +1235,18 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
     order.adminWhatsappNotificationError = error.message;
     return { sent: false, skipped: false, error: error.message };
   }
+}
+
+async function notifyShipmentUpdate(order, eventKey = "") {
+  const shipment = order.fulfillment?.shipment || {};
+  const shipmentKey = eventKey || [
+    "biteship",
+    shipment.orderId || order.id,
+    String(shipment.status || "requested").toLowerCase()
+  ].filter(Boolean).join(":");
+  const customer = await maybeSendWhatsappShippingUpdate(order, shipmentKey);
+  const admin = await maybeSendWhatsappShippingUpdate(order, `${shipmentKey}:admin`, { admin: true });
+  return { customer, admin };
 }
 
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
@@ -3450,6 +3462,7 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
   if (!order || !shipment?.orderId) {
     throw new Error("This order does not have a Biteship delivery to sync");
   }
+  const previousStatus = order.status;
   const providerShipment = await fetchBiteshipShipment(shipment.orderId);
   const shipmentStatus = String(providerShipment.status || shipment.status || "").toLowerCase();
   const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
@@ -3469,6 +3482,17 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
   if (nextOrderStatus) {
     order.status = nextOrderStatus;
   }
+  const shipmentNotificationKey = [
+    "biteship",
+    order.fulfillment?.shipment?.orderId || order.id,
+    String(shipmentStatus || "synced").toLowerCase()
+  ].filter(Boolean).join(":");
+  await notifyShipmentUpdate(order, shipmentNotificationKey);
+  await maybeSendWhatsappAdminAlert(
+    order,
+    previousStatus === order.status && shipment.status === shipmentStatus ? "" : shipmentNotificationKey,
+    `Biteship ${shipmentStatus || "delivery synced"}`
+  );
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
 }
@@ -3525,6 +3549,8 @@ async function rebookBiteshipDelivery(mode, orderId, session) {
   }
   order.fulfillment.shipment = shipment;
   order.whatsappUrl = buildWhatsappUrl(order);
+  const shippingKey = `biteship:${shipment.orderId}:requested`;
+  await notifyShipmentUpdate(order, shippingKey);
   await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-rebooked`, `Replacement Biteship delivery booked after ${providerStatus}`);
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
@@ -3557,8 +3583,7 @@ async function approveOrderForDelivery(mode, orderId, session) {
   await maybeCreateBiteshipShipment(order);
   await maybeSendWhatsappOrderStatus(order, previousStatus);
   const shippingKey = `order:${order.id}:shipping:${order.fulfillment?.shipment?.orderId || "requested"}`;
-  await maybeSendWhatsappShippingUpdate(order, shippingKey);
-  await maybeSendWhatsappShippingUpdate(order, `${shippingKey}:admin`, { admin: true });
+  await notifyShipmentUpdate(order, shippingKey);
   await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-approved`, "Delivery approved - courier requested");
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);

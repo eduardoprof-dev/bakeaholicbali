@@ -482,6 +482,11 @@ function renderAdminOrders() {
       : order.fulfillment?.shipmentError
         ? order.fulfillment.shipmentError
         : "Not requested yet";
+    const notificationErrors = [
+      order.whatsappShippingNotificationError ? `Customer shipping WhatsApp: ${order.whatsappShippingNotificationError}` : "",
+      order.adminWhatsappShippingNotificationError ? `Admin shipping WhatsApp: ${order.adminWhatsappShippingNotificationError}` : "",
+      order.adminWhatsappNotificationError ? `Admin alert WhatsApp: ${order.adminWhatsappNotificationError}` : ""
+    ].filter(Boolean);
     return `
       <article class="admin-order-card" data-order-id="${escapeHtml(order.id)}">
         <div class="admin-order-main">
@@ -508,6 +513,7 @@ function renderAdminOrders() {
           <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">WhatsApp handoff</a>
           ${deliveryActions}
         </div>
+        ${notificationErrors.length ? `<p class="admin-delivery-note status-negative">${notificationErrors.map(escapeHtml).join("<br>")}</p>` : ""}
         ${isDeliveryIssue ? `<p class="admin-delivery-note">The courier booking was cancelled. Payment is still paid. Rebook after correcting the pickup location, or process a refund through the verified refund workflow.</p>` : ""}
       </article>
     `;
