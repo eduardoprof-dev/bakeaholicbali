@@ -1245,8 +1245,7 @@ async function notifyShipmentUpdate(order, eventKey = "") {
     String(shipment.status || "requested").toLowerCase()
   ].filter(Boolean).join(":");
   const customer = await maybeSendWhatsappShippingUpdate(order, shipmentKey);
-  const admin = await maybeSendWhatsappShippingUpdate(order, `${shipmentKey}:admin`, { admin: true });
-  return { customer, admin };
+  return { customer };
 }
 
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
@@ -5648,7 +5647,6 @@ function handleApi(requestUrl, request, response) {
           notificationKey: previousShipmentStatus === shipmentStatus ? "" : shipmentNotificationKey
         });
         const shippingWhatsappResult = await maybeSendWhatsappShippingUpdate(order, shipmentNotificationKey);
-        const adminShippingWhatsappResult = await maybeSendWhatsappShippingUpdate(order, `${shipmentNotificationKey}:admin`, { admin: true });
         const adminWhatsappResult = await maybeSendWhatsappAdminAlert(
           order,
           previousShipmentStatus === shipmentStatus && previousActualPrice === actualPrice ? "" : shipmentNotificationKey,
@@ -5672,7 +5670,6 @@ function handleApi(requestUrl, request, response) {
           merchantAbsorbedAmount,
           whatsappResult,
           shippingWhatsappResult,
-          adminShippingWhatsappResult,
           adminWhatsappResult,
           body
         });
