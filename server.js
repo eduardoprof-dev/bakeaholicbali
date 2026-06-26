@@ -815,16 +815,44 @@ function paymentExpiredWhatsappParameters(order) {
   ];
 }
 
-function shippingWhatsappParameters(order) {
+function shippingWhatsappDetails(order) {
   const shipment = order.fulfillment?.shipment || {};
   const courierName = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || shipment.raw?.courier?.name || "";
-  const shippingDocumentUrl = shipment.labelUrl || shipment.invoiceUrl || shipment.waybillUrl || shipment.raw?.label_url || shipment.raw?.invoice_url || shipment.raw?.waybill_url || "";
+  const trackingLink = shipment.trackingLink || biteshipDocumentUrl(order) || "-";
+  const shippingDocumentUrl = shipment.labelUrl ||
+    shipment.invoiceUrl ||
+    shipment.waybillUrl ||
+    shipment.raw?.label_url ||
+    shipment.raw?.invoice_url ||
+    shipment.raw?.waybill_url ||
+    trackingLink ||
+    "-";
+  return {
+    courierName: courierName || "Courier",
+    waybillId: shipment.waybillId || "-",
+    trackingLink,
+    shippingDocumentUrl
+  };
+}
+
+function customerShippingWhatsappParameters(order) {
+  const details = shippingWhatsappDetails(order);
   return [
     order.id,
-    courierName || "Courier",
-    shipment.waybillId || "-",
-    shipment.trackingLink || biteshipDocumentUrl(order) || "-",
-    shippingDocumentUrl || "-"
+    details.courierName,
+    details.waybillId,
+    details.trackingLink
+  ];
+}
+
+function adminShippingWhatsappParameters(order) {
+  const details = shippingWhatsappDetails(order);
+  return [
+    order.id,
+    details.courierName,
+    details.waybillId,
+    details.trackingLink,
+    details.shippingDocumentUrl
   ];
 }
 
@@ -1157,7 +1185,8 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
   }
   const recipient = admin ? process.env.WHATSAPP_ADMIN_NUMBER : order.customer.phone;
   const documentUrl = whatsappDocumentAttachmentUrl(biteshipDocumentUrl(order));
-  return sendWhatsappTemplateMessage(recipient, templateName, shippingWhatsappParameters(order), {
+  const parameters = admin ? adminShippingWhatsappParameters(order) : customerShippingWhatsappParameters(order);
+  return sendWhatsappTemplateMessage(recipient, templateName, parameters, {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     headerDocumentUrl: documentUrl,
     headerDocumentFilename: `${order.id}-shipping.pdf`,
@@ -1245,7 +1274,8 @@ async function notifyShipmentUpdate(order, eventKey = "") {
     String(shipment.status || "requested").toLowerCase()
   ].filter(Boolean).join(":");
   const customer = await maybeSendWhatsappShippingUpdate(order, shipmentKey);
-  return { customer };
+  const admin = await maybeSendWhatsappShippingUpdate(order, shipmentKey, { admin: true });
+  return { customer, admin };
 }
 
 function shouldAlertAdminForBiteshipWebhook({ shipmentStatus = "", priceChanged = false } = {}) {
@@ -5755,7 +5785,7 @@ function handleApi(requestUrl, request, response) {
         const whatsappResult = await maybeSendWhatsappOrderStatus(order, previousStatus, {
           notificationKey: previousShipmentStatus === shipmentStatus ? "" : shipmentNotificationKey
         });
-        const shippingWhatsappResult = await maybeSendWhatsappShippingUpdate(order, shipmentNotificationKey);
+        const shippingWhatsappResult = await notifyShipmentUpdate(order, shipmentNotificationKey);
         const adminWhatsappResult = shouldAlertAdminForBiteshipWebhook({ shipmentStatus, priceChanged })
           ? await maybeSendWhatsappAdminAlert(
               order,
