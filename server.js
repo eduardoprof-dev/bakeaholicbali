@@ -3283,6 +3283,62 @@ async function getCartSummaryPayload(storeState, options = {}) {
   }
 }
 
+function shipmentFromBiteshipPayload(payload = {}, fallback = {}) {
+  const courier = payload.courier || fallback.courier || null;
+  return {
+    provider: "biteship",
+    orderId: payload.id || payload.order_id || fallback.orderId || "",
+    status: payload.status || fallback.status || "",
+    waybillId: payload.waybill_id || payload.courier_waybill_id || fallback.waybillId || "",
+    labelUrl: payload.label_url || payload.shipping_label_url || courier?.label_url || fallback.labelUrl || "",
+    invoiceUrl: payload.invoice_url || payload.delivery_invoice_url || fallback.invoiceUrl || "",
+    waybillUrl: payload.waybill_url || courier?.waybill_url || fallback.waybillUrl || "",
+    courier,
+    trackingLink: courier?.link || payload.courier_link || payload.tracking_link || payload.tracking_url || fallback.trackingLink || "",
+    createdAt: fallback.createdAt || new Date().toISOString(),
+    raw: payload.raw || payload
+  };
+}
+
+function biteshipTrackingIdFromUrl(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const match = text.match(/track\.biteship\.com\/([^/?#\s]+)/i);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function biteshipShipmentIdentifiers(shipment = {}) {
+  const raw = shipment.raw || {};
+  const courier = shipment.courier || raw.courier || {};
+  return [
+    shipment.orderId,
+    shipment.id,
+    shipment.order_id,
+    shipment.reference_id,
+    shipment.referenceId,
+    shipment.trackingLink,
+    raw.id,
+    raw.order_id,
+    raw.orderId,
+    raw.reference_id,
+    raw.referenceId,
+    raw.external_id,
+    raw.externalId,
+    raw.metadata?.order_id,
+    raw.metadata?.orderId,
+    raw.courier_link,
+    raw.tracking_link,
+    raw.tracking_url,
+    courier.link
+  ]
+    .flatMap((value) => {
+      const text = String(value || "").trim();
+      if (!text) return [];
+      return [text, biteshipTrackingIdFromUrl(text)];
+    })
+    .filter(Boolean);
+}
+
 async function createBiteshipShipment(order, options = {}) {
   const integrationConfig = getIntegrationConfig();
   if (!integrationConfig.biteshipApiKey) {
@@ -3355,37 +3411,33 @@ async function createBiteshipShipment(order, options = {}) {
   const parsed = parseJsonSafely(responseText, {});
   if (!response.ok) {
     if (parsed?.code === 40002060 && parsed?.details?.order_id) {
-      return {
-        provider: "biteship",
-        orderId: parsed.details.order_id,
-        status: "confirmed",
-        waybillId: parsed.details.waybill_id || "",
-        labelUrl: "",
-        invoiceUrl: "",
-        waybillUrl: "",
-        courier: null,
-        trackingLink: "",
-        createdAt: new Date().toISOString(),
-        recoveredFromDuplicateReference: true,
-        raw: parsed
-      };
+      try {
+        const recovered = await fetchBiteshipShipment(parsed.details.order_id);
+        return {
+          ...shipmentFromBiteshipPayload(recovered, {
+            orderId: parsed.details.order_id,
+            status: "confirmed",
+            waybillId: parsed.details.waybill_id || ""
+          }),
+          recoveredFromDuplicateReference: true,
+          duplicateReferenceResponse: parsed
+        };
+      } catch (_error) {
+        return {
+          ...shipmentFromBiteshipPayload(parsed.details, {
+            orderId: parsed.details.order_id,
+            status: "confirmed",
+            waybillId: parsed.details.waybill_id || ""
+          }),
+          recoveredFromDuplicateReference: true,
+          raw: parsed
+        };
+      }
     }
     throw new Error(parsed?.error || parsed?.message || `Biteship order failed with status ${response.status}`);
   }
 
-  return {
-    provider: "biteship",
-    orderId: parsed.id || parsed.order_id || "",
-    status: parsed.status || "",
-    waybillId: parsed.waybill_id || "",
-    labelUrl: parsed.label_url || parsed.shipping_label_url || parsed.courier?.label_url || "",
-    invoiceUrl: parsed.invoice_url || parsed.delivery_invoice_url || "",
-    waybillUrl: parsed.waybill_url || parsed.courier?.waybill_url || "",
-    courier: parsed.courier || null,
-    trackingLink: parsed.courier?.link || parsed.tracking_link || parsed.tracking_url || "",
-    createdAt: new Date().toISOString(),
-    raw: parsed
-  };
+  return shipmentFromBiteshipPayload(parsed);
 }
 
 async function maybeCreateBiteshipShipment(order) {
@@ -3426,6 +3478,34 @@ async function fetchBiteshipShipment(orderId) {
     throw new Error(payload?.error || payload?.message || `Biteship shipment check failed with status ${response.status}`);
   }
   return payload;
+}
+
+async function fetchBiteshipShipmentForOrder(order, shipment = {}) {
+  const candidates = Array.from(new Set([
+    shipment.orderId,
+    ...biteshipShipmentIdentifiers(shipment)
+  ].map((value) => String(value || "").trim()).filter(Boolean)));
+  let fallbackPayload = null;
+  let lastError = null;
+  for (const candidate of candidates) {
+    try {
+      const payload = await fetchBiteshipShipment(candidate);
+      const identifiers = new Set(biteshipWebhookIdentifiers(payload));
+      if (identifiers.has(order.id)) {
+        return payload;
+      }
+      const providerIds = biteshipShipmentIdentifiers(shipmentFromBiteshipPayload(payload));
+      if (providerIds.includes(candidate)) {
+        fallbackPayload = fallbackPayload || payload;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (fallbackPayload) {
+    return fallbackPayload;
+  }
+  throw lastError || new Error("Biteship shipment details are unavailable");
 }
 
 async function cancelBiteshipDelivery(mode, orderId, session) {
@@ -3479,17 +3559,22 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
     throw new Error("This order does not have a Biteship delivery to sync");
   }
   const previousStatus = order.status;
-  const providerShipment = await fetchBiteshipShipment(shipment.orderId);
+  const providerShipment = await fetchBiteshipShipmentForOrder(order, shipment);
   const shipmentStatus = String(providerShipment.status || shipment.status || "").toLowerCase();
   const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
+  const normalizedShipment = shipmentFromBiteshipPayload(providerShipment, shipment);
   order.fulfillment = {
     ...order.fulfillment,
     shipment: {
       ...shipment,
+      orderId: normalizedShipment.orderId || shipment.orderId || "",
       status: shipmentStatus,
-      waybillId: providerShipment.waybill_id || providerShipment.courier_waybill_id || shipment.waybillId || "",
-      courier: providerShipment.courier || shipment.courier || null,
-      trackingLink: providerShipment.courier?.link || providerShipment.courier_link || providerShipment.tracking_link || providerShipment.tracking_url || shipment.trackingLink || "",
+      waybillId: normalizedShipment.waybillId || shipment.waybillId || "",
+      courier: normalizedShipment.courier || shipment.courier || null,
+      trackingLink: normalizedShipment.trackingLink || shipment.trackingLink || "",
+      labelUrl: normalizedShipment.labelUrl || shipment.labelUrl || "",
+      invoiceUrl: normalizedShipment.invoiceUrl || shipment.invoiceUrl || "",
+      waybillUrl: normalizedShipment.waybillUrl || shipment.waybillUrl || "",
       updatedAt: new Date().toISOString(),
       syncedAt: new Date().toISOString(),
       raw: providerShipment
@@ -3625,9 +3710,21 @@ function biteshipWebhookIdentifiers(body = {}) {
     payload.external_id,
     payload.externalId,
     payload.metadata?.order_id,
-    payload.metadata?.orderId
+    payload.metadata?.orderId,
+    body.courier?.link,
+    body.courier_link,
+    body.tracking_link,
+    body.tracking_url,
+    payload.courier?.link,
+    payload.courier_link,
+    payload.tracking_link,
+    payload.tracking_url
   ]
-    .map((value) => String(value || "").trim())
+    .flatMap((value) => {
+      const text = String(value || "").trim();
+      if (!text) return [];
+      return [text, biteshipTrackingIdFromUrl(text)];
+    })
     .filter(Boolean);
 }
 
@@ -3638,7 +3735,11 @@ function findOrderByBiteshipWebhook(body = {}) {
   }
   return Object.values(stores).flatMap((storeState) => storeState.orders).find((entry) => (
     identifiers.has(entry.id) ||
-    identifiers.has(entry.fulfillment?.shipment?.orderId)
+    biteshipShipmentIdentifiers(entry.fulfillment?.shipment || {}).some((identifier) => identifiers.has(identifier)) ||
+    (Array.isArray(entry.fulfillment?.shipmentHistory)
+      && entry.fulfillment.shipmentHistory.some((shipment) => (
+        biteshipShipmentIdentifiers(shipment).some((identifier) => identifiers.has(identifier))
+      )))
   )) || null;
 }
 
@@ -5592,6 +5693,7 @@ function handleApi(requestUrl, request, response) {
         const previousShipmentStatus = order.fulfillment?.shipment?.status || "";
         const shipmentStatus = payload.status || body.status || order.fulfillment.shipment.status || "";
         const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
+        const normalizedShipment = shipmentFromBiteshipPayload(payload, order.fulfillment.shipment);
         const actualPrice = biteshipActualPrice(payload, body);
         const quotedPrice = Number(order.pricing?.deliveryFee || 0);
         const previousActualPrice = Number(order.fulfillment?.shipment?.actualPrice);
@@ -5599,6 +5701,7 @@ function handleApi(requestUrl, request, response) {
         const merchantAbsorbedAmount = actualPrice == null ? 0 : Math.max(0, actualPrice - quotedPrice);
         order.fulfillment.shipment = {
           ...order.fulfillment.shipment,
+          orderId: normalizedShipment.orderId || order.fulfillment.shipment.orderId || "",
           status: shipmentStatus,
           actualPrice: actualPrice == null ? order.fulfillment.shipment.actualPrice : actualPrice,
           quotedPrice,
@@ -5608,36 +5711,30 @@ function handleApi(requestUrl, request, response) {
           priceAdjustmentPolicy: "merchant_absorbs",
           merchantAbsorbedAmount,
           waybillId:
-            payload.waybill_id ||
-            payload.courier_waybill_id ||
+            normalizedShipment.waybillId ||
             body.waybill_id ||
             body.courier_waybill_id ||
             order.fulfillment.shipment.waybillId ||
             "",
           labelUrl:
-            payload.label_url ||
-            payload.shipping_label_url ||
+            normalizedShipment.labelUrl ||
             body.label_url ||
             body.shipping_label_url ||
             order.fulfillment.shipment.labelUrl ||
             "",
           invoiceUrl:
-            payload.invoice_url ||
-            payload.delivery_invoice_url ||
+            normalizedShipment.invoiceUrl ||
             body.invoice_url ||
             body.delivery_invoice_url ||
             order.fulfillment.shipment.invoiceUrl ||
             "",
           waybillUrl:
-            payload.waybill_url ||
+            normalizedShipment.waybillUrl ||
             body.waybill_url ||
             order.fulfillment.shipment.waybillUrl ||
             "",
           trackingLink:
-            payload.courier?.link ||
-            payload.courier_link ||
-            payload.tracking_link ||
-            payload.tracking_url ||
+            normalizedShipment.trackingLink ||
             body.courier?.link ||
             body.courier_link ||
             body.tracking_link ||
@@ -5652,7 +5749,7 @@ function handleApi(requestUrl, request, response) {
         }
         const shipmentNotificationKey = [
           "biteship",
-          order.fulfillment?.shipment?.orderId || payload.order_id || body.order_id || order.id,
+          order.fulfillment?.shipment?.orderId || normalizedShipment.orderId || payload.order_id || body.order_id || order.id,
           String(shipmentStatus || "").toLowerCase()
         ].filter(Boolean).join(":");
         const whatsappResult = await maybeSendWhatsappOrderStatus(order, previousStatus, {
