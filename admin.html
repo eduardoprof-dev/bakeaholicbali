@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260723-admin-docs-v1" />
+    <link rel="stylesheet" href="styles.css?v=20260723-storefront-studio-v1" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -71,7 +71,8 @@
               <option value="integrations">Integrations</option>
               <option value="documentation">Documentation</option>
             </select>
-            <button id="saveCatalogButton" class="admin-button" type="button" hidden>Save catalog</button>
+            <span id="storefrontPublishState" class="admin-publish-state" hidden><span></span>All changes published</span>
+            <button id="saveCatalogButton" class="admin-button" type="button" hidden>Publish changes</button>
             <button id="addProductButton" class="admin-button secondary" type="button" hidden>Add product</button>
           </div>
           <span id="adminStatus" class="admin-status">Loading catalog...</span>
@@ -609,13 +610,46 @@ node --test server.test.js</code></div>
         </section>
 
         <section class="admin-panel" data-admin-section="catalog" hidden>
-          <h2>Products</h2>
-          <p class="helper-text">Edit price, stock, image path, labels, and shelf details here.</p>
+          <div class="admin-section-head">
+            <div>
+              <span class="admin-card-kicker">Storefront inventory</span>
+              <h2>Products</h2>
+              <p class="helper-text">Search, open only the product you need, then publish all changes together.</p>
+            </div>
+            <label class="admin-catalog-search">
+              <span>Search products</span>
+              <input id="adminProductSearch" type="search" placeholder="Name, SKU or category" />
+            </label>
+          </div>
           <div id="productList" class="product-editor-list"></div>
         </section>
+
+        <aside id="storefrontPreviewPanel" class="admin-preview-panel" hidden>
+          <div class="admin-preview-toolbar">
+            <div>
+              <span class="admin-card-kicker">Live storefront</span>
+              <strong>Preview</strong>
+            </div>
+            <div class="admin-preview-devices" aria-label="Preview size">
+              <button class="is-active" type="button" data-preview-device="mobile" aria-label="Mobile preview">Mobile</button>
+              <button type="button" data-preview-device="desktop" aria-label="Desktop preview">Desktop</button>
+            </div>
+          </div>
+          <div class="admin-preview-note">
+            <span class="admin-preview-dot"></span>
+            <span>Shows the currently published storefront. Publish changes to refresh it.</span>
+          </div>
+          <div id="storefrontPreviewViewport" class="admin-preview-viewport is-mobile">
+            <iframe id="storefrontPreviewFrame" title="Bakeaholic storefront preview" src="/index.html?admin-preview=1"></iframe>
+          </div>
+          <div class="admin-preview-footer">
+            <button id="refreshStorefrontPreview" class="admin-text-button" type="button">Refresh preview</button>
+            <a href="/index.html" target="_blank" rel="noreferrer">Open storefront ↗</a>
+          </div>
+        </aside>
       </main>
     </div>
 
-    <script src="admin.js?v=20260723-admin-docs-v1"></script>
+    <script src="admin.js?v=20260723-storefront-studio-v1"></script>
   </body>
 </html>

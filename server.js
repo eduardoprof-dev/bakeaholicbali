@@ -2390,14 +2390,14 @@ function defaultSecurityHeaders(cacheControl = "no-store") {
       "default-src 'self'",
       "base-uri 'self'",
       "object-src 'none'",
-      "frame-ancestors 'none'",
+      "frame-ancestors 'self'",
       "form-action 'self'",
       "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://maps.googleapis.com https://*.xendit.co",
       "style-src 'self' 'unsafe-inline' https://unpkg.com https://maps.googleapis.com",
       "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://maps.googleapis.com https://maps.gstatic.com https://*.xendit.co https://api.qrserver.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "connect-src 'self' https://nominatim.openstreetmap.org https://maps.googleapis.com https://*.xendit.co",
-      "frame-src https://checkout.xendit.co https://checkout-staging.xendit.co https://*.xendit.co",
+      "frame-src 'self' https://checkout.xendit.co https://checkout-staging.xendit.co https://*.xendit.co",
       "upgrade-insecure-requests"
     ].join("; "),
     "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
@@ -2405,7 +2405,7 @@ function defaultSecurityHeaders(cacheControl = "no-store") {
     "Strict-Transport-Security": "max-age=31536000",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
+    "X-Frame-Options": "SAMEORIGIN",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=(self)"
   };
 }
