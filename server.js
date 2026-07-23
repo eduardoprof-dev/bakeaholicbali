@@ -1938,8 +1938,8 @@ function configuredValue(...values) {
 function xenditKeyMode(value = "") {
   const key = String(value || "").trim().toLowerCase();
   if (!key) return "missing";
-  if (key.includes("development") || key.includes("test")) return "test";
-  if (key.includes("production") || key.includes("live")) return "live";
+  if (key.startsWith("xnd_development_")) return "test";
+  if (key.startsWith("xnd_production_")) return "live";
   return "unknown";
 }
 
