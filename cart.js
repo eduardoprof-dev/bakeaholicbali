@@ -739,7 +739,7 @@ function bindCheckoutPaymentPanel(order) {
           return;
         } else {
           renderEmbeddedPayment(response.order, false);
-          setCheckoutMessage("Payment is still waiting. Please complete it below.", "success");
+          setCheckoutMessage("Payment is still processing. Please check the status again in a moment.", "success");
           button.disabled = false;
           button.textContent = "Still waiting - check again";
         }

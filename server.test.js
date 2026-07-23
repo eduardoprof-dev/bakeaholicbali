@@ -7,6 +7,7 @@ const {
   customerShippingWhatsappParameters,
   defaultSecurityHeaders,
   hasBiteshipShipmentForMessaging,
+  isSuccessfulXenditPaymentEvent,
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
   securityTxtBody,
@@ -276,4 +277,10 @@ test("live Xendit selects a production key over a saved development key", () => 
     selectXenditSecretKey("test", "xnd_production_railway", "xnd_development_saved"),
     "xnd_development_saved"
   );
+});
+
+test("Xendit transaction SUCCESS is treated as a completed payment", () => {
+  assert.equal(isSuccessfulXenditPaymentEvent({ status: "SUCCESS" }), true);
+  assert.equal(isSuccessfulXenditPaymentEvent({ event: "qr.payment", status: "COMPLETED" }), true);
+  assert.equal(isSuccessfulXenditPaymentEvent({ status: "ACTIVE" }), false);
 });
