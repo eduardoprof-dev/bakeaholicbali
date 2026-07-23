@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260723-refund-lifecycle" />
+    <link rel="stylesheet" href="styles.css?v=20260723-operations-console-v3" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -19,8 +19,9 @@
           </div>
         </div>
         <nav class="admin-nav" aria-label="Admin sections">
+          <button class="admin-nav-button is-active" type="button" data-admin-target="dashboard">Overview</button>
           <div class="admin-nav-group">
-            <button class="admin-nav-button is-active" type="button" data-admin-target="store">Storefront</button>
+            <button class="admin-nav-button" type="button" data-admin-target="store">Storefront</button>
             <div class="admin-subnav">
               <button type="button" data-admin-target="store">Storefront settings</button>
               <button type="button" data-admin-target="promo">Promo spotlight</button>
@@ -63,11 +64,12 @@
       <main class="admin-main">
         <header class="admin-topbar">
           <div>
-            <p class="eyebrow">Local Admin</p>
-            <h1>Manage the storefront.</h1>
+            <p class="eyebrow" id="adminPageEyebrow">Bakeaholic Operations</p>
+            <h1 id="adminPageTitle">Good decisions start here.</h1>
           </div>
           <div class="admin-actions">
             <select id="adminSectionSelect" class="admin-section-select" aria-label="Admin section">
+              <option value="dashboard">Overview</option>
               <option value="store">Storefront</option>
               <option value="promo">Promo Spotlight</option>
               <option value="orders">Orders</option>
@@ -99,7 +101,123 @@
           </form>
         </section>
 
-        <section class="admin-panel" data-admin-section="store">
+        <section class="admin-panel admin-dashboard-panel" data-admin-section="dashboard">
+          <div class="admin-dashboard-hero">
+            <div>
+              <span class="admin-live-badge"><span></span> Production operations</span>
+              <h2>Store health at a glance.</h2>
+              <p>Start here each day. Anything that needs attention appears before routine editing tools.</p>
+            </div>
+            <div class="admin-dashboard-hero-actions">
+              <button id="runSystemCheckButton" class="admin-button" type="button">Run system check</button>
+              <button class="admin-button secondary" type="button" data-dashboard-target="orders">Review orders</button>
+            </div>
+          </div>
+
+          <div class="admin-kpi-grid" aria-label="Operations summary">
+            <article class="admin-kpi-card is-priority">
+              <span>Needs attention</span>
+              <strong id="dashboardAttentionCount">—</strong>
+              <small id="dashboardAttentionSummary">Checking orders and refunds…</small>
+            </article>
+            <article class="admin-kpi-card">
+              <span>Open orders</span>
+              <strong id="dashboardOpenOrdersCount">—</strong>
+              <small>Paid, preparing, or in delivery</small>
+            </article>
+            <article class="admin-kpi-card">
+              <span>Low stock</span>
+              <strong id="dashboardLowStockCount">—</strong>
+              <small>Products with 5 units or fewer</small>
+            </article>
+            <article class="admin-kpi-card">
+              <span>System status</span>
+              <strong id="dashboardSystemStatus">Checking</strong>
+              <small id="dashboardSystemSummary">Payments, messages, delivery, security</small>
+            </article>
+          </div>
+
+          <div class="admin-dashboard-layout">
+            <section class="admin-command-card">
+              <div class="admin-card-heading">
+                <div>
+                  <span class="admin-card-kicker">Priority queue</span>
+                  <h3>What needs you now</h3>
+                </div>
+                <button class="admin-text-button" type="button" data-dashboard-target="orders">Open orders →</button>
+              </div>
+              <div id="dashboardPriorityList" class="admin-priority-list">
+                <div class="admin-dashboard-empty">Loading operational priorities…</div>
+              </div>
+            </section>
+
+            <section class="admin-command-card admin-health-card">
+              <div class="admin-card-heading">
+                <div>
+                  <span class="admin-card-kicker">System health</span>
+                  <h3>Connected services</h3>
+                </div>
+                <span id="dashboardLastChecked" class="admin-card-meta">Not checked yet</span>
+              </div>
+              <div id="dashboardHealthList" class="admin-health-list">
+                <div class="admin-health-row"><span>Loading configuration…</span><span class="admin-health-state">—</span></div>
+              </div>
+            </section>
+          </div>
+
+          <section class="admin-command-card admin-test-plan-card">
+            <div class="admin-card-heading">
+              <div>
+                <span class="admin-card-kicker">Pinned for tomorrow</span>
+                <h3>Live payment test plan</h3>
+                <p>Use the lowest practical order value. Complete one test at a time and record the result before continuing.</p>
+              </div>
+              <button id="resetLiveTestChecklistButton" class="admin-text-button" type="button">Reset checklist</button>
+            </div>
+            <div class="admin-checklist-grid" id="liveTestChecklist">
+              <label class="admin-check-item"><input type="checkbox" data-live-test="va-generate" /><span><strong>Generate all six VAs</strong><small>BNI, BRI, CIMB, BJB, Mandiri and Permata. Pay only one.</small></span></label>
+              <label class="admin-check-item"><input type="checkbox" data-live-test="qris-payment" /><span><strong>Complete one QRIS payment</strong><small>Confirm website, invoice, Admin and WhatsApp all show paid.</small></span></label>
+              <label class="admin-check-item"><input type="checkbox" data-live-test="debit-card" /><span><strong>Complete one debit-card payment</strong><small>Confirm 3DS, return page and payment callback.</small></span></label>
+              <label class="admin-check-item"><input type="checkbox" data-live-test="credit-card" /><span><strong>Complete one credit-card payment</strong><small>Confirm 3DS, receipt and Admin alert.</small></span></label>
+              <label class="admin-check-item"><input type="checkbox" data-live-test="qris-refund" /><span><strong>Test one QRIS refund</strong><small>Use a supported issuer and verify the refund webhook reaches succeeded.</small></span></label>
+              <label class="admin-check-item"><input type="checkbox" data-live-test="card-refund" /><span><strong>Test one representative card refund</strong><small>One card refund covers the shared debit/credit workflow.</small></span></label>
+              <div class="admin-check-item is-warning"><span class="admin-warning-icon">!</span><span><strong>Never use VA payments for automatic-refund testing</strong><small>VA refunds are channel-dependent and may require a manual bank payout.</small></span></div>
+            </div>
+          </section>
+
+          <div class="admin-dashboard-layout">
+            <section class="admin-command-card">
+              <div class="admin-card-heading">
+                <div>
+                  <span class="admin-card-kicker">Owner routine</span>
+                  <h3>Maintenance rhythm</h3>
+                </div>
+              </div>
+              <div class="admin-maintenance-list">
+                <div><strong>Daily</strong><span>Review paid orders, delivery issues, failed messages and refunds.</span></div>
+                <div><strong>Weekly</strong><span>Run WhatsApp diagnostics, check low stock and verify one receipt/tracking link.</span></div>
+                <div><strong>Monthly</strong><span>Review Cloudflare threats, Xendit settlements, access users and backup health.</span></div>
+                <div><strong>Before changes</strong><span>Use test mode, document the change and keep a rollback point in GitHub.</span></div>
+              </div>
+            </section>
+            <section class="admin-command-card">
+              <div class="admin-card-heading">
+                <div>
+                  <span class="admin-card-kicker">Safe operations</span>
+                  <h3>Rules worth remembering</h3>
+                </div>
+              </div>
+              <ul class="admin-owner-rules">
+                <li>“Cancelled” does not automatically mean “refunded.” Check the refund status.</li>
+                <li>Never paste secret API keys into chat, email or screenshots.</li>
+                <li>Do not approve delivery until payment is confirmed and the package is ready.</li>
+                <li>If a webhook fails, fix and replay it—do not ask the customer to pay twice.</li>
+              </ul>
+            </section>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="store" hidden>
           <div class="admin-section-head">
             <div>
               <h2>Storefront Settings</h2>
@@ -361,7 +479,7 @@
           </div>
           <p class="helper-text">These values are stored locally in `order-demo/.env` and applied to the app immediately. WhatsApp template names should match templates already approved in Meta. The admin alert template should accept event, order id, customer name, customer phone, total, payment method, delivery status, invoice URL, and action text. Receipt and shipping templates use dynamic website buttons for receipt/tracking links.</p>
           <div class="admin-actions">
-            <button class="admin-button secondary" id="testWhatsappTemplatesButton" type="button">Test all 13 WhatsApp templates</button>
+            <button class="admin-button secondary" id="testWhatsappTemplatesButton" type="button">Test all 14 WhatsApp templates</button>
             <button class="admin-button secondary" id="inspectWhatsappTemplatesButton" type="button">Inspect Meta template schemas</button>
           </div>
           <p class="helper-text">Sends synthetic template messages only to the configured admin WhatsApp number. It does not create an order, change stock, book delivery, or charge Xendit.</p>
@@ -497,8 +615,8 @@ flowchart TD
         <section class="admin-panel" data-admin-section="advanced" hidden>
           <div class="admin-section-head">
             <div>
-              <h2>Advanced</h2>
-              <p class="helper-text">Developer map for operational code, webhook routes, and WhatsApp command behavior.</p>
+              <h2>Developer handover</h2>
+              <p class="helper-text">The minimum operational knowledge required to maintain the live store safely.</p>
             </div>
           </div>
           <div class="admin-flow-grid read-only">
@@ -507,12 +625,12 @@ flowchart TD
               <p>Admin can tap Approve or Cancel from WhatsApp. The app waits 60 seconds and sends an Undo button before creating the Biteship delivery or starting the cancellation/refund flow. Text commands still work: APPROVE, CANCEL, or APPROVE BAK-0001 when several orders are waiting.</p>
             </article>
             <article class="admin-flow-card">
-              <strong>Webhook routes</strong>
-              <p>Xendit: /api/xendit/invoice-callback. WhatsApp: /api/whatsapp/webhook. Biteship: /api/biteship/webhook.</p>
+              <strong>Production architecture</strong>
+              <p>Cloudflare protects the public domain and forwards traffic to Railway. Railway runs the Node server. Persistent order and catalog JSON must remain mounted at <code>/app/data</code>.</p>
             </article>
             <article class="admin-flow-card">
-              <strong>Core files</strong>
-              <p>server.js controls payments, Biteship, WhatsApp, orders, and webhooks. cart.js controls checkout. admin.js controls this maintenance console.</p>
+              <strong>Webhook routes</strong>
+              <p>Xendit: <code>/api/xendit/invoice-callback</code>. WhatsApp: <code>/api/whatsapp/webhook</code>. Biteship: <code>/api/biteship/webhook</code>. Treat callback tokens and app secrets as passwords.</p>
             </article>
             <article class="admin-flow-card code-map">
               <strong>Developer source map</strong>
@@ -532,8 +650,24 @@ DATA_DIR
   persistent JSON storage, expected Railway mount: /app/data</code></pre>
             </article>
             <article class="admin-flow-card">
+              <strong>Safe release checklist</strong>
+              <p>Work on a branch. Run <code>node --check server.js</code>, <code>node --check admin.js</code>, and <code>node --test server.test.js</code>. Review the diff, merge through GitHub, confirm Railway is healthy, then smoke-test the storefront without creating a payment.</p>
+            </article>
+            <article class="admin-flow-card">
+              <strong>Incident playbook</strong>
+              <p>Do not ask a customer to pay twice. First record the order number and time, check Admin and the provider dashboard, then inspect Railway logs. Repair the callback cause and replay the webhook when supported.</p>
+            </article>
+            <article class="admin-flow-card">
+              <strong>Backups and data</strong>
+              <p>Before structural changes, take a Railway volume backup or export the JSON data. Never replace <code>DATA_DIR</code> with ephemeral storage. A successful deployment does not prove that persistent data is safe.</p>
+            </article>
+            <article class="admin-flow-card">
+              <strong>Secrets and access</strong>
+              <p>Keep production keys only in Railway variables or the protected integrations store. Require MFA for GitHub, Railway, Cloudflare, Meta and Xendit. Rotate a key immediately if it appears in chat, email, logs or screenshots.</p>
+            </article>
+            <article class="admin-flow-card">
               <strong>Daily operations</strong>
-              <p>Daily paid-order approval should happen in WhatsApp. The Orders section is only a fallback/debug view for developers.</p>
+              <p>Approve paid orders in WhatsApp only after the package is ready. Use the Orders section for visibility and fallback actions. A cancellation and a refund are separate states—confirm both.</p>
             </article>
           </div>
         </section>
@@ -591,6 +725,6 @@ DATA_DIR
         }
       });
     </script>
-    <script src="admin.js?v=20260723-refund-lifecycle"></script>
+    <script src="admin.js?v=20260723-operations-console-v3"></script>
   </body>
 </html>
