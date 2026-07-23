@@ -9,6 +9,7 @@ const {
   defaultSecurityHeaders,
   hasBiteshipShipmentForMessaging,
   isSuccessfulXenditPaymentEvent,
+  orderUpdateWhatsappParameters,
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
   securityTxtBody,
@@ -305,15 +306,22 @@ test("legacy Xendit QRIS callbacks accept the nominal payment field", () => {
   assert.equal(xenditPaymentAmount({ nominal: 18700 }), 18700);
 });
 
-test("cancelled paid orders never fall back to the order received template", () => {
+test("cancelled paid orders use the approved dedicated template", () => {
   const previousName = process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME;
   delete process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME;
   try {
-    assert.equal(configuredWhatsappOrderTemplateName({ status: "cancelled" }), "");
+    assert.equal(configuredWhatsappOrderTemplateName({ status: "cancelled" }), "order_cancelled");
     process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME = "order_cancelled";
     assert.equal(configuredWhatsappOrderTemplateName({ status: "cancelled" }), "order_cancelled");
   } finally {
     if (previousName === undefined) delete process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME;
     else process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME = previousName;
   }
+});
+
+test("cancelled template receives exactly the order-number variable", () => {
+  assert.deepEqual(
+    orderUpdateWhatsappParameters({ id: "BAK-0105" }, "order_cancelled"),
+    ["BAK-0105"]
+  );
 });

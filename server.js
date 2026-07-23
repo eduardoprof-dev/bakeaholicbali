@@ -967,7 +967,7 @@ function defaultWhatsappOrderTemplateName(order) {
     complete: "order_delivered"
   };
   if (order.status === "cancelled") {
-    return String(process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME || "").trim();
+    return String(process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME || "order_cancelled").trim();
   }
   return statusTemplates[order.status] || "order_received";
 }
@@ -1007,13 +1007,18 @@ function orderUpdateWhatsappOptions(order, templateName) {
   return options;
 }
 
+function orderUpdateWhatsappParameters(order, templateName) {
+  return templateName === "order_cancelled" ? [order.id] : [];
+}
+
 async function sendWhatsappOrderUpdate(order) {
   const templateName = configuredWhatsappOrderTemplateName(order);
   if (!templateName) {
     throw new Error("WHATSAPP_ORDER_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, [], orderUpdateWhatsappOptions(order, templateName));
+  const parameters = orderUpdateWhatsappParameters(order, templateName);
+  return sendWhatsappTemplateMessage(order.customer.phone, templateName, parameters, orderUpdateWhatsappOptions(order, templateName));
 }
 
 function adminWhatsappParameters(order, eventLabel = "") {
@@ -7076,6 +7081,7 @@ module.exports = {
   customerShippingWhatsappParameters,
   hasBiteshipShipmentForMessaging,
   isSuccessfulXenditPaymentEvent,
+  orderUpdateWhatsappParameters,
   parsePublicOrderReference,
   paymentExpiredWhatsappParameters,
   paymentReminderWhatsappParameters,
