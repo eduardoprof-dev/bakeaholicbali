@@ -6,6 +6,7 @@ const {
   customerShippingWhatsappParameters,
   hasBiteshipShipmentForMessaging,
   parsePublicOrderReference,
+  runWhatsappTemplateDiagnostics,
   sendWhatsappTemplateMessage,
   shippingWhatsappDetails
 } = require("./server");
@@ -62,6 +63,79 @@ test("WhatsApp template parameters keep their approved positions", async () => {
     "-",
     "Rp 75.000"
   ]);
+});
+
+test("admin diagnostics exercise every configured template without creating an order", async () => {
+  const previousFetch = global.fetch;
+  const envKeys = [
+    "WHATSAPP_ACCESS_TOKEN",
+    "WHATSAPP_PHONE_NUMBER_ID",
+    "WHATSAPP_ADMIN_NUMBER",
+    "WHATSAPP_OTP_TEMPLATE_NAME",
+    "WHATSAPP_ORDER_TEMPLATE_NAME",
+    "WHATSAPP_RECEIPT_TEMPLATE_NAME",
+    "WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME",
+    "WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME",
+    "WHATSAPP_SHIPPING_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME",
+    "WHATSAPP_TEMPLATE_LANGUAGE"
+  ];
+  const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const payloads = [];
+  Object.assign(process.env, {
+    WHATSAPP_ACCESS_TOKEN: "test-token",
+    WHATSAPP_PHONE_NUMBER_ID: "123456",
+    WHATSAPP_ADMIN_NUMBER: "6281234567890",
+    WHATSAPP_OTP_TEMPLATE_NAME: "otp_verification",
+    WHATSAPP_ORDER_TEMPLATE_NAME: "payment_confirmed",
+    WHATSAPP_RECEIPT_TEMPLATE_NAME: "payment_receipt",
+    WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: "payment_update_order",
+    WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME: "order_cancelled_unpaid",
+    WHATSAPP_SHIPPING_TEMPLATE_NAME: "shipping_update",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2",
+    WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update",
+    WHATSAPP_TEMPLATE_LANGUAGE: "en_US"
+  });
+  global.fetch = async (_url, options) => {
+    payloads.push(JSON.parse(options.body));
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ messages: [{ id: `wamid.test.${payloads.length}` }] })
+    };
+  };
+
+  let diagnostic;
+  try {
+    diagnostic = await runWhatsappTemplateDiagnostics();
+  } finally {
+    global.fetch = previousFetch;
+    for (const key of envKeys) {
+      if (previousEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEnv[key];
+    }
+  }
+
+  assert.equal(diagnostic.ok, true);
+  assert.equal(diagnostic.synthetic, true);
+  assert.equal(diagnostic.charged, false);
+  assert.equal(diagnostic.orderCreated, false);
+  assert.equal(payloads.length, 8);
+  const bodyCounts = Object.fromEntries(payloads.map((payload) => {
+    const body = payload.template.components?.find((component) => component.type === "body");
+    return [payload.template.name, body?.parameters?.length || 0];
+  }));
+  assert.deepEqual(bodyCounts, {
+    otp_verification: 1,
+    payment_confirmed: 0,
+    payment_receipt: 2,
+    payment_update_order: 1,
+    order_cancelled_unpaid: 1,
+    shipping_update: 5,
+    admin_order_alert_v2: 9,
+    admin_shipping_update: 5
+  });
 });
 
 test("status templates select the paid confirmation for legacy settings", () => {

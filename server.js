@@ -416,6 +416,123 @@ async function checkWhatsappCloudConfig() {
   return result;
 }
 
+function whatsappTemplateTestOrder(recipient) {
+  return {
+    id: `WA-TEST-${Date.now()}`,
+    mode: "test",
+    status: "paid",
+    receiptToken: crypto.randomBytes(18).toString("hex"),
+    customer: {
+      name: "WhatsApp Template Test",
+      phone: recipient
+    },
+    pricing: { total: 6600 },
+    payment: {
+      label: "Template test - no payment",
+      status: "paid"
+    },
+    fulfillment: {
+      shipment: {
+        orderId: "bakeaholic-template-test",
+        status: "confirmed",
+        waybillId: "TEST-WAYBILL",
+        trackingLink: "https://track.biteship.com/bakeaholic-template-test",
+        courier: { company: "Template Test Courier" }
+      }
+    }
+  };
+}
+
+function maskedWhatsappNumber(value = "") {
+  const number = String(value || "").replace(/\D/g, "");
+  if (number.length <= 6) return number ? "***" : "";
+  return `${number.slice(0, 3)}***${number.slice(-3)}`;
+}
+
+async function runWhatsappTemplateDiagnostics() {
+  const recipient = String(process.env.WHATSAPP_ADMIN_NUMBER || "").trim();
+  if (!recipient) {
+    throw new Error("Admin WhatsApp number is not configured");
+  }
+  if (!isWhatsappCloudReady()) {
+    throw new Error("WhatsApp Cloud API is not configured");
+  }
+
+  const order = whatsappTemplateTestOrder(recipient);
+  const checks = [
+    {
+      key: "otp",
+      templateName: process.env.WHATSAPP_OTP_TEMPLATE_NAME,
+      send: () => sendWhatsappOtpCode(recipient, "123456")
+    },
+    {
+      key: "order_paid",
+      templateName: configuredWhatsappOrderTemplateName(order),
+      send: () => sendWhatsappOrderUpdate(order)
+    },
+    {
+      key: "payment_receipt",
+      templateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME,
+      send: () => sendWhatsappPaymentReceipt(order)
+    },
+    {
+      key: "payment_reminder",
+      templateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME,
+      send: () => sendWhatsappPaymentReminder(order)
+    },
+    {
+      key: "payment_expired",
+      templateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME,
+      send: () => sendWhatsappPaymentExpired(order)
+    },
+    {
+      key: "customer_shipping",
+      templateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME,
+      send: () => sendWhatsappShippingUpdate(order)
+    },
+    {
+      key: "admin_alert",
+      templateName: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME,
+      send: () => sendWhatsappAdminAlert(order, "WhatsApp template diagnostic - no live order")
+    },
+    {
+      key: "admin_shipping",
+      templateName: process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME,
+      send: () => sendWhatsappShippingUpdate(order, { admin: true })
+    }
+  ];
+
+  const results = [];
+  for (const check of checks) {
+    const templateName = String(check.templateName || "").trim();
+    if (!templateName) {
+      results.push({ key: check.key, templateName: "", ok: false, error: "Template is not configured" });
+      continue;
+    }
+    try {
+      const response = await check.send();
+      results.push({
+        key: check.key,
+        templateName,
+        ok: true,
+        messageId: response?.messages?.[0]?.id || "accepted"
+      });
+    } catch (error) {
+      results.push({ key: check.key, templateName, ok: false, error: error.message });
+    }
+  }
+
+  return {
+    ok: results.every((result) => result.ok),
+    synthetic: true,
+    charged: false,
+    orderCreated: false,
+    recipient: maskedWhatsappNumber(recipient),
+    testedAt: new Date().toISOString(),
+    results
+  };
+}
+
 async function sendWhatsappTemplateMessage(to, templateName, parameters = [], options = {}) {
   if (!isWhatsappCloudReady()) {
     throw new Error("WhatsApp Cloud API is not configured");
@@ -6161,6 +6278,17 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "POST" && pathname === "/api/admin/whatsapp-template-tests") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    runWhatsappTemplateDiagnostics()
+      .then((payload) => sendJson(response, payload.ok ? 200 : 422, payload))
+      .catch((error) => sendJson(response, 400, { ok: false, error: error.message }));
+    return true;
+  }
+
   if (request.method === "GET" && pathname === "/api/admin/xendit-health") {
     const session = requireAdminSession(request, response);
     if (!session) {
@@ -6659,6 +6787,8 @@ module.exports = {
   paymentExpiredWhatsappParameters,
   paymentReminderWhatsappParameters,
   receiptWhatsappParameters,
+  runWhatsappTemplateDiagnostics,
   sendWhatsappTemplateMessage,
-  shippingWhatsappDetails
+  shippingWhatsappDetails,
+  whatsappTemplateTestOrder
 };
