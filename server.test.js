@@ -263,10 +263,11 @@ test("public order references preserve live and test modes", () => {
 test("responses enforce transport and browser security boundaries", () => {
   const headers = defaultSecurityHeaders();
   assert.equal(headers["Strict-Transport-Security"], "max-age=31536000");
-  assert.equal(headers["X-Frame-Options"], "DENY");
+  assert.equal(headers["X-Frame-Options"], "SAMEORIGIN");
   assert.match(headers["Content-Security-Policy"], /default-src 'self'/);
   assert.match(headers["Content-Security-Policy"], /object-src 'none'/);
-  assert.match(headers["Content-Security-Policy"], /frame-ancestors 'none'/);
+  assert.match(headers["Content-Security-Policy"], /frame-ancestors 'self'/);
+  assert.match(headers["Content-Security-Policy"], /frame-src 'self'/);
   assert.match(headers["Content-Security-Policy"], /checkout\.xendit\.co/);
   assert.match(headers["Content-Security-Policy"], /maps\.googleapis\.com/);
   assert.match(headers["Content-Security-Policy"], /api\.qrserver\.com/);

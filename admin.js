@@ -6,7 +6,8 @@ const state = {
   orders: [],
   vouchers: [],
   integrations: null,
-  health: null
+  health: null,
+  catalogDirty: false
 };
 
 const formatRupiah = new Intl.NumberFormat("id-ID", {
@@ -25,6 +26,11 @@ const adminLogoutButton = document.getElementById("adminLogoutButton");
 const adminStatus = document.getElementById("adminStatus");
 const adminPageEyebrow = document.getElementById("adminPageEyebrow");
 const adminPageTitle = document.getElementById("adminPageTitle");
+const adminMain = document.querySelector(".admin-main");
+const storefrontPreviewPanel = document.getElementById("storefrontPreviewPanel");
+const storefrontPreviewFrame = document.getElementById("storefrontPreviewFrame");
+const storefrontPreviewViewport = document.getElementById("storefrontPreviewViewport");
+const storefrontPublishState = document.getElementById("storefrontPublishState");
 const adminLoginPanel = document.getElementById("adminLoginPanel");
 const adminLoginForm = document.getElementById("adminLoginForm");
 const adminPasswordInput = document.getElementById("adminPasswordInput");
@@ -237,13 +243,17 @@ function setStatus(message) {
 }
 
 function showAdminSection(sectionName) {
+  const isStorefrontStudio = catalogActionSections.has(sectionName);
   adminSections.forEach((section) => {
     section.hidden = section.dataset.adminSection !== sectionName;
   });
   adminNavButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.adminTarget === sectionName);
   });
-  saveCatalogButton.hidden = !catalogActionSections.has(sectionName);
+  saveCatalogButton.hidden = !isStorefrontStudio || !state.catalogDirty;
+  storefrontPublishState.hidden = !isStorefrontStudio;
+  storefrontPreviewPanel.hidden = !isStorefrontStudio;
+  adminMain.classList.toggle("is-storefront-studio", isStorefrontStudio);
   addProductButton.hidden = sectionName !== "catalog";
   if (adminSectionSelect) {
     adminSectionSelect.value = sectionName;
@@ -264,6 +274,32 @@ function showAdminSection(sectionName) {
       syncKitchenMapFromFields();
     }, 0);
   }
+}
+
+function updatePublishState() {
+  if (!storefrontPublishState) return;
+  storefrontPublishState.classList.toggle("has-changes", state.catalogDirty);
+  storefrontPublishState.innerHTML = state.catalogDirty
+    ? "<span></span>Unpublished changes"
+    : "<span></span>All changes published";
+  saveCatalogButton.textContent = "Publish changes";
+  const sectionName = adminSectionSelect?.value || "";
+  saveCatalogButton.hidden = !catalogActionSections.has(sectionName) || !state.catalogDirty;
+  saveCatalogButton.disabled = false;
+}
+
+function markCatalogDirty() {
+  if (state.catalogDirty) return;
+  state.catalogDirty = true;
+  updatePublishState();
+  setStatus("You have unpublished storefront changes.");
+}
+
+function refreshStorefrontPreview() {
+  if (!storefrontPreviewFrame) return;
+  const url = new URL("/index.html", window.location.origin);
+  url.searchParams.set("admin-preview", String(Date.now()));
+  storefrontPreviewFrame.src = url.toString();
 }
 
 function dashboardAttentionItems() {
@@ -953,11 +989,18 @@ function productMarkup(product, index) {
     .join("");
 
   return `
-    <article class="product-editor-card" data-product-index="${index}">
+    <article class="product-editor-card is-collapsed" data-product-index="${index}">
       <div class="product-editor-head">
-        <h3>${product.name || "New product"}</h3>
-        <button class="admin-button secondary" type="button" data-remove-product="${index}">Remove</button>
+        <div>
+          <h3>${product.name || "New product"}</h3>
+          <p>${escapeHtml(product.category || "Uncategorized")} · ${formatRupiah.format(product.price || 0)} · ${Number(product.stock || 0)} in stock</p>
+        </div>
+        <div class="product-editor-actions">
+          <button class="admin-button secondary" type="button" data-toggle-product="${index}">Edit product</button>
+          <button class="admin-text-button is-danger" type="button" data-remove-product="${index}">Remove</button>
+        </div>
       </div>
+      <div class="product-editor-body">
       <div class="admin-grid three">
         <div class="admin-field">
           <label>Product id</label>
@@ -1043,6 +1086,7 @@ function productMarkup(product, index) {
           <textarea data-product-field="description">${product.description || ""}</textarea>
         </div>
       </div>
+      </div>
     </article>
   `;
 }
@@ -1061,9 +1105,22 @@ function renderProducts() {
   productList.querySelectorAll("[data-remove-product]").forEach((button) => {
     button.addEventListener("click", () => {
       const index = Number(button.dataset.removeProduct);
+      const productName = state.catalog.items[index]?.name || "this product";
+      if (!window.confirm(`Remove ${productName}? This is not published until you click Publish changes.`)) {
+        return;
+      }
       state.catalog.items.splice(index, 1);
       renderPromoOptions();
       renderProducts();
+      markCatalogDirty();
+    });
+  });
+
+  productList.querySelectorAll("[data-toggle-product]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const card = button.closest("[data-product-index]");
+      const isCollapsed = card.classList.toggle("is-collapsed");
+      button.textContent = isCollapsed ? "Edit product" : "Close editor";
     });
   });
 
@@ -1228,7 +1285,7 @@ function collectCategories() {
 }
 
 function collectProducts() {
-  return [...productList.querySelectorAll("[data-product-index]")].map((card) => {
+  return [...productList.querySelectorAll("[data-product-index]")].map((card, index) => {
     const product = {};
     card.querySelectorAll("[data-product-field]").forEach((field) => {
       const key = field.dataset.productField;
@@ -1238,7 +1295,10 @@ function collectProducts() {
         product[key] = field.value.trim();
       }
     });
-    return product;
+    return {
+      ...(state.catalog.items[index] || {}),
+      ...product
+    };
   });
 }
 
@@ -1258,7 +1318,10 @@ async function saveCatalog() {
     });
     state.catalog = response.catalog;
     renderAll();
-    setStatus("Catalog saved to disk.");
+    state.catalogDirty = false;
+    updatePublishState();
+    refreshStorefrontPreview();
+    setStatus("Storefront changes published successfully.");
   } catch (error) {
     setStatus(error.message);
   }
@@ -1481,6 +1544,7 @@ function addProduct() {
   });
   renderPromoOptions();
   renderProducts();
+  markCatalogDirty();
 }
 
 async function bootstrap() {
@@ -1500,6 +1564,7 @@ async function bootstrap() {
   renderIntegrations(integrations);
   renderAdminOrders();
   restoreLiveTestChecklist();
+  updatePublishState();
   await initializeKitchenMap(publicConfig.googleMapsApiKey).catch(() => {
     // The operations overview should remain usable if the optional map preview
     // cannot initialize. The Storefront section still exposes the saved address.
@@ -1560,6 +1625,45 @@ document.getElementById("resetLiveTestChecklistButton")?.addEventListener("click
 document.getElementById("liveTestChecklist")?.addEventListener("change", saveLiveTestChecklist);
 document.querySelectorAll("[data-dashboard-target]").forEach((button) => {
   button.addEventListener("click", () => showAdminSection(button.dataset.dashboardTarget));
+});
+adminMain?.addEventListener("input", (event) => {
+  const section = event.target.closest("[data-admin-section]");
+  if (section && catalogActionSections.has(section.dataset.adminSection)) {
+    markCatalogDirty();
+  }
+});
+adminMain?.addEventListener("change", (event) => {
+  const section = event.target.closest("[data-admin-section]");
+  if (section && catalogActionSections.has(section.dataset.adminSection)) {
+    markCatalogDirty();
+  }
+});
+document.getElementById("refreshStorefrontPreview")?.addEventListener("click", refreshStorefrontPreview);
+document.getElementById("adminProductSearch")?.addEventListener("input", (event) => {
+  const query = event.target.value.trim().toLowerCase();
+  productList.querySelectorAll("[data-product-index]").forEach((card) => {
+    const searchable = [
+      card.querySelector('[data-product-field="name"]')?.value,
+      card.querySelector('[data-product-field="sku"]')?.value,
+      card.querySelector('[data-product-field="category"]')?.value,
+      card.querySelector('[data-product-field="id"]')?.value
+    ].join(" ").toLowerCase();
+    card.hidden = Boolean(query) && !searchable.includes(query);
+  });
+});
+document.querySelectorAll("[data-preview-device]").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("[data-preview-device]").forEach((item) => {
+      item.classList.toggle("is-active", item === button);
+    });
+    storefrontPreviewViewport.classList.toggle("is-mobile", button.dataset.previewDevice === "mobile");
+    storefrontPreviewViewport.classList.toggle("is-desktop", button.dataset.previewDevice === "desktop");
+  });
+});
+window.addEventListener("beforeunload", (event) => {
+  if (!state.catalogDirty) return;
+  event.preventDefault();
+  event.returnValue = "";
 });
 brandStorySlideList.addEventListener("input", (event) => {
   if (event.target.matches('[data-story-field="imagePath"]')) {
