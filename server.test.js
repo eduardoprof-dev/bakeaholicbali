@@ -8,6 +8,7 @@ const {
   hasBiteshipShipmentForMessaging,
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
+  securityTxtBody,
   sendWhatsappTemplateMessage,
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus
@@ -238,4 +239,12 @@ test("responses enforce transport and browser security boundaries", () => {
   assert.match(headers["Content-Security-Policy"], /frame-ancestors 'none'/);
   assert.match(headers["Content-Security-Policy"], /checkout\.xendit\.co/);
   assert.match(headers["Content-Security-Policy"], /maps\.googleapis\.com/);
+});
+
+test("security.txt publishes a canonical vulnerability contact policy", () => {
+  const body = securityTxtBody(new Date("2026-07-23T00:00:00.000Z"));
+  assert.match(body, /^Contact: https:\/\/bakeaholicbali\.com\//m);
+  assert.match(body, /^Expires: 2027-01-19T00:00:00\.000Z$/m);
+  assert.match(body, /^Canonical: https:\/\/bakeaholicbali\.com\/\.well-known\/security\.txt$/m);
+  assert.match(body, /^Policy: https:\/\/bakeaholicbali\.com\/terms\.html#privacy$/m);
 });

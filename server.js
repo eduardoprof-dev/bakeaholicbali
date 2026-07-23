@@ -2345,6 +2345,18 @@ function defaultSecurityHeaders(cacheControl = "no-store") {
   };
 }
 
+function securityTxtBody(now = new Date()) {
+  const expiresAt = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000).toISOString();
+  return [
+    "Contact: https://bakeaholicbali.com/",
+    `Expires: ${expiresAt}`,
+    "Preferred-Languages: en, id",
+    "Canonical: https://bakeaholicbali.com/.well-known/security.txt",
+    "Policy: https://bakeaholicbali.com/terms.html#privacy",
+    ""
+  ].join("\n");
+}
+
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
@@ -6856,6 +6868,15 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "GET" && requestUrl.pathname === "/.well-known/security.txt") {
+    response.writeHead(200, {
+      "Content-Type": "text/plain; charset=utf-8",
+      ...defaultSecurityHeaders("public, max-age=3600")
+    });
+    response.end(securityTxtBody());
+    return;
+  }
+
   if (requestUrl.pathname.startsWith("/api/") || isPublicWebhookPath) {
     const handled = handleApi(requestUrl, request, response);
     if (!handled) {
@@ -6919,6 +6940,7 @@ module.exports = {
   paymentReminderWhatsappParameters,
   receiptWhatsappParameters,
   runWhatsappTemplateDiagnostics,
+  securityTxtBody,
   sendWhatsappTemplateMessage,
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
