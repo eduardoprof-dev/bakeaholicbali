@@ -4,6 +4,7 @@ const test = require("node:test");
 const {
   configuredWhatsappOrderTemplateName,
   customerShippingWhatsappParameters,
+  defaultSecurityHeaders,
   hasBiteshipShipmentForMessaging,
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
@@ -226,4 +227,15 @@ test("public order references preserve live and test modes", () => {
     token: "token",
     mode: "test"
   });
+});
+
+test("responses enforce transport and browser security boundaries", () => {
+  const headers = defaultSecurityHeaders();
+  assert.equal(headers["Strict-Transport-Security"], "max-age=31536000");
+  assert.equal(headers["X-Frame-Options"], "DENY");
+  assert.match(headers["Content-Security-Policy"], /default-src 'self'/);
+  assert.match(headers["Content-Security-Policy"], /object-src 'none'/);
+  assert.match(headers["Content-Security-Policy"], /frame-ancestors 'none'/);
+  assert.match(headers["Content-Security-Policy"], /checkout\.xendit\.co/);
+  assert.match(headers["Content-Security-Policy"], /maps\.googleapis\.com/);
 });
