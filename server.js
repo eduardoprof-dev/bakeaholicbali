@@ -5094,6 +5094,41 @@ async function fetchXenditQrCodeStatus(order) {
     throw new Error(payload.message || payload.error_code || "Unable to check Xendit QRIS status");
   }
 
+  if (!isSuccessfulXenditPaymentEvent(payload)) {
+    const referenceId = String(order.payment?.externalId || order.id || "").trim();
+    const transactionsUrl = new URL("https://api.xendit.co/transactions");
+    transactionsUrl.searchParams.set("types", "PAYMENT");
+    transactionsUrl.searchParams.set("statuses", "SUCCESS");
+    transactionsUrl.searchParams.set("reference_id", referenceId);
+    transactionsUrl.searchParams.set("limit", "10");
+    const transactionsResponse = await fetch(transactionsUrl, {
+      headers: {
+        Accept: "application/json",
+        Authorization: xenditAuthHeader()
+      }
+    });
+    const transactionsPayload = await transactionsResponse.json().catch(async () => ({ raw: await transactionsResponse.text() }));
+    if (transactionsResponse.ok) {
+      const transactions = Array.isArray(transactionsPayload)
+        ? transactionsPayload
+        : transactionsPayload.data || [];
+      const successfulTransaction = transactions.find((transaction) => (
+        String(transaction.reference_id || "") === referenceId
+        && String(transaction.status || "").toUpperCase() === "SUCCESS"
+        && Number(transaction.amount) === Number(order.pricing?.total || 0)
+      ));
+      if (successfulTransaction) {
+        return {
+          ...payload,
+          ...successfulTransaction,
+          status: "SUCCESS",
+          payment_status: "SUCCESS",
+          qr_string: payload.qr_string || order.payment?.qrCodeData || ""
+        };
+      }
+    }
+  }
+
   return payload;
 }
 
@@ -5142,7 +5177,7 @@ function applyXenditQrCodeStatusToOrder(order, qrCode = {}) {
 function isSuccessfulXenditPaymentEvent(payload = {}) {
   const status = String(payload.status || payload.payment_status || "").toUpperCase();
   const event = String(payload.event || "").toLowerCase();
-  return ["PAID", "SETTLED", "COMPLETED", "SUCCEEDED"].includes(status)
+  return ["PAID", "SETTLED", "COMPLETED", "SUCCEEDED", "SUCCESS"].includes(status)
     || ["payment.succeeded", "payment.capture", "payment_session.completed"].includes(event);
 }
 
@@ -6926,28 +6961,34 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  const malformedOrderButtonPrefixes = ["/invoice.html", "/orders.html", "/order.html", "/pay.html"];
+  const malformedOrderButtonPrefix = malformedOrderButtonPrefixes.find((prefix) => (
+    request.method === "GET"
+    && requestUrl.pathname.startsWith(prefix)
+    && requestUrl.pathname !== prefix
+  ));
+  if (malformedOrderButtonPrefix) {
+    const ref = decodeURIComponent(requestUrl.pathname.slice(malformedOrderButtonPrefix.length));
+    const parsedRef = parsePublicOrderReference(ref);
+    const order = findOrder(parsedRef.mode, parsedRef.orderId);
+    const tokenMatches = parsedRef.token && order?.receiptToken && timingSafeEqualString(parsedRef.token, order.receiptToken);
+    if (!order || !tokenMatches) {
+      sendJson(response, 404, { error: "Order not found" });
+      return;
+    }
+    const destination = malformedOrderButtonPrefix === "/invoice.html"
+      ? biteshipTrackingUrl(order) || getPublicOrderUrl(order)
+      : getPublicOrderUrl(order);
+    response.writeHead(302, { Location: destination });
+    response.end();
+    return;
+  }
+
   if (requestUrl.pathname.startsWith("/api/") || isPublicWebhookPath) {
     const handled = handleApi(requestUrl, request, response);
     if (!handled) {
       sendJson(response, 404, { error: "Not found" });
     }
-    return;
-  }
-
-  // Compatibility for the approved Meta template whose fixed URL is
-  // /invoice.html{{1}} (without a query delimiter). Validate the signed order
-  // reference before redirecting to the real courier tracking page.
-  if (request.method === "GET" && requestUrl.pathname.startsWith("/invoice.html") && requestUrl.pathname !== "/invoice.html") {
-    const ref = decodeURIComponent(requestUrl.pathname.slice("/invoice.html".length));
-    const parsedRef = parsePublicOrderReference(ref);
-    const order = findOrder(parsedRef.mode, parsedRef.orderId);
-    const tokenMatches = parsedRef.token && order?.receiptToken && timingSafeEqualString(parsedRef.token, order.receiptToken);
-    if (!order || !tokenMatches) {
-      sendJson(response, 404, { error: "Order document not found" });
-      return;
-    }
-    response.writeHead(302, { Location: biteshipTrackingUrl(order) || getPublicDocumentUrl(order) });
-    response.end();
     return;
   }
 
@@ -6985,6 +7026,7 @@ module.exports = {
   defaultSecurityHeaders,
   customerShippingWhatsappParameters,
   hasBiteshipShipmentForMessaging,
+  isSuccessfulXenditPaymentEvent,
   parsePublicOrderReference,
   paymentExpiredWhatsappParameters,
   paymentReminderWhatsappParameters,
