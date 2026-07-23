@@ -1436,6 +1436,7 @@ async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = f
     if (!admin && !process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME) return "shipping_template_not_configured";
     if (!hasBiteshipShipmentForMessaging(order)) return "biteship_shipment_not_available";
     const bucket = admin ? order.adminWhatsappShippingNotification : order.whatsappShippingNotification;
+    if (!admin && bucket?.lastSentAt) return "already_sent";
     if (eventKey && bucket?.lastNotificationKey === eventKey) return "already_sent";
     return "";
   })();
