@@ -9,9 +9,11 @@ const {
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
   securityTxtBody,
+  selectXenditSecretKey,
   sendWhatsappTemplateMessage,
   shippingWhatsappDetails,
-  shipmentStatusToOrderStatus
+  shipmentStatusToOrderStatus,
+  xenditKeyMode
 } = require("./server");
 
 function whatsappOrder(overrides = {}) {
@@ -247,4 +249,17 @@ test("security.txt publishes a canonical vulnerability contact policy", () => {
   assert.match(body, /^Expires: 2027-01-19T00:00:00\.000Z$/m);
   assert.match(body, /^Canonical: https:\/\/bakeaholicbali\.com\/\.well-known\/security\.txt$/m);
   assert.match(body, /^Policy: https:\/\/bakeaholicbali\.com\/terms\.html#privacy$/m);
+});
+
+test("live Xendit selects a production key over a saved development key", () => {
+  assert.equal(xenditKeyMode("xnd_development_example"), "test");
+  assert.equal(xenditKeyMode("xnd_production_example"), "live");
+  assert.equal(
+    selectXenditSecretKey("live", "xnd_production_railway", "xnd_development_saved"),
+    "xnd_production_railway"
+  );
+  assert.equal(
+    selectXenditSecretKey("test", "xnd_production_railway", "xnd_development_saved"),
+    "xnd_development_saved"
+  );
 });
