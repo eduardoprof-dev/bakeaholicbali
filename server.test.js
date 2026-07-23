@@ -140,7 +140,7 @@ test("admin diagnostics exercise every configured template without creating an o
     order_cancelled_unpaid: 1,
     shipping_update: 4,
     admin_order_alert_v2: 9,
-    admin_shipping_update: 5
+    admin_shipping_update: 4
   });
 });
 
@@ -185,6 +185,27 @@ test("shipping parameters fall back to the Biteship tracking identifier", () => 
     fulfillment: { shipment: { orderId: "ship-1", trackingLink: "https://track.biteship.com/track-987" } }
   });
   assert.equal(shippingWhatsappDetails(order).waybillId, "track-987");
+});
+
+test("admin shipping parameters match the four-variable approved template", () => {
+  const order = whatsappOrder({
+    fulfillment: {
+      shipment: {
+        orderId: "ship-1",
+        waybillId: "WAYBILL-1",
+        trackingLink: "https://track.biteship.com/track-987",
+        labelUrl: "https://example.com/shipping-label.pdf",
+        courier: { company: "Grab" }
+      }
+    }
+  });
+  const { adminShippingWhatsappParameters } = require("./server");
+  assert.deepEqual(adminShippingWhatsappParameters(order), [
+    "BAK-0001",
+    "Grab",
+    "WAYBILL-1",
+    "https://example.com/shipping-label.pdf"
+  ]);
 });
 
 test("Biteship final delivery statuses map to the delivered customer message", () => {

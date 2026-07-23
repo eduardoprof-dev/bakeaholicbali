@@ -1077,7 +1077,6 @@ function adminShippingWhatsappParameters(order) {
     order.id,
     details.courierName,
     details.waybillId,
-    details.trackingLink,
     details.shippingDocumentUrl
   ];
 }
@@ -6893,6 +6892,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  adminShippingWhatsappParameters,
   configuredWhatsappOrderTemplateName,
   customerShippingWhatsappParameters,
   hasBiteshipShipmentForMessaging,
