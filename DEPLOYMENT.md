@@ -50,7 +50,7 @@ Optional but recommended for live messaging:
 - `WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME=...`
 - `WHATSAPP_TEMPLATE_LANGUAGE=en`
 
-For admin alerts, use a Meta-approved template whose body variables match the values the app sends: event/status, order id, customer name, customer phone, total, payment method, delivery status, and invoice URL.
+For admin alerts, use a Meta-approved template whose nine body variables match the values the app sends: event/status, order id, customer name, customer phone, total, payment method, delivery status, invoice URL, and action text.
 
 Customer payment reminders should use the app's WhatsApp templates. The payment reminder template button should point to `https://bakeaholicbali.com/pay.html?ref={{1}}`; the app sends a secure order reference so customers land on the Bakeaholic waiting-payment page first. Receipt buttons should point to `https://bakeaholicbali.com/invoice.html?ref={{1}}`.
 

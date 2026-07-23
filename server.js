@@ -430,11 +430,13 @@ async function sendWhatsappTemplateMessage(to, templateName, parameters = [], op
     throw new Error("Recipient WhatsApp number is missing");
   }
 
+  // Meta validates template parameters by position and exact count. Never
+  // remove an empty value here: doing so shifts every parameter after it and
+  // makes otherwise valid approved templates fail with a parameter mismatch.
   const bodyParameters = parameters
-    .filter((value) => value !== undefined && value !== null && String(value).trim())
     .map((value) => ({
       type: "text",
-      text: String(value).trim()
+      text: String(value ?? "").trim() || "-"
     }));
 
   const templateComponents = [];
@@ -700,6 +702,15 @@ function publicOrderButtonQuery(order) {
   return `${order.id}.${ensureOrderReceiptToken(order)}${modeSuffix}`;
 }
 
+function parsePublicOrderReference(ref = "") {
+  const [orderId, token, refMode] = String(ref || "").trim().split(".");
+  return {
+    orderId: orderId || "",
+    token: token || "",
+    mode: refMode === "test" ? "test" : "live"
+  };
+}
+
 function xenditInvoiceUrl(order) {
   return order.payment?.invoiceUrl || order.payment?.paymentUrl || getPublicDocumentUrl(order);
 }
@@ -735,6 +746,22 @@ function biteshipDocumentUrl(order) {
     shipment.raw?.waybill_url ||
     shipment.raw?.courier?.link ||
     "";
+}
+
+function biteshipTrackingUrl(order) {
+  const shipment = order.fulfillment?.shipment || {};
+  return shipment.trackingLink ||
+    shipment.raw?.courier?.link ||
+    shipment.raw?.courier_link ||
+    shipment.raw?.tracking_link ||
+    shipment.raw?.tracking_url ||
+    (shipment.orderId ? `https://track.biteship.com/${encodeURIComponent(shipment.orderId)}` : "");
+}
+
+function hasBiteshipShipmentForMessaging(order) {
+  const shipment = order.fulfillment?.shipment || {};
+  if (!shipment.orderId) return false;
+  return Boolean(biteshipTrackingUrl(order) || biteshipDocumentUrl(order));
 }
 
 function whatsappDocumentAttachmentUrl(url = "") {
@@ -818,20 +845,19 @@ function paymentExpiredWhatsappParameters(order) {
 function shippingWhatsappDetails(order) {
   const shipment = order.fulfillment?.shipment || {};
   const courierName = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || shipment.raw?.courier?.name || "";
-  const trackingLink = shipment.trackingLink || biteshipDocumentUrl(order) || "-";
+  const trackingLink = biteshipTrackingUrl(order);
   const shippingDocumentUrl = shipment.labelUrl ||
     shipment.invoiceUrl ||
     shipment.waybillUrl ||
     shipment.raw?.label_url ||
     shipment.raw?.invoice_url ||
     shipment.raw?.waybill_url ||
-    trackingLink ||
-    "-";
+    trackingLink;
   return {
-    courierName: courierName || "Courier",
+    courierName: courierName || shipment.raw?.courier_company || shipment.raw?.courier?.company || "-",
     waybillId: shipment.waybillId || "-",
-    trackingLink,
-    shippingDocumentUrl
+    trackingLink: trackingLink || "-",
+    shippingDocumentUrl: shippingDocumentUrl || "-"
   };
 }
 
@@ -841,7 +867,8 @@ function customerShippingWhatsappParameters(order) {
     order.id,
     details.courierName,
     details.waybillId,
-    details.trackingLink
+    details.trackingLink,
+    details.shippingDocumentUrl
   ];
 }
 
@@ -1176,6 +1203,9 @@ async function sweepPaymentReminderFlows() {
 }
 
 async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
+  if (!hasBiteshipShipmentForMessaging(order)) {
+    throw new Error("Biteship shipment is not available yet; shipping WhatsApp was not sent");
+  }
   const templateName = String(admin
     ? process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || ""
     : process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || ""
@@ -1205,6 +1235,7 @@ async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = f
     if (admin && !process.env.WHATSAPP_ADMIN_NUMBER) return "admin_number_not_configured";
     if (admin && !(process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME)) return "admin_shipping_template_not_configured";
     if (!admin && !process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME) return "shipping_template_not_configured";
+    if (!hasBiteshipShipmentForMessaging(order)) return "biteship_shipment_not_available";
     const bucket = admin ? order.adminWhatsappShippingNotification : order.whatsappShippingNotification;
     if (eventKey && bucket?.lastNotificationKey === eventKey) return "already_sent";
     return "";
@@ -1267,6 +1298,12 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
 }
 
 async function notifyShipmentUpdate(order, eventKey = "") {
+  if (!hasBiteshipShipmentForMessaging(order)) {
+    return {
+      customer: { sent: false, skipped: true, reason: "biteship_shipment_not_available" },
+      admin: { sent: false, skipped: true, reason: "biteship_shipment_not_available" }
+    };
+  }
   const shipment = order.fulfillment?.shipment || {};
   const shipmentKey = eventKey || [
     "biteship",
@@ -3492,6 +3529,20 @@ async function maybeCreateBiteshipShipment(order) {
   }
 }
 
+async function requireBiteshipShipmentForOrder(order) {
+  await maybeCreateBiteshipShipment(order);
+  if (hasBiteshipShipmentForMessaging(order)) {
+    return order.fulfillment?.shipment || null;
+  }
+  const reason = order.fulfillment?.shipmentError || "Biteship did not return a delivery booking";
+  order.status = "delivery_issue";
+  order.fulfillment = {
+    ...order.fulfillment,
+    shipmentError: reason
+  };
+  throw new Error(reason);
+}
+
 async function fetchBiteshipShipment(orderId) {
   const { biteshipApiKey } = getIntegrationConfig();
   if (!biteshipApiKey || !orderId) {
@@ -3706,11 +3757,23 @@ async function approveOrderForDelivery(mode, orderId, session) {
   };
   order.whatsappUrl = buildWhatsappUrl(order);
 
-  await maybeCreateBiteshipShipment(order);
+  let shipment = null;
+  try {
+    shipment = await requireBiteshipShipmentForOrder(order);
+  } catch (error) {
+    await maybeSendWhatsappAdminAlert(
+      order,
+      `order:${order.id}:delivery-failed:${Date.now()}`,
+      `Delivery request failed: ${error.message}. Check the order in Admin and rebook after fixing the issue.`
+    );
+    saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+    return enrichOrder(order);
+  }
+
   await maybeSendWhatsappOrderStatus(order, previousStatus);
-  const shippingKey = `order:${order.id}:shipping:${order.fulfillment?.shipment?.orderId || "requested"}`;
+  const shippingKey = `biteship:${shipment.orderId}:requested`;
   await notifyShipmentUpdate(order, shippingKey);
-  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-approved`, "Delivery approved - courier requested");
+  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-approved:${shipment.orderId}`, "Delivery approved - courier requested");
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
@@ -5958,6 +6021,21 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "GET" && pathname.startsWith("/api/order/document/")) {
+    const ref = decodeURIComponent(pathname.replace("/api/order/document/", ""));
+    const parsedRef = parsePublicOrderReference(ref);
+    const order = findOrder(parsedRef.mode, parsedRef.orderId) || findOrder(mode, parsedRef.orderId);
+    const tokenMatches = parsedRef.token && order?.receiptToken && timingSafeEqualString(parsedRef.token, order.receiptToken);
+    if (!order || !tokenMatches) {
+      sendJson(response, 404, { error: "Order document not found" });
+      return true;
+    }
+    const destination = biteshipTrackingUrl(order) || getPublicDocumentUrl(order);
+    response.writeHead(302, { Location: destination });
+    response.end();
+    return true;
+  }
+
   if (request.method === "GET" && pathname === "/api/orders") {
     const session = requireAdminSession(request, response);
     if (!session) {
@@ -6560,13 +6638,27 @@ const server = http.createServer((request, response) => {
   sendFile(response, targetPath);
 });
 
-server.listen(port, host, () => {
-  scheduleExistingPendingAdminActions();
-  scheduleExistingPaymentReminderFlows();
-  setInterval(() => {
-    sweepPaymentReminderFlows().catch((error) => {
-      console.warn(`Payment reminder sweep failed: ${error.message}`);
-    });
-  }, 30 * 1000);
-  console.log(`Bakeaholic order app running at http://${host}:${port}`);
-});
+if (require.main === module) {
+  server.listen(port, host, () => {
+    scheduleExistingPendingAdminActions();
+    scheduleExistingPaymentReminderFlows();
+    setInterval(() => {
+      sweepPaymentReminderFlows().catch((error) => {
+        console.warn(`Payment reminder sweep failed: ${error.message}`);
+      });
+    }, 30 * 1000);
+    console.log(`Bakeaholic order app running at http://${host}:${port}`);
+  });
+}
+
+module.exports = {
+  configuredWhatsappOrderTemplateName,
+  customerShippingWhatsappParameters,
+  hasBiteshipShipmentForMessaging,
+  parsePublicOrderReference,
+  paymentExpiredWhatsappParameters,
+  paymentReminderWhatsappParameters,
+  receiptWhatsappParameters,
+  sendWhatsappTemplateMessage,
+  shippingWhatsappDetails
+};
