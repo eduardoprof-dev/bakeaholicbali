@@ -245,12 +245,14 @@ test("responses enforce transport and browser security boundaries", () => {
   assert.match(headers["Content-Security-Policy"], /api\.qrserver\.com/);
 });
 
-test("live checkout hides bank transfer until a channel is activated", () => {
+test("live checkout offers the activated Xendit Invoice bank channels", () => {
   assert.deepEqual(availablePaymentMethods("live").map((method) => method.id), [
     "xendit-qris",
+    "xendit-va",
     "xendit-card"
   ]);
-  assert.equal(availablePaymentMethods("test").some((method) => method.id === "xendit-va"), true);
+  const bankTransfer = availablePaymentMethods("live").find((method) => method.id === "xendit-va");
+  assert.match(bankTransfer.description, /BJB/);
 });
 
 test("security.txt publishes a canonical vulnerability contact policy", () => {

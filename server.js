@@ -129,9 +129,8 @@ const PAYMENT_METHODS = [
     label: "Bank Transfer",
     kind: "va",
     logoText: "BANK",
-    description: "Mandiri, Permata, BNI, CIMB Niaga, BRI",
-    xenditChannelCode: "BNI",
-    liveEnabled: false
+    description: "BNI, BRI, CIMB Niaga, BJB, Mandiri, Permata",
+    xenditChannelCode: "BNI"
   },
   {
     id: "xendit-card",
@@ -145,9 +144,10 @@ const PAYMENT_METHODS = [
 const BANK_TRANSFER_CHANNELS = [
   { code: "BNI", label: "BNI" },
   { code: "BRI", label: "BRI" },
+  { code: "CIMB", label: "CIMB Niaga" },
+  { code: "BJB", label: "BJB" },
   { code: "MANDIRI", label: "Mandiri" },
-  { code: "PERMATA", label: "Permata" },
-  { code: "CIMB", label: "CIMB Niaga" }
+  { code: "PERMATA", label: "Permata" }
 ];
 
 function availablePaymentMethods(mode = "live") {
@@ -4624,8 +4624,10 @@ async function createPaymentForOrder(order) {
   }
 
   if (order.payment?.kind === "va") {
-    const virtualAccount = await createXenditVirtualAccount(enrichOrder(order));
-    return applyXenditVirtualAccountToPayment(order.payment, virtualAccount);
+    // These live channels are activated as Xendit Virtual Account Invoice
+    // products, so create an Invoice restricted to the selected bank.
+    const invoice = await createXenditInvoice(enrichOrder(order));
+    return applyXenditInvoiceToPayment(order.payment, invoice);
   }
 
   if (order.payment?.kind === "qris") {

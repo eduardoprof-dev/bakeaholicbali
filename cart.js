@@ -497,9 +497,10 @@ function bankOptionsMarkup(order) {
     : [
       { code: "BNI", label: "BNI" },
       { code: "BRI", label: "BRI" },
+      { code: "CIMB", label: "CIMB Niaga" },
+      { code: "BJB", label: "BJB" },
       { code: "MANDIRI", label: "Mandiri" },
-      { code: "PERMATA", label: "Permata" },
-      { code: "CIMB", label: "CIMB Niaga" }
+      { code: "PERMATA", label: "Permata" }
     ];
 
   return `
@@ -556,6 +557,28 @@ function nativePaymentMarkup(order) {
   }
 
   if (payment.kind === "va") {
+    if (paymentUrl && payment.selectedBankCode) {
+      return `
+        <div class="checkout-native-payment checkout-native-va">
+          <div class="checkout-native-head">
+            <div class="checkout-bank-title">
+              ${bankLogoMarkup({
+                code: payment.selectedBankCode,
+                label: payment.selectedBankLabel || payment.label || "Bank Transfer"
+              })}
+              <span>
+                <strong>${escapeHtml(payment.selectedBankLabel || payment.label || "Bank Transfer")}</strong>
+                <small>Continue to Xendit to receive your virtual account number.</small>
+              </span>
+            </div>
+            <span class="payment-countdown">${formatRemainingTime(paymentExpiryAt(order))}</span>
+          </div>
+          <button class="primary-button full-width checkout-payment-status-button" type="button" data-card-payment-url="${escapeHtml(paymentUrl)}">
+            Continue to secure bank transfer
+          </button>
+        </div>
+      `;
+    }
     if (!presentValue && !payment.accountNumber) {
       return bankOptionsMarkup(order);
     }

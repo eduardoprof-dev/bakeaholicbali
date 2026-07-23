@@ -170,9 +170,10 @@ function bankOptionsMarkup(payment) {
     : [
       { code: "BNI", label: "BNI" },
       { code: "BRI", label: "BRI" },
+      { code: "CIMB", label: "CIMB Niaga" },
+      { code: "BJB", label: "BJB" },
       { code: "MANDIRI", label: "Mandiri" },
-      { code: "PERMATA", label: "Permata" },
-      { code: "CIMB", label: "CIMB Niaga" }
+      { code: "PERMATA", label: "Permata" }
     ];
 
   return `
