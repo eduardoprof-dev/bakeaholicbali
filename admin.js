@@ -51,8 +51,7 @@ const sectionHeadings = {
   categories: ["Catalog", "Product categories"],
   catalog: ["Catalog", "Products and stock"],
   integrations: ["System", "Connected services"],
-  notifications: ["System", "Notification flow"],
-  advanced: ["Maintenance", "Developer handover"]
+  documentation: ["Knowledge base", "How Bakeaholic works"]
 };
 
 const storeFields = {
@@ -402,6 +401,34 @@ function renderIntegrations(integrations) {
       return;
     }
     field.value = integrations?.[key] || "";
+  });
+  const providerStates = {
+    googleMaps: {
+      ready: Boolean(integrations?.googleMapsApiKey),
+      label: integrations?.googleMapsApiKey ? "Configured" : "Needs setup"
+    },
+    biteship: {
+      ready: Boolean(integrations?.biteshipApiKey),
+      label: integrations?.biteshipApiKey ? "Configured" : "Needs setup"
+    },
+    xendit: {
+      ready: Boolean(integrations?.xenditSecretKey),
+      live: integrations?.xenditEnvironment === "live" && Boolean(integrations?.xenditSecretKey),
+      label: integrations?.xenditSecretKey
+        ? (integrations.xenditEnvironment === "live" ? "Live" : "Test")
+        : "Needs setup"
+    },
+    whatsapp: {
+      ready: Boolean(integrations?.whatsappAccessToken && integrations?.whatsappPhoneNumberId),
+      label: integrations?.whatsappAccessToken && integrations?.whatsappPhoneNumberId ? "Configured" : "Needs setup"
+    }
+  };
+  document.querySelectorAll("[data-provider-status]").forEach((element) => {
+    const provider = providerStates[element.dataset.providerStatus];
+    if (!provider) return;
+    element.textContent = provider.label;
+    element.classList.toggle("is-live", Boolean(provider.live));
+    element.classList.toggle("is-warning", !provider.ready);
   });
 }
 
@@ -1478,14 +1505,10 @@ async function bootstrap() {
     // cannot initialize. The Storefront section still exposes the saved address.
   });
   const requestedSection = window.location.hash.slice(1);
-  const initialSection = sectionHeadings[requestedSection] ? requestedSection : "dashboard";
+  const initialSection = requestedSection.startsWith("docs-")
+    ? "documentation"
+    : (sectionHeadings[requestedSection] ? requestedSection : "dashboard");
   showAdminSection(initialSection);
-  if (window.mermaid) {
-    await window.mermaid.run({ querySelector: ".mermaid" }).catch(() => {
-      // Diagrams are supplementary developer documentation and must never
-      // prevent the operational controls from loading.
-    });
-  }
   setStatus("Operations console ready.");
 }
 
