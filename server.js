@@ -416,6 +416,45 @@ async function checkWhatsappCloudConfig() {
   return result;
 }
 
+function templateVariableCount(value = "") {
+  const indexes = [...String(value || "").matchAll(/\{\{(\d+)\}\}/g)]
+    .map((match) => Number(match[1]))
+    .filter(Number.isFinite);
+  return indexes.length ? Math.max(...indexes) : 0;
+}
+
+async function fetchWhatsappTemplateSchemas() {
+  const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+  const businessAccountId = String(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "").trim();
+  if (!token || !businessAccountId) {
+    throw new Error("WhatsApp access token or business account ID is missing");
+  }
+  const fields = encodeURIComponent("name,language,status,category,components");
+  const url = `https://graph.facebook.com/${whatsappGraphVersion()}/${encodeURIComponent(businessAccountId)}/message_templates?fields=${fields}&limit=100`;
+  const metaResponse = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const responseText = await metaResponse.text();
+  const parsed = parseJsonSafely(responseText, {});
+  if (!metaResponse.ok) {
+    throw new Error(parsed?.error?.message || `Meta template lookup failed with status ${metaResponse.status}`);
+  }
+  return (parsed.data || []).map((template) => ({
+    name: template.name,
+    language: template.language,
+    status: template.status,
+    category: template.category,
+    components: (template.components || []).map((component) => ({
+      type: component.type,
+      format: component.format || "",
+      variableCount: templateVariableCount(component.text || ""),
+      buttons: (component.buttons || []).map((button, index) => ({
+        index,
+        type: button.type,
+        variableCount: templateVariableCount(button.url || button.text || "")
+      }))
+    }))
+  }));
+}
+
 function whatsappTemplateTestOrder(recipient) {
   return {
     id: `WA-TEST-${Date.now()}`,
@@ -6310,6 +6349,17 @@ function handleApi(requestUrl, request, response) {
     }
     runWhatsappTemplateDiagnostics()
       .then((payload) => sendJson(response, payload.ok ? 200 : 422, payload))
+      .catch((error) => sendJson(response, 400, { ok: false, error: error.message }));
+    return true;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/whatsapp-template-schemas") {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    fetchWhatsappTemplateSchemas()
+      .then((templates) => sendJson(response, 200, { ok: true, templates }))
       .catch((error) => sendJson(response, 400, { ok: false, error: error.message }));
     return true;
   }

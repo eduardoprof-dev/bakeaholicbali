@@ -16,6 +16,7 @@ const formatRupiah = new Intl.NumberFormat("id-ID", {
 const saveCatalogButton = document.getElementById("saveCatalogButton");
 const saveIntegrationsButton = document.getElementById("saveIntegrationsButton");
 const testWhatsappTemplatesButton = document.getElementById("testWhatsappTemplatesButton");
+const inspectWhatsappTemplatesButton = document.getElementById("inspectWhatsappTemplatesButton");
 const whatsappTemplateTestResults = document.getElementById("whatsappTemplateTestResults");
 const addProductButton = document.getElementById("addProductButton");
 const adminLogoutButton = document.getElementById("adminLogoutButton");
@@ -1129,6 +1130,22 @@ async function testWhatsappTemplates() {
   }
 }
 
+async function inspectWhatsappTemplates() {
+  try {
+    inspectWhatsappTemplatesButton.disabled = true;
+    whatsappTemplateTestResults.hidden = false;
+    whatsappTemplateTestResults.textContent = "Reading approved template schemas from Meta...";
+    const response = await request("/api/admin/whatsapp-template-schemas");
+    whatsappTemplateTestResults.textContent = JSON.stringify(response.templates, null, 2);
+    setStatus(`Loaded ${response.templates.length} WhatsApp template schemas from Meta.`);
+  } catch (error) {
+    whatsappTemplateTestResults.textContent = error.message;
+    setStatus("Could not load WhatsApp template schemas.");
+  } finally {
+    inspectWhatsappTemplatesButton.disabled = false;
+  }
+}
+
 function collectVouchers() {
   return [...voucherList.querySelectorAll("[data-voucher-index]")].map((card) => ({
     code: card.querySelector('[data-voucher-field="code"]')?.value.trim().toUpperCase() || "",
@@ -1292,6 +1309,7 @@ async function bootstrap() {
 saveCatalogButton.addEventListener("click", saveCatalog);
 saveIntegrationsButton.addEventListener("click", saveIntegrations);
 testWhatsappTemplatesButton.addEventListener("click", testWhatsappTemplates);
+inspectWhatsappTemplatesButton.addEventListener("click", inspectWhatsappTemplates);
 addProductButton.addEventListener("click", addProduct);
 saveVouchersButton?.addEventListener("click", saveVouchers);
 addVoucherButton?.addEventListener("click", addVoucher);
