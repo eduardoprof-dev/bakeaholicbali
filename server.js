@@ -1055,7 +1055,7 @@ function shippingWhatsappDetails(order) {
     trackingLink;
   return {
     courierName: courierName || shipment.raw?.courier_company || shipment.raw?.courier?.company || "-",
-    waybillId: shipment.waybillId || "-",
+    waybillId: shipment.waybillId || biteshipTrackingIdFromUrl(trackingLink) || "-",
     trackingLink: trackingLink || "-",
     shippingDocumentUrl: shippingDocumentUrl || "-"
   };
@@ -1509,7 +1509,10 @@ async function notifyShipmentUpdate(order, eventKey = "") {
     shipment.orderId || order.id,
     String(shipment.status || "requested").toLowerCase()
   ].filter(Boolean).join(":");
-  const customer = await maybeSendWhatsappShippingUpdate(order, shipmentKey);
+  // The customer only needs one tracking message. Provider status changes are
+  // communicated separately by order_shipped/order_delivered.
+  const customerKey = ["biteship", shipment.orderId || order.id, "tracking"].filter(Boolean).join(":");
+  const customer = await maybeSendWhatsappShippingUpdate(order, customerKey);
   const admin = await maybeSendWhatsappShippingUpdate(order, shipmentKey, { admin: true });
   return { customer, admin };
 }
@@ -1535,6 +1538,8 @@ async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options 
   const notificationKey = String(options.notificationKey || "").trim();
   const skipReason = (() => {
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
+    if (order.status === "paid") return "payment_receipt_is_confirmation";
+    if (order.status === "preparing") return "shipping_update_is_next_customer_message";
     if (!configuredWhatsappOrderTemplateName(order)) return "template_not_configured";
     if (previousStatus === order.status && !notificationKey) return "same_order_status";
     if (notificationKey && order.whatsappNotifications?.lastNotificationKey === notificationKey) return "same_biteship_status";
@@ -3868,6 +3873,9 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
     order.fulfillment?.shipment?.orderId || order.id,
     String(shipmentStatus || "synced").toLowerCase()
   ].filter(Boolean).join(":");
+  if (previousStatus !== order.status) {
+    await maybeSendWhatsappOrderStatus(order, previousStatus);
+  }
   await notifyShipmentUpdate(order, shipmentNotificationKey);
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
@@ -3944,7 +3952,6 @@ async function approveOrderForDelivery(mode, orderId, session) {
     throw new Error("Only delivery orders can be approved for Biteship");
   }
 
-  const previousStatus = order.status;
   order.status = "preparing";
   order.fulfillment = {
     ...order.fulfillment,
@@ -3969,10 +3976,8 @@ async function approveOrderForDelivery(mode, orderId, session) {
     return enrichOrder(order);
   }
 
-  await maybeSendWhatsappOrderStatus(order, previousStatus);
   const shippingKey = `biteship:${shipment.orderId}:requested`;
   await notifyShipmentUpdate(order, shippingKey);
-  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-approved:${shipment.orderId}`, "Delivery approved - courier requested");
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
@@ -4046,7 +4051,7 @@ function shipmentStatusToOrderStatus(status = "") {
   if (["dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalized)) {
     return "on_delivery";
   }
-  if (["delivered", "finish", "completed"].includes(normalized)) {
+  if (["delivered", "finish", "completed", "successful_delivery", "successfully_delivered", "done"].includes(normalized)) {
     return "delivered";
   }
   if (["cancelled", "canceled"].includes(normalized)) {
@@ -6044,9 +6049,9 @@ function handleApi(requestUrl, request, response) {
           order.fulfillment?.shipment?.orderId || normalizedShipment.orderId || payload.order_id || body.order_id || order.id,
           String(shipmentStatus || "").toLowerCase()
         ].filter(Boolean).join(":");
-        const whatsappResult = await maybeSendWhatsappOrderStatus(order, previousStatus, {
-          notificationKey: previousShipmentStatus === shipmentStatus ? "" : shipmentNotificationKey
-        });
+        const whatsappResult = previousStatus !== order.status
+          ? await maybeSendWhatsappOrderStatus(order, previousStatus)
+          : { sent: false, skipped: true, reason: "same_order_status" };
         const shippingWhatsappResult = await notifyShipmentUpdate(order, shipmentNotificationKey);
         const adminWhatsappResult = shouldAlertAdminForBiteshipWebhook({ shipmentStatus, priceChanged })
           ? await maybeSendWhatsappAdminAlert(
@@ -6845,6 +6850,23 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  // Compatibility for the approved Meta template whose fixed URL is
+  // /invoice.html{{1}} (without a query delimiter). Validate the signed order
+  // reference before redirecting to the real courier tracking page.
+  if (request.method === "GET" && requestUrl.pathname.startsWith("/invoice.html") && requestUrl.pathname !== "/invoice.html") {
+    const ref = decodeURIComponent(requestUrl.pathname.slice("/invoice.html".length));
+    const parsedRef = parsePublicOrderReference(ref);
+    const order = findOrder(parsedRef.mode, parsedRef.orderId);
+    const tokenMatches = parsedRef.token && order?.receiptToken && timingSafeEqualString(parsedRef.token, order.receiptToken);
+    if (!order || !tokenMatches) {
+      sendJson(response, 404, { error: "Order document not found" });
+      return;
+    }
+    response.writeHead(302, { Location: biteshipTrackingUrl(order) || getPublicDocumentUrl(order) });
+    response.end();
+    return;
+  }
+
   const relativePath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
   const targetPath = path.normalize(path.join(rootDir, relativePath));
   if (!targetPath.startsWith(`${rootDir}${path.sep}`) && targetPath !== rootDir) {
@@ -6883,5 +6905,6 @@ module.exports = {
   runWhatsappTemplateDiagnostics,
   sendWhatsappTemplateMessage,
   shippingWhatsappDetails,
+  shipmentStatusToOrderStatus,
   whatsappTemplateTestOrder
 };
