@@ -304,3 +304,16 @@ test("Xendit transaction SUCCESS is treated as a completed payment", () => {
 test("legacy Xendit QRIS callbacks accept the nominal payment field", () => {
   assert.equal(xenditPaymentAmount({ nominal: 18700 }), 18700);
 });
+
+test("cancelled paid orders never fall back to the order received template", () => {
+  const previousName = process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME;
+  delete process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME;
+  try {
+    assert.equal(configuredWhatsappOrderTemplateName({ status: "cancelled" }), "");
+    process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME = "order_cancelled";
+    assert.equal(configuredWhatsappOrderTemplateName({ status: "cancelled" }), "order_cancelled");
+  } finally {
+    if (previousName === undefined) delete process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME;
+    else process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME = previousName;
+  }
+});

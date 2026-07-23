@@ -966,6 +966,9 @@ function defaultWhatsappOrderTemplateName(order) {
     delivered: "order_delivered",
     complete: "order_delivered"
   };
+  if (order.status === "cancelled") {
+    return String(process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME || "").trim();
+  }
   return statusTemplates[order.status] || "order_received";
 }
 
