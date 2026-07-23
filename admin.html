@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260723-operations-console-v3" />
+    <link rel="stylesheet" href="styles.css?v=20260723-admin-docs-v1" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -42,17 +42,8 @@
               <button type="button" data-admin-target="catalog">Products</button>
             </div>
           </div>
-          <div class="admin-nav-group">
-            <button class="admin-nav-button" type="button" data-admin-target="integrations">Integrations</button>
-            <div class="admin-subnav">
-              <button type="button" data-admin-target="integrations">Google Maps</button>
-              <button type="button" data-admin-target="integrations">Biteship</button>
-              <button type="button" data-admin-target="integrations">Xendit</button>
-              <button type="button" data-admin-target="integrations">WhatsApp</button>
-            </div>
-          </div>
-          <button class="admin-nav-button" type="button" data-admin-target="notifications">Notification flow</button>
-          <button class="admin-nav-button" type="button" data-admin-target="advanced">Developer tools</button>
+          <button class="admin-nav-button" type="button" data-admin-target="integrations">Integrations</button>
+          <button class="admin-nav-button" type="button" data-admin-target="documentation">Documentation</button>
         </nav>
         <div class="admin-sidebar-links">
           <a href="/index.html" target="_blank" rel="noreferrer">Open storefront</a>
@@ -78,8 +69,7 @@
               <option value="categories">Categories</option>
               <option value="catalog">Catalog</option>
               <option value="integrations">Integrations</option>
-              <option value="notifications">Notifications</option>
-              <option value="advanced">Advanced</option>
+              <option value="documentation">Documentation</option>
             </select>
             <button id="saveCatalogButton" class="admin-button" type="button" hidden>Save catalog</button>
             <button id="addProductButton" class="admin-button secondary" type="button" hidden>Add product</button>
@@ -365,310 +355,226 @@
         </section>
 
         <section class="admin-panel" data-admin-section="integrations" hidden>
-          <div class="admin-section-head">
+          <div class="admin-section-head admin-integration-heading">
             <div>
+              <span class="admin-card-kicker">Connected services</span>
               <h2>Integrations</h2>
-              <p class="helper-text">Save your Google Maps, Biteship, Xendit, and WhatsApp Business API credentials here.</p>
+              <p class="helper-text">Configuration is grouped by provider. Secret fields never display saved values; leave them blank to keep the current key.</p>
             </div>
             <button id="saveIntegrationsButton" class="admin-button" type="button">Save integrations</button>
           </div>
-          <div class="admin-grid">
-            <div class="admin-field">
-              <label for="googleMapsApiKeyInput">Google Maps API key</label>
-              <input id="googleMapsApiKeyInput" type="password" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="biteshipApiKeyInput">Biteship API key</label>
-              <input id="biteshipApiKeyInput" type="password" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="biteshipCouriersInput">Biteship couriers</label>
-              <input id="biteshipCouriersInput" type="text" placeholder="gojek,grab" />
-            </div>
-            <div class="admin-field">
-              <label for="biteshipWebhookHeaderNameInput">Biteship webhook header name</label>
-              <input id="biteshipWebhookHeaderNameInput" type="text" placeholder="x-biteship-webhook-key" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="biteshipWebhookHeaderSecretInput">Biteship webhook header secret</label>
-              <input id="biteshipWebhookHeaderSecretInput" type="password" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="xenditEnvironmentInput">Xendit environment</label>
-              <select id="xenditEnvironmentInput">
-                <option value="test">Test</option>
-                <option value="live">Live</option>
-              </select>
-            </div>
-            <div class="admin-field">
-              <label for="xenditSecretKeyInput">Xendit secret key</label>
-              <input id="xenditSecretKeyInput" type="password" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="xenditCallbackTokenInput">Xendit callback token</label>
-              <input id="xenditCallbackTokenInput" type="password" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappAccessTokenInput">WhatsApp access token</label>
-              <input id="whatsappAccessTokenInput" type="password" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappPhoneNumberIdInput">WhatsApp phone number ID</label>
-              <input id="whatsappPhoneNumberIdInput" type="text" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappBusinessAccountIdInput">WhatsApp business account ID</label>
-              <input id="whatsappBusinessAccountIdInput" type="text" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappVerifyTokenInput">WhatsApp verify token</label>
-              <input id="whatsappVerifyTokenInput" type="password" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappAppIdInput">Meta app ID</label>
-              <input id="whatsappAppIdInput" type="text" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappAppSecretInput">Meta app secret</label>
-              <input id="whatsappAppSecretInput" type="password" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappGraphVersionInput">Meta Graph version</label>
-              <input id="whatsappGraphVersionInput" type="text" placeholder="v22.0" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappOtpTemplateNameInput">OTP template name</label>
-              <input id="whatsappOtpTemplateNameInput" type="text" placeholder="otp_verification" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappOrderTemplateNameInput">Order update template name</label>
-              <input id="whatsappOrderTemplateNameInput" type="text" placeholder="order_received" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappReceiptTemplateNameInput">Customer receipt template name</label>
-              <input id="whatsappReceiptTemplateNameInput" type="text" placeholder="payment_receipt" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappPaymentReminderTemplateNameInput">Payment reminder template name</label>
-              <input id="whatsappPaymentReminderTemplateNameInput" type="text" placeholder="payment_update_order" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappPaymentExpiredTemplateNameInput">Payment expired template name</label>
-              <input id="whatsappPaymentExpiredTemplateNameInput" type="text" placeholder="order_cancelled_unpaid" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappShippingTemplateNameInput">Customer shipping template name</label>
-              <input id="whatsappShippingTemplateNameInput" type="text" placeholder="shipping_update" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappAdminNumberInput">Admin WhatsApp number</label>
-              <input id="whatsappAdminNumberInput" type="text" placeholder="62812..." autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappAdminTemplateNameInput">Admin alert template name</label>
-              <input id="whatsappAdminTemplateNameInput" type="text" placeholder="admin_order_alert" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappAdminShippingTemplateNameInput">Admin shipping template name</label>
-              <input id="whatsappAdminShippingTemplateNameInput" type="text" placeholder="admin_shipping_update" autocomplete="off" />
-            </div>
-            <div class="admin-field">
-              <label for="whatsappTemplateLanguageInput">Template language</label>
-              <input id="whatsappTemplateLanguageInput" type="text" placeholder="en" />
-            </div>
-          </div>
-          <p class="helper-text">These values are stored locally in `order-demo/.env` and applied to the app immediately. WhatsApp template names should match templates already approved in Meta. The admin alert template should accept event, order id, customer name, customer phone, total, payment method, delivery status, invoice URL, and action text. Receipt and shipping templates use dynamic website buttons for receipt/tracking links.</p>
-          <div class="admin-actions">
-            <button class="admin-button secondary" id="testWhatsappTemplatesButton" type="button">Test all 14 WhatsApp templates</button>
-            <button class="admin-button secondary" id="inspectWhatsappTemplatesButton" type="button">Inspect Meta template schemas</button>
-          </div>
-          <p class="helper-text">Sends synthetic template messages only to the configured admin WhatsApp number. It does not create an order, change stock, book delivery, or charge Xendit.</p>
-          <pre class="helper-text" id="whatsappTemplateTestResults" hidden></pre>
-        </section>
+          <div class="admin-integration-layout">
+            <article class="admin-integration-card">
+              <div class="admin-provider-heading">
+                <span class="admin-provider-mark">GM</span>
+                <div><h3>Google Maps</h3><p>Address search, route validation and kitchen location.</p></div>
+                <span class="admin-provider-state" data-provider-status="googleMaps">Checking</span>
+              </div>
+              <div class="admin-grid">
+                <div class="admin-field">
+                  <label for="googleMapsApiKeyInput">API key</label>
+                  <input id="googleMapsApiKeyInput" type="password" autocomplete="off" />
+                  <small>Restrict this key to the website domain and required Maps APIs.</small>
+                </div>
+              </div>
+            </article>
 
-        <section class="admin-panel" data-admin-section="notifications" hidden>
-          <div class="admin-section-head">
-            <div>
-              <h2>Notification Flow</h2>
-              <p class="helper-text">Current operational behavior for customer and admin WhatsApp messages.</p>
-            </div>
-          </div>
-          <div class="admin-flow-grid read-only">
-            <article class="admin-flow-card">
-              <strong>Order created</strong>
-              <p>Customer can receive a pending-payment template if WhatsApp Cloud API and the template are configured.</p>
+            <article class="admin-integration-card">
+              <div class="admin-provider-heading">
+                <span class="admin-provider-mark">BI</span>
+                <div><h3>Biteship</h3><p>Delivery quotes, courier booking and tracking updates.</p></div>
+                <span class="admin-provider-state" data-provider-status="biteship">Checking</span>
+              </div>
+              <div class="admin-grid">
+                <div class="admin-field">
+                  <label for="biteshipApiKeyInput">API key</label>
+                  <input id="biteshipApiKeyInput" type="password" autocomplete="off" />
+                </div>
+                <div class="admin-field">
+                  <label for="biteshipCouriersInput">Enabled couriers</label>
+                  <input id="biteshipCouriersInput" type="text" placeholder="gojek,grab" />
+                  <small>Comma-separated provider codes.</small>
+                </div>
+                <div class="admin-field">
+                  <label for="biteshipWebhookHeaderNameInput">Webhook header name</label>
+                  <input id="biteshipWebhookHeaderNameInput" type="text" placeholder="x-biteship-webhook-key" autocomplete="off" />
+                </div>
+                <div class="admin-field">
+                  <label for="biteshipWebhookHeaderSecretInput">Webhook secret</label>
+                  <input id="biteshipWebhookHeaderSecretInput" type="password" autocomplete="off" />
+                </div>
+              </div>
             </article>
-            <article class="admin-flow-card">
-              <strong>Xendit paid</strong>
-              <p>Xendit invoice webhook marks the order paid, sends receipt links, and waits for staff approval before delivery is released.</p>
-            </article>
-            <article class="admin-flow-card">
-              <strong>Staff approval</strong>
-              <p>Staff prepares and prints the invoice, then approves delivery. Only then does the app create the Biteship courier request.</p>
-            </article>
-            <article class="admin-flow-card">
-              <strong>Admin alerts</strong>
-              <p>Automated admin WhatsApp alerts use the admin recipient and template from Integrations. Without those, admin watches the orders page and WhatsApp handoff link.</p>
-            </article>
-          </div>
-          <div class="admin-diagram-stack">
-            <article class="admin-diagram-card">
-              <h3>Customer Order Workflow</h3>
-              <pre class="mermaid">
-flowchart TD
-  A[Customer] --> B[Select products]
-  B --> C[Checkout]
-  C --> D[Address and WhatsApp verification]
-  D --> E[Delivery quote from Biteship]
-  E --> F[Secure payment with Xendit]
-  F --> G[Paid payment callback]
-  G --> H[Customer receipt message]
-  G --> I[Admin order alert]
-  I --> J{Admin decision}
-  J -->|Approve| K[Undo window]
-  J -->|Cancel| L[Undo window]
-  K --> M[Create Biteship shipment]
-  L --> N[Cancel order and refund]
-  M --> O[Customer tracking message]
-  M --> P[Admin shipping message]
-  O --> Q[Delivery completed]
-              </pre>
-            </article>
-            <article class="admin-diagram-card">
-              <h3>Approved Payment Methods</h3>
-              <pre class="mermaid">
-flowchart LR
-  A[Checkout payment choice] --> B[QRIS]
-  A --> C[Bank transfer]
-  A --> D[Credit or debit card]
-  B --> E[Xendit QRIS code]
-  C --> F[BNI]
-  C --> G[BRI]
-  C --> H[Mandiri]
-  C --> I[Permata]
-  C --> J[CIMB Niaga]
-  D --> K[Xendit card component]
-  E --> L[Xendit paid callback]
-  F --> L
-  G --> L
-  H --> L
-  I --> L
-  J --> L
-  K --> L
-  L --> M[Paid order and receipt]
-              </pre>
-            </article>
-            <article class="admin-diagram-card">
-              <h3>Provider Handoff Sequence</h3>
-              <pre class="mermaid">
-sequenceDiagram
-  participant Customer
-  participant Website
-  participant GoogleMaps as Google Maps API
-  participant Xendit
-  participant WhatsApp as Meta WhatsApp
-  participant Admin
-  participant Biteship
-  participant Driver
 
-  Customer->>Website: Add products and checkout
-  Website->>GoogleMaps: Validate address and route
-  Website->>Biteship: Request delivery quote
-  Website->>Xendit: Create payment invoice
-  Customer->>Xendit: Pay by QRIS, VA, or card
-  Xendit->>Website: Invoice paid webhook
-  Website->>WhatsApp: Send customer receipt
-  Website->>WhatsApp: Send admin approve/cancel alert
-  Admin->>WhatsApp: Tap Approve
-  WhatsApp->>Website: Approve payload
-  Website->>WhatsApp: Send Undo button
-  Website->>Biteship: Create shipment after 60 seconds
-  Biteship->>Website: Shipment/tracking webhook
-  Website->>WhatsApp: Send tracking to customer/admin
-  Biteship->>Driver: Assign pickup/delivery
-  Driver->>Customer: Deliver order
-              </pre>
+            <article class="admin-integration-card">
+              <div class="admin-provider-heading">
+                <span class="admin-provider-mark">XE</span>
+                <div><h3>Xendit</h3><p>QRIS, virtual accounts, cards, callbacks and refunds.</p></div>
+                <span class="admin-provider-state" data-provider-status="xendit">Checking</span>
+              </div>
+              <div class="admin-grid">
+                <div class="admin-field">
+                  <label for="xenditEnvironmentInput">Environment</label>
+                  <select id="xenditEnvironmentInput">
+                    <option value="test">Test</option>
+                    <option value="live">Live</option>
+                  </select>
+                </div>
+                <div class="admin-field">
+                  <label for="xenditSecretKeyInput">Secret key</label>
+                  <input id="xenditSecretKeyInput" type="password" autocomplete="off" />
+                </div>
+                <div class="admin-field">
+                  <label for="xenditCallbackTokenInput">Callback token</label>
+                  <input id="xenditCallbackTokenInput" type="password" autocomplete="off" />
+                </div>
+              </div>
+              <div class="admin-provider-note"><strong>Production rule:</strong> environment and key type must match. Never paste a public card-tokenization key here.</div>
             </article>
-            <article class="admin-diagram-card">
-              <h3>WhatsApp Template Flow</h3>
-              <pre class="mermaid">
-flowchart TD
-  A[Customer phone verification] --> B[otp verification]
-  C[Order awaiting payment] --> D[payment pending]
-  D --> E[payment update order]
-  E --> F[order cancelled unpaid]
-  G[Xendit payment confirmed] --> H[payment receipt]
-  G --> I[admin order alert v2]
-  I --> J{Admin action}
-  J -->|Approve| K[Undo window]
-  J -->|Cancel| L[Undo window]
-  K --> M[Create Biteship shipment]
-  L --> N[Cancel order and refund]
-  M --> O[shipping update]
-  M --> P[admin shipping update]
-  M --> Q[order delivered]
-              </pre>
+
+            <article class="admin-integration-card admin-integration-card-wide">
+              <div class="admin-provider-heading">
+                <span class="admin-provider-mark">WA</span>
+                <div><h3>WhatsApp Business</h3><p>Authentication, customer updates and staff action messages.</p></div>
+                <span class="admin-provider-state" data-provider-status="whatsapp">Checking</span>
+              </div>
+              <div class="admin-provider-subsection">
+                <h4>Meta connection</h4>
+                <div class="admin-grid three">
+                  <div class="admin-field"><label for="whatsappAccessTokenInput">Access token</label><input id="whatsappAccessTokenInput" type="password" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappPhoneNumberIdInput">Phone number ID</label><input id="whatsappPhoneNumberIdInput" type="text" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappBusinessAccountIdInput">Business account ID</label><input id="whatsappBusinessAccountIdInput" type="text" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappVerifyTokenInput">Verify token</label><input id="whatsappVerifyTokenInput" type="password" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappAppIdInput">Meta app ID</label><input id="whatsappAppIdInput" type="text" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappAppSecretInput">Meta app secret</label><input id="whatsappAppSecretInput" type="password" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappGraphVersionInput">Graph version</label><input id="whatsappGraphVersionInput" type="text" placeholder="v22.0" /></div>
+                  <div class="admin-field"><label for="whatsappAdminNumberInput">Admin number</label><input id="whatsappAdminNumberInput" type="text" placeholder="62812..." autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappTemplateLanguageInput">Template language</label><input id="whatsappTemplateLanguageInput" type="text" placeholder="en_US" /></div>
+                </div>
+              </div>
+              <div class="admin-provider-subsection">
+                <h4>Approved template mapping</h4>
+                <div class="admin-grid three">
+                  <div class="admin-field"><label for="whatsappOtpTemplateNameInput">OTP verification</label><input id="whatsappOtpTemplateNameInput" type="text" placeholder="otp_verification" /></div>
+                  <div class="admin-field"><label for="whatsappOrderTemplateNameInput">Order received</label><input id="whatsappOrderTemplateNameInput" type="text" placeholder="order_received" /></div>
+                  <div class="admin-field"><label for="whatsappReceiptTemplateNameInput">Payment receipt</label><input id="whatsappReceiptTemplateNameInput" type="text" placeholder="payment_receipt" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappPaymentReminderTemplateNameInput">Payment reminder</label><input id="whatsappPaymentReminderTemplateNameInput" type="text" placeholder="payment_update_order" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappPaymentExpiredTemplateNameInput">Payment expired</label><input id="whatsappPaymentExpiredTemplateNameInput" type="text" placeholder="order_cancelled_unpaid" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappShippingTemplateNameInput">Customer shipping</label><input id="whatsappShippingTemplateNameInput" type="text" placeholder="shipping_update" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappAdminTemplateNameInput">Admin order alert</label><input id="whatsappAdminTemplateNameInput" type="text" placeholder="admin_order_alert_v2" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappAdminShippingTemplateNameInput">Admin shipping</label><input id="whatsappAdminShippingTemplateNameInput" type="text" placeholder="admin_shipping_update" autocomplete="off" /></div>
+                </div>
+              </div>
+              <div class="admin-provider-actions">
+                <button class="admin-button secondary" id="testWhatsappTemplatesButton" type="button">Run template diagnostics</button>
+                <button class="admin-button secondary" id="inspectWhatsappTemplatesButton" type="button">Compare with Meta schemas</button>
+                <span>Diagnostics send synthetic messages only to the configured admin number. No order, stock, delivery or payment is created.</span>
+              </div>
+              <pre class="helper-text" id="whatsappTemplateTestResults" hidden></pre>
             </article>
           </div>
         </section>
 
-        <section class="admin-panel" data-admin-section="advanced" hidden>
+        <section class="admin-panel admin-docs-panel" data-admin-section="documentation" hidden>
           <div class="admin-section-head">
             <div>
-              <h2>Developer handover</h2>
-              <p class="helper-text">The minimum operational knowledge required to maintain the live store safely.</p>
+              <span class="admin-card-kicker">Bakeaholic guide</span>
+              <h2>Documentation</h2>
+              <p class="helper-text">One practical reference for the owner, staff and future developer.</p>
             </div>
           </div>
-          <div class="admin-flow-grid read-only">
-            <article class="admin-flow-card">
-              <strong>WhatsApp approval</strong>
-              <p>Admin can tap Approve or Cancel from WhatsApp. The app waits 60 seconds and sends an Undo button before creating the Biteship delivery or starting the cancellation/refund flow. Text commands still work: APPROVE, CANCEL, or APPROVE BAK-0001 when several orders are waiting.</p>
-            </article>
-            <article class="admin-flow-card">
-              <strong>Production architecture</strong>
-              <p>Cloudflare protects the public domain and forwards traffic to Railway. Railway runs the Node server. Persistent order and catalog JSON must remain mounted at <code>/app/data</code>.</p>
-            </article>
-            <article class="admin-flow-card">
-              <strong>Webhook routes</strong>
-              <p>Xendit: <code>/api/xendit/invoice-callback</code>. WhatsApp: <code>/api/whatsapp/webhook</code>. Biteship: <code>/api/biteship/webhook</code>. Treat callback tokens and app secrets as passwords.</p>
-            </article>
-            <article class="admin-flow-card code-map">
-              <strong>Developer source map</strong>
-              <pre><code>server.js
-  payments, Xendit callbacks, WhatsApp webhooks, Biteship requests
+          <div class="admin-docs-layout">
+            <nav class="admin-docs-nav" aria-label="Documentation topics">
+              <a href="#docs-start">Start here</a>
+              <a href="#docs-orders">Order lifecycle</a>
+              <a href="#docs-messages">WhatsApp messages</a>
+              <a href="#docs-refunds">Cancellations & refunds</a>
+              <a href="#docs-maintenance">Maintenance</a>
+              <a href="#docs-developer">Developer handover</a>
+            </nav>
+            <div class="admin-docs-content">
+              <article id="docs-start" class="admin-doc-article">
+                <span class="admin-doc-number">01</span>
+                <h3>Start here</h3>
+                <p>The Overview is the daily control room. Work from its priority queue first. Use Integrations only when credentials, provider settings or approved WhatsApp template names change.</p>
+                <div class="admin-doc-callout"><strong>Owner rule</strong><span>Never edit a secret, callback or template mapping simply to “try something.” Record the old value and reason before every change.</span></div>
+              </article>
 
-cart.js
-  checkout, customer details, payment method selection
+              <article id="docs-orders" class="admin-doc-article">
+                <span class="admin-doc-number">02</span>
+                <h3>Order lifecycle</h3>
+                <p>This is the authoritative customer-order sequence. Each step must complete before the next operational action.</p>
+                <div class="admin-workflow" aria-label="Customer order workflow">
+                  <div><span>1</span><strong>Checkout</strong><small>Address and delivery quote</small></div>
+                  <i>→</i>
+                  <div><span>2</span><strong>Payment</strong><small>Xendit confirms paid</small></div>
+                  <i>→</i>
+                  <div><span>3</span><strong>Prepare</strong><small>Staff packs and prints</small></div>
+                  <i>→</i>
+                  <div><span>4</span><strong>Approve</strong><small>Admin releases delivery</small></div>
+                  <i>→</i>
+                  <div><span>5</span><strong>Deliver</strong><small>Biteship tracking</small></div>
+                </div>
+                <ul>
+                  <li>Do not approve delivery before payment is confirmed and the package is ready.</li>
+                  <li>If the website and Xendit disagree, inspect the callback before asking the customer to act.</li>
+                  <li>The Orders page is the operational fallback when WhatsApp actions are unavailable.</li>
+                </ul>
+              </article>
 
-admin.js
-  admin forms, catalog editing, order fallback controls
+              <article id="docs-messages" class="admin-doc-article">
+                <span class="admin-doc-number">03</span>
+                <h3>WhatsApp messages</h3>
+                <div class="admin-doc-table">
+                  <div class="is-head"><span>Event</span><span>Recipient</span><span>Purpose</span></div>
+                  <div><span>OTP verification</span><span>Customer</span><span>Confirm phone ownership</span></div>
+                  <div><span>Payment receipt</span><span>Customer</span><span>Confirm paid order and open receipt</span></div>
+                  <div><span>Admin order alert</span><span>Staff</span><span>Approve or cancel a paid order</span></div>
+                  <div><span>Shipping update</span><span>Customer</span><span>Courier and tracking details</span></div>
+                  <div><span>Order delivered</span><span>Customer</span><span>Close the delivery lifecycle</span></div>
+                </div>
+                <p>Template diagnostics belong in Integrations because that is where mappings are changed. Run diagnostics after changing a template name, language, phone ID or access token.</p>
+              </article>
 
-invoice.js
-  printable receipt, shipping document, tracking links
+              <article id="docs-refunds" class="admin-doc-article">
+                <span class="admin-doc-number">04</span>
+                <h3>Cancellations and refunds</h3>
+                <p>Cancellation changes the order state. Refund changes the money state. They are related but never interchangeable.</p>
+                <div class="admin-doc-split">
+                  <div><strong>Cancelled before payment</strong><span>No refund is required.</span></div>
+                  <div><strong>Cancelled after payment</strong><span>Confirm refund status separately.</span></div>
+                  <div><strong>QRIS or card</strong><span>Automatic refund can be tested.</span></div>
+                  <div><strong>Virtual account</strong><span>May require manual bank payout; do not use for automatic-refund testing.</span></div>
+                </div>
+              </article>
 
-DATA_DIR
-  persistent JSON storage, expected Railway mount: /app/data</code></pre>
-            </article>
-            <article class="admin-flow-card">
-              <strong>Safe release checklist</strong>
-              <p>Work on a branch. Run <code>node --check server.js</code>, <code>node --check admin.js</code>, and <code>node --test server.test.js</code>. Review the diff, merge through GitHub, confirm Railway is healthy, then smoke-test the storefront without creating a payment.</p>
-            </article>
-            <article class="admin-flow-card">
-              <strong>Incident playbook</strong>
-              <p>Do not ask a customer to pay twice. First record the order number and time, check Admin and the provider dashboard, then inspect Railway logs. Repair the callback cause and replay the webhook when supported.</p>
-            </article>
-            <article class="admin-flow-card">
-              <strong>Backups and data</strong>
-              <p>Before structural changes, take a Railway volume backup or export the JSON data. Never replace <code>DATA_DIR</code> with ephemeral storage. A successful deployment does not prove that persistent data is safe.</p>
-            </article>
-            <article class="admin-flow-card">
-              <strong>Secrets and access</strong>
-              <p>Keep production keys only in Railway variables or the protected integrations store. Require MFA for GitHub, Railway, Cloudflare, Meta and Xendit. Rotate a key immediately if it appears in chat, email, logs or screenshots.</p>
-            </article>
-            <article class="admin-flow-card">
-              <strong>Daily operations</strong>
-              <p>Approve paid orders in WhatsApp only after the package is ready. Use the Orders section for visibility and fallback actions. A cancellation and a refund are separate states—confirm both.</p>
-            </article>
+              <article id="docs-maintenance" class="admin-doc-article">
+                <span class="admin-doc-number">05</span>
+                <h3>Maintenance schedule</h3>
+                <div class="admin-doc-checklist">
+                  <div><strong>Daily</strong><span>Paid orders, delivery issues, failed messages and refund status.</span></div>
+                  <div><strong>Weekly</strong><span>Low stock, WhatsApp diagnostics and one receipt/tracking link.</span></div>
+                  <div><strong>Monthly</strong><span>Cloudflare events, Xendit settlements, account access and backups.</span></div>
+                  <div><strong>Before release</strong><span>Test, review diff, preserve rollback point, deploy, then smoke-test.</span></div>
+                </div>
+              </article>
+
+              <article id="docs-developer" class="admin-doc-article">
+                <span class="admin-doc-number">06</span>
+                <h3>Developer handover</h3>
+                <p><strong>Architecture:</strong> Cloudflare → Railway Node server → persistent Railway volume at <code>/app/data</code>. GitHub is the source and release history.</p>
+                <div class="admin-doc-code"><code>node --check server.js
+node --check admin.js
+node --test server.test.js</code></div>
+                <div class="admin-doc-split">
+                  <div><strong>server.js</strong><span>Payments, orders, webhooks, WhatsApp and Biteship.</span></div>
+                  <div><strong>cart.js</strong><span>Checkout and payment selection.</span></div>
+                  <div><strong>admin.js</strong><span>Admin controls and diagnostics.</span></div>
+                  <div><strong>invoice.js</strong><span>Receipts, tracking and printable documents.</span></div>
+                </div>
+                <div class="admin-doc-callout is-danger"><strong>Incident rule</strong><span>Record order number and time, compare Admin with the provider dashboard, inspect Railway logs, repair the callback cause, then replay the webhook where supported. Never ask the customer to pay twice.</span></div>
+              </article>
+            </div>
           </div>
         </section>
 
@@ -710,21 +616,6 @@ DATA_DIR
       </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <script>
-      window.mermaid?.initialize({
-        startOnLoad: false,
-        theme: "base",
-        themeVariables: {
-          primaryColor: "#fffaf4",
-          primaryTextColor: "#2e211b",
-          primaryBorderColor: "#d8c7b6",
-          lineColor: "#7a4a2b",
-          secondaryColor: "#f4eadf",
-          tertiaryColor: "#ffffff"
-        }
-      });
-    </script>
-    <script src="admin.js?v=20260723-operations-console-v3"></script>
+    <script src="admin.js?v=20260723-admin-docs-v1"></script>
   </body>
 </html>
