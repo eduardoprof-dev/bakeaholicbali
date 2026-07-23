@@ -4,7 +4,9 @@ const appMode = params.get("mode") === "test" ? "test" : "live";
 const state = {
   catalog: null,
   orders: [],
-  vouchers: []
+  vouchers: [],
+  integrations: null,
+  health: null
 };
 
 const formatRupiah = new Intl.NumberFormat("id-ID", {
@@ -21,6 +23,8 @@ const whatsappTemplateTestResults = document.getElementById("whatsappTemplateTes
 const addProductButton = document.getElementById("addProductButton");
 const adminLogoutButton = document.getElementById("adminLogoutButton");
 const adminStatus = document.getElementById("adminStatus");
+const adminPageEyebrow = document.getElementById("adminPageEyebrow");
+const adminPageTitle = document.getElementById("adminPageTitle");
 const adminLoginPanel = document.getElementById("adminLoginPanel");
 const adminLoginForm = document.getElementById("adminLoginForm");
 const adminPasswordInput = document.getElementById("adminPasswordInput");
@@ -36,6 +40,20 @@ const adminSectionSelect = document.getElementById("adminSectionSelect");
 const adminNavButtons = document.querySelectorAll("[data-admin-target]");
 const adminSections = document.querySelectorAll("[data-admin-section]");
 const catalogActionSections = new Set(["store", "promo", "story", "categories", "catalog"]);
+const liveTestStorageKey = "bakeaholic-admin-live-tests-20260724";
+const sectionHeadings = {
+  dashboard: ["Bakeaholic Operations", "Good decisions start here."],
+  store: ["Storefront", "Business settings"],
+  promo: ["Storefront", "Promo spotlight"],
+  orders: ["Operations", "Orders and fulfilment"],
+  discounts: ["Commerce", "Discount codes"],
+  story: ["Homepage", "Story carousel"],
+  categories: ["Catalog", "Product categories"],
+  catalog: ["Catalog", "Products and stock"],
+  integrations: ["System", "Connected services"],
+  notifications: ["System", "Notification flow"],
+  advanced: ["Maintenance", "Developer handover"]
+};
 
 const storeFields = {
   name: document.getElementById("storeName"),
@@ -231,8 +249,15 @@ function showAdminSection(sectionName) {
   if (adminSectionSelect) {
     adminSectionSelect.value = sectionName;
   }
+  const heading = sectionHeadings[sectionName] || sectionHeadings.dashboard;
+  if (adminPageEyebrow) adminPageEyebrow.textContent = heading[0];
+  if (adminPageTitle) adminPageTitle.textContent = heading[1];
+  window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}#${sectionName}`);
   if (sectionName === "orders") {
     loadOrders();
+  }
+  if (sectionName === "dashboard") {
+    renderDashboard();
   }
   if (sectionName === "store" && kitchenMapState.mapsApi && kitchenMapState.map) {
     window.setTimeout(() => {
@@ -240,6 +265,133 @@ function showAdminSection(sectionName) {
       syncKitchenMapFromFields();
     }, 0);
   }
+}
+
+function dashboardAttentionItems() {
+  const items = [];
+  state.orders.forEach((order) => {
+    if (order.status === "paid") {
+      items.push({ tone: "pending", title: `${order.id} is paid and waiting`, detail: "Prepare the package, print the invoice, then approve delivery." });
+    }
+    if (["delivery_issue", "delivery_failed", "returned"].includes(order.status)) {
+      items.push({ tone: "danger", title: `${order.id} has a delivery issue`, detail: "Review Biteship status before contacting the customer." });
+    }
+    if (["manual_required", "failed"].includes(order.refund?.status)) {
+      items.push({ tone: "danger", title: `${order.id} needs refund attention`, detail: order.refund?.message || "Review this refund in Xendit." });
+    }
+    const messageErrors = [
+      order.whatsappNotificationError,
+      order.whatsappShippingNotificationError,
+      order.adminWhatsappNotificationError,
+      order.adminWhatsappShippingNotificationError
+    ].filter(Boolean);
+    if (messageErrors.length) {
+      items.push({ tone: "danger", title: `${order.id} has a WhatsApp failure`, detail: messageErrors[0] });
+    }
+  });
+  return items;
+}
+
+function configuredIntegrationHealth() {
+  const integrations = state.integrations || {};
+  return [
+    { name: "Xendit live payments", ok: integrations.xenditEnvironment === "live" && Boolean(integrations.xenditSecretKey), note: integrations.xenditEnvironment === "live" ? "Live mode" : "Not in live mode" },
+    { name: "WhatsApp Cloud API", ok: Boolean(integrations.whatsappAccessToken && integrations.whatsappPhoneNumberId), note: "Customer and admin notifications" },
+    { name: "Biteship delivery", ok: Boolean(integrations.biteshipApiKey), note: "Quotes, courier booking and tracking" },
+    { name: "Google Maps", ok: Boolean(integrations.googleMapsApiKey), note: "Address validation and pickup pin" },
+    { name: "Cloudflare protection", ok: true, note: "TLS, WAF and Admin challenge active" }
+  ];
+}
+
+function renderDashboard() {
+  if (!state.catalog) return;
+  const attentionItems = dashboardAttentionItems();
+  const openStatuses = new Set(["paid", "preparing", "on_delivery", "shipped", "delivery_issue"]);
+  const openOrders = state.orders.filter((order) => openStatuses.has(order.status));
+  const lowStock = (state.catalog.items || []).filter((item) => Number(item.stock || 0) <= 5);
+  const health = configuredIntegrationHealth();
+  const healthyCount = health.filter((item) => item.ok).length;
+
+  document.getElementById("dashboardAttentionCount").textContent = String(attentionItems.length);
+  document.getElementById("dashboardAttentionSummary").textContent = attentionItems.length
+    ? "Review these items before routine work"
+    : "No operational blockers detected";
+  document.getElementById("dashboardOpenOrdersCount").textContent = String(openOrders.length);
+  document.getElementById("dashboardLowStockCount").textContent = String(lowStock.length);
+  document.getElementById("dashboardSystemStatus").textContent = healthyCount === health.length ? "Healthy" : `${healthyCount}/${health.length}`;
+  document.getElementById("dashboardSystemSummary").textContent = healthyCount === health.length
+    ? "All required services are configured"
+    : "One or more services needs configuration";
+
+  const priorityList = document.getElementById("dashboardPriorityList");
+  priorityList.innerHTML = attentionItems.length
+    ? attentionItems.slice(0, 6).map((item) => `
+      <div class="admin-priority-item is-${item.tone}">
+        <span class="admin-priority-dot"></span>
+        <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail)}</small></div>
+      </div>
+    `).join("")
+    : `<div class="admin-dashboard-clear"><span>✓</span><div><strong>Nothing urgent</strong><small>Payments, delivery, refunds and messages have no recorded blockers.</small></div></div>`;
+
+  document.getElementById("dashboardHealthList").innerHTML = health.map((item) => `
+    <div class="admin-health-row">
+      <div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.note)}</small></div>
+      <span class="admin-health-state ${item.ok ? "is-good" : "is-warning"}">${item.ok ? "Ready" : "Check"}</span>
+    </div>
+  `).join("");
+}
+
+async function runSystemCheck() {
+  const button = document.getElementById("runSystemCheckButton");
+  try {
+    button.disabled = true;
+    button.textContent = "Checking…";
+    const [xendit, whatsapp, securityResponse] = await Promise.all([
+      request("/api/admin/xendit-health").catch((error) => ({ ok: false, error: error.message })),
+      request("/api/admin/whatsapp-health").catch((error) => ({ ok: false, error: error.message })),
+      fetch("/.well-known/security.txt", { cache: "no-store" }).then((response) => ({ ok: response.ok })).catch(() => ({ ok: false }))
+    ]);
+    state.health = { xendit, whatsapp, security: securityResponse };
+    const failures = [
+      !xendit.ok ? "Xendit" : "",
+      !whatsapp.ok ? "WhatsApp" : "",
+      !securityResponse.ok ? "Security policy" : ""
+    ].filter(Boolean);
+    document.getElementById("dashboardLastChecked").textContent = `Checked ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    setStatus(failures.length ? `Check required: ${failures.join(", ")}.` : "System check passed.");
+    renderDashboard();
+  } finally {
+    button.disabled = false;
+    button.textContent = "Run system check";
+  }
+}
+
+function restoreLiveTestChecklist() {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(liveTestStorageKey) || "{}");
+  } catch (_error) {
+    saved = {};
+  }
+  document.querySelectorAll("[data-live-test]").forEach((input) => {
+    input.checked = Boolean(saved[input.dataset.liveTest]);
+  });
+}
+
+function saveLiveTestChecklist() {
+  const saved = {};
+  document.querySelectorAll("[data-live-test]").forEach((input) => {
+    saved[input.dataset.liveTest] = input.checked;
+  });
+  localStorage.setItem(liveTestStorageKey, JSON.stringify(saved));
+}
+
+function resetLiveTestChecklist() {
+  localStorage.removeItem(liveTestStorageKey);
+  document.querySelectorAll("[data-live-test]").forEach((input) => {
+    input.checked = false;
+  });
+  setStatus("Tomorrow's live-test checklist was reset.");
 }
 
 function renderIntegrations(integrations) {
@@ -1212,6 +1364,7 @@ async function loadOrders() {
     const response = await request("/api/orders");
     state.orders = Array.isArray(response.orders) ? response.orders : [];
     renderAdminOrders();
+    renderDashboard();
   } catch (error) {
     adminOrderList.innerHTML = `
       <div class="empty-state">
@@ -1305,22 +1458,35 @@ function addProduct() {
 
 async function bootstrap() {
   await ensureAdminSession();
-  const [catalog, integrations, voucherResponse, publicConfig] = await Promise.all([
+  const [catalog, integrations, voucherResponse, publicConfig, orderResponse] = await Promise.all([
     request("/api/admin/catalog"),
     request("/api/admin/integrations"),
     request("/api/admin/vouchers"),
-    request("/api/public-config")
+    request("/api/public-config"),
+    request("/api/orders")
   ]);
   state.catalog = catalog;
   state.vouchers = voucherResponse.vouchers || [];
+  state.integrations = integrations;
+  state.orders = Array.isArray(orderResponse.orders) ? orderResponse.orders : [];
   renderAll();
   renderIntegrations(integrations);
-  await initializeKitchenMap(publicConfig.googleMapsApiKey);
-  showAdminSection(adminSectionSelect?.value || "store");
+  renderAdminOrders();
+  restoreLiveTestChecklist();
+  await initializeKitchenMap(publicConfig.googleMapsApiKey).catch(() => {
+    // The operations overview should remain usable if the optional map preview
+    // cannot initialize. The Storefront section still exposes the saved address.
+  });
+  const requestedSection = window.location.hash.slice(1);
+  const initialSection = sectionHeadings[requestedSection] ? requestedSection : "dashboard";
+  showAdminSection(initialSection);
   if (window.mermaid) {
-    await window.mermaid.run({ querySelector: ".mermaid" });
+    await window.mermaid.run({ querySelector: ".mermaid" }).catch(() => {
+      // Diagrams are supplementary developer documentation and must never
+      // prevent the operational controls from loading.
+    });
   }
-  setStatus("Catalog loaded. Save after making changes.");
+  setStatus("Operations console ready.");
 }
 
 saveCatalogButton.addEventListener("click", saveCatalog);
@@ -1366,6 +1532,12 @@ storeFields.kitchenLat.addEventListener("change", syncKitchenMapFromFields);
 storeFields.kitchenLng.addEventListener("change", syncKitchenMapFromFields);
 storeFields.kitchenAddress.addEventListener("change", updateKitchenMapLink);
 adminSectionSelect?.addEventListener("change", () => showAdminSection(adminSectionSelect.value));
+document.getElementById("runSystemCheckButton")?.addEventListener("click", runSystemCheck);
+document.getElementById("resetLiveTestChecklistButton")?.addEventListener("click", resetLiveTestChecklist);
+document.getElementById("liveTestChecklist")?.addEventListener("change", saveLiveTestChecklist);
+document.querySelectorAll("[data-dashboard-target]").forEach((button) => {
+  button.addEventListener("click", () => showAdminSection(button.dataset.dashboardTarget));
+});
 brandStorySlideList.addEventListener("input", (event) => {
   if (event.target.matches('[data-story-field="imagePath"]')) {
     syncBrandStoryPreview(event.target.closest("[data-story-slide-index]"));

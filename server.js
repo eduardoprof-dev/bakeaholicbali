@@ -6581,7 +6581,21 @@ function handleApi(requestUrl, request, response) {
     if (!session) {
       return true;
     }
-    sendJson(response, 200, readIntegrationSettings());
+    const settings = readIntegrationSettings();
+    const browserSafeSettings = { ...settings };
+    [
+      "googleMapsApiKey",
+      "biteshipApiKey",
+      "biteshipWebhookHeaderSecret",
+      "xenditSecretKey",
+      "xenditCallbackToken",
+      "whatsappAccessToken",
+      "whatsappVerifyToken",
+      "whatsappAppSecret"
+    ].forEach((key) => {
+      browserSafeSettings[key] = settings[key] ? "__configured__" : "";
+    });
+    sendJson(response, 200, browserSafeSettings);
     return true;
   }
 
