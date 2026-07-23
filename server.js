@@ -507,17 +507,17 @@ async function runWhatsappTemplateDiagnostics() {
     {
       key: "payment_pending",
       templateName: "payment_pending",
-      send: () => sendWhatsappTemplateMessage(recipient, "payment_pending", [], { languageCode: "en" })
+      send: () => sendWhatsappTemplateMessage(recipient, "payment_pending", [], orderUpdateWhatsappOptions(order, "payment_pending"))
     },
     {
       key: "order_received",
       templateName: "order_received",
-      send: () => sendWhatsappTemplateMessage(recipient, "order_received", [], { languageCode: "en" })
+      send: () => sendWhatsappTemplateMessage(recipient, "order_received", [], orderUpdateWhatsappOptions(order, "order_received"))
     },
     {
       key: "order_preparing",
       templateName: "order_preparing",
-      send: () => sendWhatsappTemplateMessage(recipient, "order_preparing", [], { languageCode: "en" })
+      send: () => sendWhatsappTemplateMessage(recipient, "order_preparing", [], orderUpdateWhatsappOptions(order, "order_preparing"))
     },
     {
       key: "payment_confirmed",
@@ -527,7 +527,7 @@ async function runWhatsappTemplateDiagnostics() {
     {
       key: "order_shipped",
       templateName: "order_shipped",
-      send: () => sendWhatsappTemplateMessage(recipient, "order_shipped", [], { languageCode: "en" })
+      send: () => sendWhatsappTemplateMessage(recipient, "order_shipped", [], orderUpdateWhatsappOptions(order, "order_shipped"))
     },
     {
       key: "order_delivered",
@@ -980,13 +980,32 @@ function configuredWhatsappOrderTemplateName(order) {
   return templateName;
 }
 
+function orderUpdateWhatsappOptions(order, templateName) {
+  const dynamicButtonTemplates = new Set([
+    "payment_pending",
+    "order_received",
+    "order_preparing",
+    "order_shipped"
+  ]);
+  const options = { languageCode: "en" };
+  if (dynamicButtonTemplates.has(templateName)) {
+    options.urlButtonParameters = [{
+      index: "0",
+      text: templateName === "payment_pending"
+        ? publicOrderButtonQuery(order)
+        : publicDocumentButtonQuery(order)
+    }];
+  }
+  return options;
+}
+
 async function sendWhatsappOrderUpdate(order) {
   const templateName = configuredWhatsappOrderTemplateName(order);
   if (!templateName) {
     throw new Error("WHATSAPP_ORDER_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, [], { languageCode: "en" });
+  return sendWhatsappTemplateMessage(order.customer.phone, templateName, [], orderUpdateWhatsappOptions(order, templateName));
 }
 
 function adminWhatsappParameters(order, eventLabel = "") {
@@ -1048,8 +1067,7 @@ function customerShippingWhatsappParameters(order) {
     order.id,
     details.courierName,
     details.waybillId,
-    details.trackingLink,
-    details.shippingDocumentUrl
+    details.trackingLink
   ];
 }
 

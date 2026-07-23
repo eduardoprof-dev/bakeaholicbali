@@ -137,7 +137,7 @@ test("admin diagnostics exercise every configured template without creating an o
     payment_receipt: 2,
     payment_update_order: 1,
     order_cancelled_unpaid: 1,
-    shipping_update: 5,
+    shipping_update: 4,
     admin_order_alert_v2: 9,
     admin_shipping_update: 5
   });
@@ -175,7 +175,6 @@ test("shipping parameters use stable placeholders", () => {
     "BAK-0001",
     "-",
     "-",
-    "https://track.biteship.com/ship-1",
     "https://track.biteship.com/ship-1"
   ]);
 });
