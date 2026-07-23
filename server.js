@@ -1015,6 +1015,10 @@ async function sendWhatsappOrderUpdate(order) {
 
 function adminWhatsappParameters(order, eventLabel = "") {
   const documentUrl = adminOrderDocumentUrl(order);
+  const shipmentStatus = order.fulfillment?.shipment?.status || "Not booked yet";
+  const staffAction = order.status === "paid"
+    ? `Reply APPROVE when packed, or CANCEL if stock is empty. If there is more than one waiting order, reply APPROVE ${order.id} or CANCEL ${order.id}.`
+    : "No staff action needed.";
   return [
     eventLabel || humanizeOrderStatus(order),
     order.id,
@@ -1022,9 +1026,9 @@ function adminWhatsappParameters(order, eventLabel = "") {
     order.customer?.phone || "",
     `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`,
     order.payment?.label || "",
-    order.fulfillment?.shipment?.status || order.status || "",
+    shipmentStatus,
     documentUrl,
-    order.status === "paid" ? `Reply APPROVE when packed, or CANCEL if stock is empty. If there is more than one waiting order, reply APPROVE ${order.id} or CANCEL ${order.id}.` : "No staff action needed."
+    staffAction
   ];
 }
 
@@ -5733,7 +5737,9 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
     throw new Error("Order not found");
   }
 
-  if (order.status !== "awaiting_payment") {
+  const previousStatus = order.status;
+  const canReconcilePayment = ["awaiting_payment", "expired", "payment_failed"].includes(previousStatus);
+  if (!canReconcilePayment) {
     return enrichCheckoutOrder(order);
   }
 
@@ -5741,9 +5747,7 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
     return enrichCheckoutOrder(order);
   }
 
-  const previousStatus = order.status;
-
-  if (canSimulateDirectXenditPayment(order, options)) {
+  if (previousStatus === "awaiting_payment" && canSimulateDirectXenditPayment(order, options)) {
     applyXenditTestPaymentSimulation(order);
   } else {
     const xenditStatus = order.payment?.provider === "xendit_payments_api"
@@ -5755,7 +5759,7 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
           : order.payment?.provider === "xendit_qr_code"
             ? await fetchXenditQrCodeStatus(order)
             : await fetchXenditInvoiceStatus(order);
-    if (xenditStatus) {
+    if (xenditStatus && (previousStatus === "awaiting_payment" || isSuccessfulXenditPaymentEvent(xenditStatus))) {
       if (order.payment?.provider === "xendit_payments_api") {
         applyXenditPaymentRequestStatusToOrder(order, xenditStatus);
       } else if (order.payment?.provider === "xendit_components") {
@@ -5767,7 +5771,7 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
       } else {
         applyXenditInvoiceStatusToOrder(order, xenditStatus);
       }
-    } else {
+    } else if (previousStatus === "awaiting_payment") {
       order.payment.status = order.payment.status || "pending";
     }
   }
@@ -5783,7 +5787,9 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
     if (order.status === "paid") {
       await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     }
-    await maybeSendWhatsappAdminAlert(order, `order:${order.id}:status:${order.status}`, humanizeOrderStatus(order));
+    if (order.status === "paid") {
+      await maybeSendWhatsappAdminAlert(order, `order:${order.id}:status:${order.status}`, humanizeOrderStatus(order));
+    }
   }
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
@@ -6906,7 +6912,9 @@ function handleApi(requestUrl, request, response) {
           } else {
             await maybeSendWhatsappOrderStatus(order, previousStatus);
           }
-          await maybeSendWhatsappAdminAlert(order, `order:${order.id}:xendit:${order.status}`, humanizeOrderStatus(order));
+          if (order.status !== "expired") {
+            await maybeSendWhatsappAdminAlert(order, `order:${order.id}:xendit:${order.status}`, humanizeOrderStatus(order));
+          }
         }
         saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);
         sendJson(response, 200, { ok: true });
@@ -7020,6 +7028,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  adminWhatsappParameters,
   adminShippingWhatsappParameters,
   availablePaymentMethods,
   configuredWhatsappOrderTemplateName,

@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  adminWhatsappParameters,
   availablePaymentMethods,
   configuredWhatsappOrderTemplateName,
   customerShippingWhatsappParameters,
@@ -17,6 +18,20 @@ const {
   shipmentStatusToOrderStatus,
   xenditKeyMode
 } = require("./server");
+
+test("paid admin alert describes an unbooked delivery and required approval", () => {
+  const parameters = adminWhatsappParameters({
+    id: "BAK-0105",
+    status: "paid",
+    customer: { name: "Eduardo", phone: "+6281234567890" },
+    pricing: { total: 18700 },
+    payment: { label: "QRIS" },
+    fulfillment: { shipment: {} },
+    receiptToken: "token"
+  }, "Payment received");
+  assert.equal(parameters[6], "Not booked yet");
+  assert.match(parameters[8], /Reply APPROVE/);
+});
 
 function whatsappOrder(overrides = {}) {
   return {
