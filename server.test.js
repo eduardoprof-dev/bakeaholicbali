@@ -16,6 +16,7 @@ const {
   sendWhatsappTemplateMessage,
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
+  xenditPaymentAmount,
   xenditKeyMode
 } = require("./server");
 
@@ -298,4 +299,8 @@ test("Xendit transaction SUCCESS is treated as a completed payment", () => {
   assert.equal(isSuccessfulXenditPaymentEvent({ status: "SUCCESS" }), true);
   assert.equal(isSuccessfulXenditPaymentEvent({ event: "qr.payment", status: "COMPLETED" }), true);
   assert.equal(isSuccessfulXenditPaymentEvent({ status: "ACTIVE" }), false);
+});
+
+test("legacy Xendit QRIS callbacks accept the nominal payment field", () => {
+  assert.equal(xenditPaymentAmount({ nominal: 18700 }), 18700);
 });

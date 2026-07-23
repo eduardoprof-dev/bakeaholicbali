@@ -5100,6 +5100,35 @@ async function fetchXenditQrCodeStatus(order) {
 
   if (!isSuccessfulXenditPaymentEvent(payload)) {
     const referenceId = String(order.payment?.externalId || order.id || "").trim();
+    const qrPaymentsUrl = new URL("https://api.xendit.co/qr_codes/payments");
+    qrPaymentsUrl.searchParams.set("external_id", referenceId);
+    qrPaymentsUrl.searchParams.set("limit", "10");
+    const qrPaymentsResponse = await fetch(qrPaymentsUrl, {
+      headers: {
+        Accept: "application/json",
+        Authorization: xenditAuthHeader()
+      }
+    });
+    const qrPaymentsPayload = await qrPaymentsResponse.json().catch(async () => ({ raw: await qrPaymentsResponse.text() }));
+    if (qrPaymentsResponse.ok) {
+      const qrPayments = Array.isArray(qrPaymentsPayload)
+        ? qrPaymentsPayload
+        : qrPaymentsPayload.data || [];
+      const completedQrPayment = qrPayments.find((payment) => (
+        isSuccessfulXenditPaymentEvent(payment)
+        && String(payment.qr_code?.external_id || referenceId) === referenceId
+        && xenditPaymentAmount(payment) === Number(order.pricing?.total || 0)
+      ));
+      if (completedQrPayment) {
+        return {
+          ...payload,
+          ...completedQrPayment,
+          status: "COMPLETED",
+          qr_string: payload.qr_string || completedQrPayment.qr_code?.qr_string || order.payment?.qrCodeData || ""
+        };
+      }
+    }
+
     const transactionsUrl = new URL("https://api.xendit.co/transactions");
     transactionsUrl.searchParams.set("types", "PAYMENT");
     transactionsUrl.searchParams.set("statuses", "SUCCESS");
@@ -5188,6 +5217,7 @@ function isSuccessfulXenditPaymentEvent(payload = {}) {
 function xenditPaymentAmount(payload = {}) {
   const candidates = [
     payload.amount,
+    payload.nominal,
     payload.paid_amount,
     payload.payment_amount,
     payload.amount_paid,
@@ -7047,5 +7077,6 @@ module.exports = {
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   whatsappTemplateTestOrder,
+  xenditPaymentAmount,
   xenditKeyMode
 };
