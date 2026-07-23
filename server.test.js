@@ -8,7 +8,8 @@ const {
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
   sendWhatsappTemplateMessage,
-  shippingWhatsappDetails
+  shippingWhatsappDetails,
+  shipmentStatusToOrderStatus
 } = require("./server");
 
 function whatsappOrder(overrides = {}) {
@@ -167,16 +168,30 @@ test("shipping parameters use stable placeholders", () => {
   });
   assert.deepEqual(shippingWhatsappDetails(order), {
     courierName: "-",
-    waybillId: "-",
+    waybillId: "ship-1",
     trackingLink: "https://track.biteship.com/ship-1",
     shippingDocumentUrl: "https://track.biteship.com/ship-1"
   });
   assert.deepEqual(customerShippingWhatsappParameters(order), [
     "BAK-0001",
     "-",
-    "-",
+    "ship-1",
     "https://track.biteship.com/ship-1"
   ]);
+});
+
+test("shipping parameters fall back to the Biteship tracking identifier", () => {
+  const order = whatsappOrder({
+    fulfillment: { shipment: { orderId: "ship-1", trackingLink: "https://track.biteship.com/track-987" } }
+  });
+  assert.equal(shippingWhatsappDetails(order).waybillId, "track-987");
+});
+
+test("Biteship final delivery statuses map to the delivered customer message", () => {
+  for (const status of ["delivered", "finish", "completed", "successful_delivery", "successfully_delivered", "done"]) {
+    assert.equal(shipmentStatusToOrderStatus(status), "delivered");
+  }
+  assert.equal(shipmentStatusToOrderStatus("picked_up"), "on_delivery");
 });
 
 test("public order references preserve live and test modes", () => {
