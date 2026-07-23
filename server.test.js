@@ -18,6 +18,7 @@ const {
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   xenditPaymentAmount,
+  xenditRefundRequestBody,
   xenditKeyMode
 } = require("./server");
 
@@ -323,5 +324,21 @@ test("cancelled template receives exactly the order-number variable", () => {
   assert.deepEqual(
     orderUpdateWhatsappParameters({ id: "BAK-0105" }, "order_cancelled"),
     ["BAK-0105"]
+  );
+});
+
+test("Xendit refund payload uses the Payment Request contract", () => {
+  assert.deepEqual(
+    xenditRefundRequestBody(
+      { id: "BAK-0106", pricing: { total: 18700 } },
+      "pr-123"
+    ),
+    {
+      reference_id: "BAK-0106-refund",
+      payment_request_id: "pr-123",
+      currency: "IDR",
+      amount: 18700,
+      reason: "CANCELLATION"
+    }
   );
 });
