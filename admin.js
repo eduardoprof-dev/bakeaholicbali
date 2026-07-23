@@ -15,6 +15,8 @@ const formatRupiah = new Intl.NumberFormat("id-ID", {
 
 const saveCatalogButton = document.getElementById("saveCatalogButton");
 const saveIntegrationsButton = document.getElementById("saveIntegrationsButton");
+const testWhatsappTemplatesButton = document.getElementById("testWhatsappTemplatesButton");
+const whatsappTemplateTestResults = document.getElementById("whatsappTemplateTestResults");
 const addProductButton = document.getElementById("addProductButton");
 const adminLogoutButton = document.getElementById("adminLogoutButton");
 const adminStatus = document.getElementById("adminStatus");
@@ -148,6 +150,7 @@ async function request(path, options = {}) {
     const payload = await response.json().catch(() => ({}));
     const error = new Error(payload.error || `Request failed: ${response.status}`);
     error.status = response.status;
+    error.payload = payload;
     throw error;
   }
 
@@ -1105,6 +1108,27 @@ async function saveIntegrations() {
   }
 }
 
+async function testWhatsappTemplates() {
+  try {
+    testWhatsappTemplatesButton.disabled = true;
+    whatsappTemplateTestResults.hidden = false;
+    whatsappTemplateTestResults.textContent = "Sending synthetic WhatsApp template tests...";
+    const response = await request("/api/admin/whatsapp-template-tests", { method: "POST" });
+    whatsappTemplateTestResults.textContent = response.results
+      .map((result) => `${result.ok ? "PASS" : "FAIL"}  ${result.key}  ${result.templateName || "not configured"}${result.error ? `  ${result.error}` : ""}`)
+      .join("\n");
+    setStatus(response.ok ? "All WhatsApp templates were accepted by Meta." : "One or more WhatsApp templates failed.");
+  } catch (error) {
+    const results = error.payload?.results || [];
+    whatsappTemplateTestResults.textContent = results.length
+      ? results.map((result) => `${result.ok ? "PASS" : "FAIL"}  ${result.key}  ${result.templateName || "not configured"}${result.error ? `  ${result.error}` : ""}`).join("\n")
+      : error.message;
+    setStatus("One or more WhatsApp templates failed.");
+  } finally {
+    testWhatsappTemplatesButton.disabled = false;
+  }
+}
+
 function collectVouchers() {
   return [...voucherList.querySelectorAll("[data-voucher-index]")].map((card) => ({
     code: card.querySelector('[data-voucher-field="code"]')?.value.trim().toUpperCase() || "",
@@ -1267,6 +1291,7 @@ async function bootstrap() {
 
 saveCatalogButton.addEventListener("click", saveCatalog);
 saveIntegrationsButton.addEventListener("click", saveIntegrations);
+testWhatsappTemplatesButton.addEventListener("click", testWhatsappTemplates);
 addProductButton.addEventListener("click", addProduct);
 saveVouchersButton?.addEventListener("click", saveVouchers);
 addVoucherButton?.addEventListener("click", addVoucher);
