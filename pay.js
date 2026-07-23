@@ -787,6 +787,13 @@ async function bootstrap() {
   const tokenQuery = orderToken ? `&token=${encodeURIComponent(orderToken)}` : "";
   const response = await request(`/api/order?id=${encodeURIComponent(orderId)}${tokenQuery}`);
   state.order = response.order;
+  if (["expired", "payment_failed"].includes(state.order?.status)) {
+    const refreshedResponse = await request("/api/order/payment-status", {
+      method: "POST",
+      body: JSON.stringify({ id: orderId, token: orderToken })
+    });
+    state.order = refreshedResponse.order;
+  }
   if (state.order?.status === "awaiting_payment" && state.order.payment?.provider === "xendit_pending_bank") {
     const hostedResponse = await request("/api/order/hosted-payment", {
       method: "POST",

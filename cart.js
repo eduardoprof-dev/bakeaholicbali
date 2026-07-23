@@ -1554,6 +1554,18 @@ async function syncSessionProfile() {
 async function submitOrder() {
   try {
     if (state.currentOrder && !checkoutXenditPanel.hidden) {
+      if (["expired", "payment_failed"].includes(state.currentOrder.status)) {
+        const refreshedResponse = await request("/api/order/payment-status", {
+          method: "POST",
+          body: JSON.stringify({ id: state.currentOrder.id })
+        });
+        state.currentOrder = refreshedResponse.order;
+        if (["paid", "preparing"].includes(state.currentOrder.status)) {
+          clearCompletedCheckoutState();
+          window.location.assign(orderStatusUrlForOrder(state.currentOrder));
+          return;
+        }
+      }
       await updateCurrentOrderPaymentMethod(state.draft.paymentMethodId);
       return;
     }
