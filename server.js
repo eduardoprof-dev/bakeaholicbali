@@ -466,9 +466,34 @@ async function runWhatsappTemplateDiagnostics() {
       send: () => sendWhatsappOtpCode(recipient, "123456")
     },
     {
-      key: "order_paid",
-      templateName: configuredWhatsappOrderTemplateName(order),
-      send: () => sendWhatsappOrderUpdate(order)
+      key: "payment_pending",
+      templateName: "payment_pending",
+      send: () => sendWhatsappTemplateMessage(recipient, "payment_pending", [], { languageCode: "en" })
+    },
+    {
+      key: "order_received",
+      templateName: "order_received",
+      send: () => sendWhatsappTemplateMessage(recipient, "order_received", [], { languageCode: "en" })
+    },
+    {
+      key: "order_preparing",
+      templateName: "order_preparing",
+      send: () => sendWhatsappTemplateMessage(recipient, "order_preparing", [], { languageCode: "en" })
+    },
+    {
+      key: "payment_confirmed",
+      templateName: "payment_confirmed",
+      send: () => sendWhatsappTemplateMessage(recipient, "payment_confirmed", [], { languageCode: "en" })
+    },
+    {
+      key: "order_shipped",
+      templateName: "order_shipped",
+      send: () => sendWhatsappTemplateMessage(recipient, "order_shipped", [], { languageCode: "en" })
+    },
+    {
+      key: "order_delivered",
+      templateName: "order_delivered",
+      send: () => sendWhatsappTemplateMessage(recipient, "order_delivered", [], { languageCode: "en" })
     },
     {
       key: "payment_receipt",

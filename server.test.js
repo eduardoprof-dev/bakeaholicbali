@@ -121,14 +121,19 @@ test("admin diagnostics exercise every configured template without creating an o
   assert.equal(diagnostic.synthetic, true);
   assert.equal(diagnostic.charged, false);
   assert.equal(diagnostic.orderCreated, false);
-  assert.equal(payloads.length, 8);
+  assert.equal(payloads.length, 13);
   const bodyCounts = Object.fromEntries(payloads.map((payload) => {
     const body = payload.template.components?.find((component) => component.type === "body");
     return [payload.template.name, body?.parameters?.length || 0];
   }));
   assert.deepEqual(bodyCounts, {
     otp_verification: 1,
+    payment_pending: 0,
+    order_received: 0,
+    order_preparing: 0,
     payment_confirmed: 0,
+    order_shipped: 0,
+    order_delivered: 0,
     payment_receipt: 2,
     payment_update_order: 1,
     order_cancelled_unpaid: 1,
