@@ -4643,8 +4643,8 @@ async function createPaymentForOrder(order) {
   }
 
   if (order.payment?.kind === "qris") {
-    const qrCode = await createXenditQrCode(enrichOrder(order));
-    return applyXenditQrCodeToPayment(order.payment, qrCode);
+    const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));
+    return applyXenditPaymentRequestToPayment(order.payment, paymentRequest);
   }
 
   const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));
@@ -4966,12 +4966,14 @@ function applyXenditInvoiceToPayment(payment, invoice) {
 }
 
 async function attemptXenditRefund(order, reason = "Requested by admin") {
-  const paymentId = order.payment?.paymentId || order.payment?.chargeId || "";
-  if (!isXenditReady() || !paymentId) {
+  const paymentRequestId = order.payment?.paymentRequestId
+    || (order.payment?.provider === "xendit_payments_api" ? order.payment?.transactionId : "")
+    || "";
+  if (!isXenditReady() || !paymentRequestId) {
     order.refund = {
       status: "manual_required",
       reason,
-      message: "No Xendit payment id was available. Refund from Xendit dashboard.",
+      message: "No refundable Xendit Payment Request ID was available. Refund from Xendit dashboard.",
       requestedAt: new Date().toISOString()
     };
     return order.refund;
@@ -4984,12 +4986,7 @@ async function attemptXenditRefund(order, reason = "Requested by admin") {
       "Content-Type": "application/json",
       Authorization: xenditAuthHeader()
     },
-    body: JSON.stringify({
-      payment_id: paymentId,
-      amount: order.pricing?.total || 0,
-      reason,
-      reference_id: `${order.id}-refund`
-    })
+    body: JSON.stringify(xenditRefundRequestBody(order, paymentRequestId))
   });
   const payload = await response.json().catch(async () => ({ raw: await response.text() }));
   order.refund = {
@@ -5000,6 +4997,16 @@ async function attemptXenditRefund(order, reason = "Requested by admin") {
     message: response.ok ? "Refund requested in Xendit." : (payload.message || payload.error_code || "Refund request failed. Refund manually from Xendit dashboard.")
   };
   return order.refund;
+}
+
+function xenditRefundRequestBody(order, paymentRequestId) {
+  return {
+    reference_id: `${order.id}-refund`,
+    payment_request_id: paymentRequestId,
+    currency: "IDR",
+    amount: order.pricing?.total || 0,
+    reason: "CANCELLATION"
+  };
 }
 
 async function fetchXenditInvoiceStatus(order) {
@@ -7094,5 +7101,6 @@ module.exports = {
   shipmentStatusToOrderStatus,
   whatsappTemplateTestOrder,
   xenditPaymentAmount,
+  xenditRefundRequestBody,
   xenditKeyMode
 };
