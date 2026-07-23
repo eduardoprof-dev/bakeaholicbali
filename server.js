@@ -1413,12 +1413,9 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
     throw new Error(admin ? "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME is not configured" : "WHATSAPP_SHIPPING_TEMPLATE_NAME is not configured");
   }
   const recipient = admin ? process.env.WHATSAPP_ADMIN_NUMBER : order.customer.phone;
-  const documentUrl = whatsappDocumentAttachmentUrl(biteshipDocumentUrl(order));
   const parameters = admin ? adminShippingWhatsappParameters(order) : customerShippingWhatsappParameters(order);
   return sendWhatsappTemplateMessage(recipient, templateName, parameters, {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-    headerDocumentUrl: documentUrl,
-    headerDocumentFilename: `${order.id}-shipping.pdf`,
     urlButtonParameters: [
       {
         index: "0",
