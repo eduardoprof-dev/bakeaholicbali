@@ -1935,19 +1935,47 @@ function configuredValue(...values) {
   return values.find((value) => !isPlaceholderValue(value)) || "";
 }
 
+function xenditKeyMode(value = "") {
+  const key = String(value || "").trim().toLowerCase();
+  if (!key) return "missing";
+  if (key.includes("development") || key.includes("test")) return "test";
+  if (key.includes("production") || key.includes("live")) return "live";
+  return "unknown";
+}
+
+function selectXenditSecretKey(environment = "test", ...values) {
+  const candidates = values
+    .map((value) => String(value || "").trim())
+    .filter((value) => !isPlaceholderValue(value));
+  const expectedMode = environment === "live" ? "live" : "test";
+  return candidates.find((value) => xenditKeyMode(value) === expectedMode)
+    || candidates[0]
+    || "";
+}
+
 function readIntegrationSettings() {
   const envMap = loadEnvMap(envPath);
   const savedSettings = readJsonFileSafely(integrationsPath, {});
   const config = getEnvironmentIntegrationConfig();
+  const xenditEnvironment = configuredValue(
+    savedSettings.xenditEnvironment,
+    envMap.XENDIT_ENVIRONMENT,
+    config.xenditEnvironment
+  ) === "live" ? "live" : "test";
   const settings = {
     googleMapsApiKey: configuredValue(savedSettings.googleMapsApiKey, envMap.GOOGLE_MAPS_API_KEY, config.googleMapsApiKey),
     biteshipApiKey: configuredValue(savedSettings.biteshipApiKey, envMap.BITESHIP_API_KEY, config.biteshipApiKey),
     biteshipCouriers: configuredValue(savedSettings.biteshipCouriers, envMap.BITESHIP_COURIERS, config.biteshipCouriers) || "gojek,grab",
     biteshipWebhookHeaderName: configuredValue(savedSettings.biteshipWebhookHeaderName, envMap.BITESHIP_WEBHOOK_HEADER_NAME, config.biteshipWebhookHeaderName),
     biteshipWebhookHeaderSecret: configuredValue(savedSettings.biteshipWebhookHeaderSecret, envMap.BITESHIP_WEBHOOK_HEADER_SECRET, config.biteshipWebhookHeaderSecret),
-    xenditSecretKey: configuredValue(savedSettings.xenditSecretKey, envMap.XENDIT_SECRET_KEY, config.xenditSecretKey),
+    xenditSecretKey: selectXenditSecretKey(
+      xenditEnvironment,
+      config.xenditSecretKey,
+      envMap.XENDIT_SECRET_KEY,
+      savedSettings.xenditSecretKey
+    ),
     xenditCallbackToken: configuredValue(savedSettings.xenditCallbackToken, envMap.XENDIT_CALLBACK_TOKEN, config.xenditCallbackToken),
-    xenditEnvironment: configuredValue(savedSettings.xenditEnvironment, envMap.XENDIT_ENVIRONMENT, config.xenditEnvironment) || "test",
+    xenditEnvironment,
     whatsappAccessToken: configuredValue(savedSettings.whatsappAccessToken, envMap.WHATSAPP_ACCESS_TOKEN, config.whatsappAccessToken),
     whatsappPhoneNumberId: configuredValue(savedSettings.whatsappPhoneNumberId, envMap.WHATSAPP_PHONE_NUMBER_ID, config.whatsappPhoneNumberId),
     whatsappBusinessAccountId: configuredValue(savedSettings.whatsappBusinessAccountId, envMap.WHATSAPP_BUSINESS_ACCOUNT_ID, config.whatsappBusinessAccountId),
@@ -1966,7 +1994,6 @@ function readIntegrationSettings() {
     whatsappAdminShippingTemplateName: configuredValue(savedSettings.whatsappAdminShippingTemplateName, envMap.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME, config.whatsappAdminShippingTemplateName),
     whatsappTemplateLanguage: configuredValue(savedSettings.whatsappTemplateLanguage, envMap.WHATSAPP_TEMPLATE_LANGUAGE, config.whatsappTemplateLanguage) || "en"
   };
-  settings.xenditEnvironment = settings.xenditEnvironment === "live" ? "live" : "test";
   return settings;
 }
 
@@ -2012,6 +2039,10 @@ function saveIntegrationSettings(input = {}) {
     whatsappAdminShippingTemplateName: String(input.whatsappAdminShippingTemplateName || "").trim(),
     whatsappTemplateLanguage: String(input.whatsappTemplateLanguage || "en").trim() || "en"
   };
+
+  if (nextSettings.xenditEnvironment === "live" && xenditKeyMode(nextSettings.xenditSecretKey) !== "live") {
+    throw new Error("Live Xendit requires a Live Mode secret key (xnd_production_...). Replace the development key before saving.");
+  }
 
   writeJsonFile(integrationsPath, nextSettings);
   try {
@@ -2836,7 +2867,8 @@ function getStoreConfig() {
       biteshipEnabled: Boolean(integrationConfig.biteshipApiKey),
       biteshipCouriers: integrationConfig.biteshipCouriers,
       liveQuoteProvider: integrationConfig.biteshipApiKey ? "Biteship Rates API" : "",
-      xenditEnabled: Boolean(integrationConfig.xenditSecretKey),
+      xenditEnabled: Boolean(integrationConfig.xenditSecretKey)
+        && (integrationConfig.xenditEnvironment !== "live" || xenditKeyMode(integrationConfig.xenditSecretKey) === "live"),
       xenditEnvironment: integrationConfig.xenditEnvironment
     }
   };
@@ -4293,13 +4325,14 @@ function xenditAuthHeader() {
 }
 
 function isXenditReady() {
-  return Boolean(getIntegrationConfig().xenditSecretKey);
+  const { xenditEnvironment, xenditSecretKey } = getIntegrationConfig();
+  if (!xenditSecretKey) return false;
+  return xenditEnvironment !== "live" || xenditKeyMode(xenditSecretKey) === "live";
 }
 
 function isXenditTestEnvironment() {
   const { xenditEnvironment, xenditSecretKey } = getIntegrationConfig();
-  const key = String(xenditSecretKey || "").toLowerCase();
-  return xenditEnvironment !== "live" || key.includes("development") || key.includes("test");
+  return xenditEnvironment !== "live" || xenditKeyMode(xenditSecretKey) !== "live";
 }
 
 function getPublicOrderUrl(order) {
@@ -6427,6 +6460,8 @@ function handleApi(requestUrl, request, response) {
       prefix: secretKey ? `${secretKey.slice(0, 14)}...` : "",
       looksLikeXenditKey: secretKey.startsWith("xnd_"),
       environment: settings.xenditEnvironment || "test",
+      credentialMode: xenditKeyMode(secretKey),
+      modeMatchesEnvironment: settings.xenditEnvironment !== "live" || xenditKeyMode(secretKey) === "live",
       callbackTokenPresent: Boolean(settings.xenditCallbackToken),
       callbackToken: tokenDebug(settings.xenditCallbackToken)
     });
@@ -6941,8 +6976,10 @@ module.exports = {
   receiptWhatsappParameters,
   runWhatsappTemplateDiagnostics,
   securityTxtBody,
+  selectXenditSecretKey,
   sendWhatsappTemplateMessage,
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
-  whatsappTemplateTestOrder
+  whatsappTemplateTestOrder,
+  xenditKeyMode
 };
