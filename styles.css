@@ -4162,6 +4162,42 @@ body.has-cart-items .storefront-content {
   display: none;
 }
 
+.accepted-card-brands {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 4px;
+}
+
+.card-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #fff;
+  color: #172554;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.card-brand-mastercard {
+  color: #b91c1c;
+}
+
+.card-brand-jcb {
+  color: #047857;
+}
+
+.card-brand-amex {
+  color: #0369a1;
+}
+
 .checkout-xendit-action-component {
   min-height: 360px;
   overflow: hidden;

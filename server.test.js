@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  availablePaymentMethods,
   configuredWhatsappOrderTemplateName,
   customerShippingWhatsappParameters,
   defaultSecurityHeaders,
@@ -241,6 +242,15 @@ test("responses enforce transport and browser security boundaries", () => {
   assert.match(headers["Content-Security-Policy"], /frame-ancestors 'none'/);
   assert.match(headers["Content-Security-Policy"], /checkout\.xendit\.co/);
   assert.match(headers["Content-Security-Policy"], /maps\.googleapis\.com/);
+  assert.match(headers["Content-Security-Policy"], /api\.qrserver\.com/);
+});
+
+test("live checkout hides bank transfer until a channel is activated", () => {
+  assert.deepEqual(availablePaymentMethods("live").map((method) => method.id), [
+    "xendit-qris",
+    "xendit-card"
+  ]);
+  assert.equal(availablePaymentMethods("test").some((method) => method.id === "xendit-va"), true);
 });
 
 test("security.txt publishes a canonical vulnerability contact policy", () => {

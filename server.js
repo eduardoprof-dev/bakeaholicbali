@@ -130,7 +130,8 @@ const PAYMENT_METHODS = [
     kind: "va",
     logoText: "BANK",
     description: "Mandiri, Permata, BNI, CIMB Niaga, BRI",
-    xenditChannelCode: "BNI"
+    xenditChannelCode: "BNI",
+    liveEnabled: false
   },
   {
     id: "xendit-card",
@@ -148,6 +149,10 @@ const BANK_TRANSFER_CHANNELS = [
   { code: "PERMATA", label: "Permata" },
   { code: "CIMB", label: "CIMB Niaga" }
 ];
+
+function availablePaymentMethods(mode = "live") {
+  return PAYMENT_METHODS.filter((method) => mode === "test" || method.liveEnabled !== false);
+}
 const MAX_DELIVERY_DISTANCE_KM = 100;
 
 const DEFAULT_VOUCHERS = [
@@ -2360,7 +2365,7 @@ function defaultSecurityHeaders(cacheControl = "no-store") {
       "form-action 'self'",
       "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://maps.googleapis.com https://*.xendit.co",
       "style-src 'self' 'unsafe-inline' https://unpkg.com https://maps.googleapis.com",
-      "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://maps.googleapis.com https://maps.gstatic.com https://*.xendit.co",
+      "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://maps.googleapis.com https://maps.gstatic.com https://*.xendit.co https://api.qrserver.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "connect-src 'self' https://nominatim.openstreetmap.org https://maps.googleapis.com https://*.xendit.co",
       "frame-src https://checkout.xendit.co https://checkout-staging.xendit.co https://*.xendit.co",
@@ -5275,7 +5280,7 @@ function applyXenditPaymentSessionStatusToOrder(order, session = {}) {
   return order;
 }
 
-function buildPaymentDetails(orderId, methodId, total) {
+function buildPaymentDetails(orderId, methodId, total, mode = "live") {
   if (total <= 0) {
     return {
       id: "voucher",
@@ -5287,7 +5292,8 @@ function buildPaymentDetails(orderId, methodId, total) {
     };
   }
 
-  const method = PAYMENT_METHODS.find((entry) => entry.id === methodId) || PAYMENT_METHODS[0];
+  const methods = availablePaymentMethods(mode);
+  const method = methods.find((entry) => entry.id === methodId) || methods[0];
   return {
     ...method,
     bankOptions: method.kind === "va" ? BANK_TRANSFER_CHANNELS : [],
@@ -5571,7 +5577,10 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
   const sequence = String(storeState.orders.length + 1).padStart(4, "0");
   const orderId = `${prefix}-${sequence}`;
   const now = new Date();
-  const payment = buildPaymentDetails(orderId, draft.paymentMethodId, summary.total);
+  if (summary.total > 0 && !availablePaymentMethods(mode).some((method) => method.id === draft.paymentMethodId)) {
+    throw new Error("This payment method is not activated for live payments yet");
+  }
+  const payment = buildPaymentDetails(orderId, draft.paymentMethodId, summary.total, mode);
   const isZeroTotalOrder = summary.total <= 0;
   const storeConfig = getStoreConfig();
   const isWithinWorkingHours = isStoreOpenNow(storeConfig.businessHours, now);
@@ -5841,7 +5850,10 @@ async function updateOrderPaymentMethod(mode, orderId, methodId, session, token 
     return enrichCheckoutOrder(order);
   }
 
-  const nextPayment = buildPaymentDetails(order.id, methodId, order.pricing.total);
+  if (order.pricing.total > 0 && !availablePaymentMethods(mode).some((method) => method.id === methodId)) {
+    throw new Error("This payment method is not activated for live payments yet");
+  }
+  const nextPayment = buildPaymentDetails(order.id, methodId, order.pricing.total, mode);
   if (order.pricing.total > 0) {
     nextPayment.externalId = `${order.id}-${Date.now()}`;
     if (nextPayment.kind === "va" && normalizedBankCode) {
@@ -6228,7 +6240,7 @@ function handleApi(requestUrl, request, response) {
       brandStory: withDefaultBrandStory(catalog.brandStory),
       categories: catalog.categories,
       items: catalog.items,
-      paymentMethods: PAYMENT_METHODS
+      paymentMethods: availablePaymentMethods(mode)
     });
     return true;
   }
@@ -6966,6 +6978,7 @@ if (require.main === module) {
 
 module.exports = {
   adminShippingWhatsappParameters,
+  availablePaymentMethods,
   configuredWhatsappOrderTemplateName,
   defaultSecurityHeaders,
   customerShippingWhatsappParameters,
