@@ -254,6 +254,8 @@ test("security.txt publishes a canonical vulnerability contact policy", () => {
 test("live Xendit selects a production key over a saved development key", () => {
   assert.equal(xenditKeyMode("xnd_development_example"), "test");
   assert.equal(xenditKeyMode("xnd_production_example"), "live");
+  assert.equal(xenditKeyMode("xnd_public_production_example"), "unknown");
+  assert.equal(xenditKeyMode("public_production_example"), "unknown");
   assert.equal(
     selectXenditSecretKey("live", "xnd_production_railway", "xnd_development_saved"),
     "xnd_production_railway"
