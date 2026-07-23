@@ -226,6 +226,12 @@ function xenditCardMarkup(payment) {
       <div class="checkout-xendit-card-component" data-xendit-card-component>
         Loading secure card fields...
       </div>
+      <div class="accepted-card-brands" aria-label="Accepted cards">
+        <span class="card-brand card-brand-visa">VISA</span>
+        <span class="card-brand card-brand-mastercard">Mastercard</span>
+        <span class="card-brand card-brand-jcb">JCB</span>
+        <span class="card-brand card-brand-amex">AMEX</span>
+      </div>
       <div class="checkout-xendit-action-component" data-xendit-card-action hidden></div>
       <button class="primary-button full-width checkout-payment-status-button checkout-card-pay-button" type="button" data-xendit-card-submit disabled>
         Pay ${formatRupiah.format(state.order.pricing.total)}
