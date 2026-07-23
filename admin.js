@@ -491,6 +491,22 @@ function renderAdminOrders() {
       order.adminWhatsappShippingNotificationError ? `Admin shipping WhatsApp: ${order.adminWhatsappShippingNotificationError}` : "",
       order.adminWhatsappNotificationError ? `Admin alert WhatsApp: ${order.adminWhatsappNotificationError}` : ""
     ].filter(Boolean);
+    const refund = order.refund || null;
+    const refundTone = ["succeeded"].includes(refund?.status)
+      ? "status-paid"
+      : ["failed", "manual_required"].includes(refund?.status)
+        ? "status-negative"
+        : "status-pending";
+    const refundDetails = refund
+      ? `
+        <div class="admin-refund-note ${refundTone}">
+          <strong>Refund: ${escapeHtml(String(refund.status || "unknown").replace(/_/g, " "))}</strong>
+          <span>${escapeHtml(refund.message || "")}</span>
+          ${refund.failureCode ? `<small>Failure: ${escapeHtml(refund.failureCode)}</small>` : ""}
+          ${refund.id ? `<small>Xendit refund: ${escapeHtml(refund.id)}</small>` : ""}
+        </div>
+      `
+      : "";
     return `
       <article class="admin-order-card" data-order-id="${escapeHtml(order.id)}">
         <div class="admin-order-main">
@@ -518,6 +534,7 @@ function renderAdminOrders() {
           ${deliveryActions}
         </div>
         ${notificationErrors.length ? `<p class="admin-delivery-note status-negative">${notificationErrors.map(escapeHtml).join("<br>")}</p>` : ""}
+        ${refundDetails}
         ${isDeliveryIssue ? `<p class="admin-delivery-note">The courier booking was cancelled. Payment is still paid. Rebook after correcting the pickup location, or process a refund through the verified refund workflow.</p>` : ""}
       </article>
     `;

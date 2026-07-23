@@ -2,6 +2,10 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  applyXenditRefundStatusToOrder,
+  buildXenditInvoicePayload,
+  buildXenditPaymentRequestPayload,
+  buildXenditPaymentSessionPayload,
   adminWhatsappParameters,
   availablePaymentMethods,
   configuredWhatsappOrderTemplateName,
@@ -9,6 +13,7 @@ const {
   defaultSecurityHeaders,
   hasBiteshipShipmentForMessaging,
   isSuccessfulXenditPaymentEvent,
+  isXenditRefundEvent,
   orderUpdateWhatsappParameters,
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
@@ -101,6 +106,7 @@ test("admin diagnostics exercise every configured template without creating an o
     "WHATSAPP_RECEIPT_TEMPLATE_NAME",
     "WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME",
     "WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME",
+    "WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME",
     "WHATSAPP_SHIPPING_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME",
@@ -117,6 +123,7 @@ test("admin diagnostics exercise every configured template without creating an o
     WHATSAPP_RECEIPT_TEMPLATE_NAME: "payment_receipt",
     WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: "payment_update_order",
     WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME: "order_cancelled_unpaid",
+    WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME: "order_cancelled",
     WHATSAPP_SHIPPING_TEMPLATE_NAME: "shipping_update",
     WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2",
     WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update",
@@ -146,7 +153,7 @@ test("admin diagnostics exercise every configured template without creating an o
   assert.equal(diagnostic.synthetic, true);
   assert.equal(diagnostic.charged, false);
   assert.equal(diagnostic.orderCreated, false);
-  assert.equal(payloads.length, 13);
+  assert.equal(payloads.length, 14);
   const bodyCounts = Object.fromEntries(payloads.map((payload) => {
     const body = payload.template.components?.find((component) => component.type === "body");
     return [payload.template.name, body?.parameters?.length || 0];
@@ -162,6 +169,7 @@ test("admin diagnostics exercise every configured template without creating an o
     payment_receipt: 2,
     payment_update_order: 1,
     order_cancelled_unpaid: 1,
+    order_cancelled: 1,
     shipping_update: 4,
     admin_order_alert_v2: 9,
     admin_shipping_update: 4
@@ -341,4 +349,76 @@ test("Xendit refund payload uses the Payment Request contract", () => {
       reason: "CANCELLATION"
     }
   );
+});
+
+test("Xendit refund webhooks update pending, succeeded, and failed states", () => {
+  const order = { refund: { status: "requested", id: "rfd-1" } };
+  assert.equal(isXenditRefundEvent({ event: "refund.pending" }), true);
+  applyXenditRefundStatusToOrder(order, {
+    event: "refund.pending",
+    id: "rfd-1",
+    payment_request_id: "pr-1",
+    reference_id: "BAK-0106-refund",
+    status: "PENDING"
+  });
+  assert.equal(order.refund.status, "pending");
+  applyXenditRefundStatusToOrder(order, { event: "refund.succeeded", status: "SUCCEEDED" });
+  assert.equal(order.refund.status, "succeeded");
+  applyXenditRefundStatusToOrder(order, {
+    event: "refund.failed",
+    status: "FAILED",
+    failure_code: "INSUFFICIENT_BALANCE"
+  });
+  assert.equal(order.refund.status, "failed");
+  assert.equal(order.refund.failureCode, "INSUFFICIENT_BALANCE");
+});
+
+test("QRIS uses the current Xendit Payment Request schema", () => {
+  const payload = buildXenditPaymentRequestPayload({
+    id: "BAK-0200",
+    expiresAt: "2026-07-23T10:00:00.000Z",
+    pricing: { total: 18700 },
+    payment: { kind: "qris", externalId: "BAK-0200" },
+    customer: { phone: "+6281234567890" },
+    receiptToken: "token"
+  });
+  assert.equal(payload.reference_id, "BAK-0200");
+  assert.equal(payload.request_amount, 18700);
+  assert.equal(payload.channel_code, "QRIS");
+  assert.equal("amount" in payload, false);
+  assert.equal("payment_method" in payload, false);
+});
+
+test("every activated bank maps to a restricted Xendit Invoice channel", () => {
+  for (const bankCode of ["BNI", "BRI", "CIMB", "BJB", "MANDIRI", "PERMATA"]) {
+    const payload = buildXenditInvoicePayload({
+      id: `BAK-${bankCode}`,
+      pricing: { total: 18700 },
+      payment: {
+        kind: "va",
+        externalId: `BAK-${bankCode}`,
+        selectedBankCode: bankCode
+      },
+      customer: { email: "customer@example.com" },
+      receiptToken: "token"
+    });
+    assert.deepEqual(payload.payment_methods, [bankCode]);
+  }
+});
+
+test("card session enables the shared debit and credit card rail", () => {
+  const payload = buildXenditPaymentSessionPayload({
+    id: "BAK-CARD",
+    pricing: { total: 18700 },
+    payment: { kind: "card", externalId: "BAK-CARD" },
+    customer: {
+      name: "Bakeaholic Customer",
+      email: "customer@example.com",
+      phone: "+6281234567890"
+    },
+    receiptToken: "token"
+  });
+  assert.equal(payload.amount, 18700);
+  assert.deepEqual(payload.allowed_payment_channels, ["CARDS"]);
+  assert.equal(payload.capture_method, "AUTOMATIC");
 });

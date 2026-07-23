@@ -555,6 +555,11 @@ async function runWhatsappTemplateDiagnostics() {
       send: () => sendWhatsappPaymentExpired(order)
     },
     {
+      key: "order_cancelled",
+      templateName: process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME || "order_cancelled",
+      send: () => sendWhatsappTemplateMessage(recipient, "order_cancelled", [order.id], { languageCode: "en" })
+    },
+    {
       key: "customer_shipping",
       templateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME,
       send: () => sendWhatsappShippingUpdate(order)
@@ -1724,8 +1729,20 @@ async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by ad
   order.cancelReason = reason;
   order.whatsappUrl = buildWhatsappUrl(order);
   await attemptXenditRefund(order, reason);
-  await maybeSendWhatsappOrderStatus(order, previousStatus, { notificationKey: `order:${order.id}:cancelled` });
-  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:cancelled`, `Order cancelled - ${order.refund?.status || "refund pending"}`);
+  if (["requested", "pending", "succeeded"].includes(order.refund?.status)) {
+    await maybeSendWhatsappOrderStatus(order, previousStatus, { notificationKey: `order:${order.id}:cancelled` });
+  } else {
+    order.whatsappCancellationNotification = {
+      skipped: true,
+      reason: "refund_not_initiated",
+      skippedAt: new Date().toISOString()
+    };
+  }
+  order.adminCancellationResult = {
+    status: order.refund?.status || "unknown",
+    message: order.refund?.message || "Order cancelled.",
+    recordedAt: new Date().toISOString()
+  };
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
 }
@@ -4509,15 +4526,9 @@ function buildXenditPaymentRequestPayload(order) {
       type: "PAY",
       country: "ID",
       currency: "IDR",
-      amount: order.pricing.total,
+      request_amount: order.pricing.total,
       capture_method: "AUTOMATIC",
-      payment_method: {
-        type: "QR_CODE",
-        reusability: "ONE_TIME_USE",
-        qr_code: {
-          channel_code: "QRIS"
-        }
-      },
+      channel_code: "QRIS",
       description: `Bakeaholic Bali order ${order.id}`,
       metadata: {
         order_id: order.id,
@@ -4989,8 +5000,13 @@ async function attemptXenditRefund(order, reason = "Requested by admin") {
     body: JSON.stringify(xenditRefundRequestBody(order, paymentRequestId))
   });
   const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+  const payloadStatus = String(payload.status || "").trim().toLowerCase();
   order.refund = {
-    status: response.ok ? "requested" : "manual_required",
+    status: response.ok
+      ? (["pending", "succeeded"].includes(payloadStatus) ? payloadStatus : "requested")
+      : "manual_required",
+    id: payload.id || "",
+    paymentRequestId,
     reason,
     requestedAt: new Date().toISOString(),
     response: payload,
@@ -5007,6 +5023,66 @@ function xenditRefundRequestBody(order, paymentRequestId) {
     amount: order.pricing?.total || 0,
     reason: "CANCELLATION"
   };
+}
+
+function xenditRefundEventPayload(body = {}) {
+  return body.data && typeof body.data === "object"
+    ? { ...body.data, event: body.event }
+    : body;
+}
+
+function isXenditRefundEvent(body = {}) {
+  return String(body.event || body.type || "").toLowerCase().startsWith("refund.");
+}
+
+function applyXenditRefundStatusToOrder(order, payload = {}) {
+  const event = String(payload.event || "").toLowerCase();
+  const rawStatus = String(payload.status || event.replace(/^refund\./, "") || "").toUpperCase();
+  const statusMap = {
+    SUCCEEDED: "succeeded",
+    SUCCESS: "succeeded",
+    PENDING: "pending",
+    REQUESTED: "requested",
+    FAILED: "failed",
+    CANCELLED: "failed",
+    CANCELED: "failed"
+  };
+  const status = statusMap[rawStatus] || String(rawStatus || "pending").toLowerCase();
+  order.refund = {
+    ...(order.refund || {}),
+    id: payload.id || order.refund?.id || "",
+    paymentRequestId: payload.payment_request_id || order.refund?.paymentRequestId || "",
+    referenceId: payload.reference_id || order.refund?.referenceId || "",
+    status,
+    failureCode: payload.failure_code || "",
+    message: status === "succeeded"
+      ? "Refund succeeded in Xendit."
+      : status === "failed"
+        ? (payload.failure_code || "Refund failed in Xendit.")
+        : "Refund is processing in Xendit.",
+    updatedAt: payload.updated || new Date().toISOString(),
+    response: payload
+  };
+  return order;
+}
+
+function findOrderForXenditRefund(payload = {}) {
+  const referenceId = String(payload.reference_id || "").trim();
+  const referenceOrderId = referenceId.endsWith("-refund")
+    ? referenceId.slice(0, -"-refund".length)
+    : "";
+  const paymentRequestId = String(payload.payment_request_id || "").trim();
+  for (const modeName of ["live", "test"]) {
+    const order = getStoreState(modeName).orders.find((entry) => (
+      (referenceOrderId && entry.id === referenceOrderId)
+      || (paymentRequestId && (
+        entry.payment?.paymentRequestId === paymentRequestId
+        || entry.refund?.paymentRequestId === paymentRequestId
+      ))
+    ));
+    if (order) return order;
+  }
+  return null;
 }
 
 async function fetchXenditInvoiceStatus(order) {
@@ -6879,6 +6955,30 @@ function handleApi(requestUrl, request, response) {
           return;
         }
 
+        const refundPayload = xenditRefundEventPayload(body);
+        if (isXenditRefundEvent(refundPayload)) {
+          const refundOrder = findOrderForXenditRefund(refundPayload);
+          if (!refundOrder) {
+            sendJson(response, 200, { ok: true, ignored: true, reason: "No matching order for Xendit refund callback." });
+            return;
+          }
+          const webhookId = String(request.headers["webhook-id"] || "").trim();
+          const processedIds = Array.isArray(refundOrder.refund?.processedWebhookIds)
+            ? refundOrder.refund.processedWebhookIds
+            : [];
+          if (webhookId && processedIds.includes(webhookId)) {
+            sendJson(response, 200, { ok: true, duplicate: true });
+            return;
+          }
+          applyXenditRefundStatusToOrder(refundOrder, refundPayload);
+          if (webhookId) {
+            refundOrder.refund.processedWebhookIds = [...new Set([...processedIds, webhookId])].slice(-50);
+          }
+          saveOrders(ordersPathForMode(refundOrder.mode || "live"), getStoreState(refundOrder.mode || "live").orders);
+          sendJson(response, 200, { ok: true, refundStatus: refundOrder.refund.status });
+          return;
+        }
+
         const paymentEvent = body.data && typeof body.data === "object"
           ? { ...body.data, event: body.event }
           : null;
@@ -7012,12 +7112,12 @@ const server = http.createServer((request, response) => {
     return;
   }
 
-  if (request.method === "GET" && requestUrl.pathname === "/.well-known/security.txt") {
+  if ((request.method === "GET" || request.method === "HEAD") && requestUrl.pathname === "/.well-known/security.txt") {
     response.writeHead(200, {
       "Content-Type": "text/plain; charset=utf-8",
       ...defaultSecurityHeaders("public, max-age=3600")
     });
-    response.end(securityTxtBody());
+    response.end(request.method === "HEAD" ? "" : securityTxtBody());
     return;
   }
 
@@ -7081,6 +7181,10 @@ if (require.main === module) {
 
 module.exports = {
   adminWhatsappParameters,
+  applyXenditRefundStatusToOrder,
+  buildXenditInvoicePayload,
+  buildXenditPaymentRequestPayload,
+  buildXenditPaymentSessionPayload,
   adminShippingWhatsappParameters,
   availablePaymentMethods,
   configuredWhatsappOrderTemplateName,
@@ -7088,6 +7192,7 @@ module.exports = {
   customerShippingWhatsappParameters,
   hasBiteshipShipmentForMessaging,
   isSuccessfulXenditPaymentEvent,
+  isXenditRefundEvent,
   orderUpdateWhatsappParameters,
   parsePublicOrderReference,
   paymentExpiredWhatsappParameters,

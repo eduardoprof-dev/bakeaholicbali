@@ -1211,6 +1211,35 @@ body::before {
   line-height: 1.45;
 }
 
+.admin-refund-note {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 0.92rem;
+}
+
+.admin-refund-note.status-paid {
+  border-color: rgba(33, 150, 83, 0.28);
+  background: #f1fbf5;
+  color: #17723d;
+}
+
+.admin-refund-note.status-negative {
+  border-color: rgba(192, 57, 43, 0.22);
+  background: #fff7f5;
+  color: #a93324;
+}
+
+.admin-refund-note.status-pending {
+  border-color: rgba(193, 126, 45, 0.28);
+  background: #fff9ef;
+  color: #8a571b;
+}
+
 .admin-order-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
