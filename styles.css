@@ -925,7 +925,7 @@ body::before {
 }
 
 .admin-main.is-storefront-studio.is-desktop-preview {
-  grid-template-columns: minmax(420px, 500px) minmax(760px, 1fr);
+  grid-template-columns: minmax(560px, 1fr) minmax(600px, 48%);
 }
 
 .admin-main.is-storefront-studio > .admin-topbar,
@@ -1479,6 +1479,10 @@ body::before {
 .admin-provider-mark.is-google { background:linear-gradient(135deg,#4285f4 0 25%,#34a853 25% 50%,#fbbc05 50% 75%,#ea4335 75%); }
 .admin-provider-mark.is-biteship { background:#101828; font-size:1rem; }
 .admin-provider-mark.is-xendit { background:#4263eb; font-size:1rem; }
+.admin-provider-logo { display:flex; align-items:center; gap:8px; min-width:40px; }
+.admin-provider-logo img { width:34px; height:34px; object-fit:contain; }
+.admin-provider-logo strong { display:none; }
+.admin-provider-logo.is-wordmark img { width:92px; height:30px; }
 .admin-inventory-actions { display:flex; align-items:end; gap:10px; }
 .story-slide-editor-head { display:flex; justify-content:space-between; align-items:center; }
 .admin-image-dropzone { position:relative; display:grid; gap:2px; padding:13px; border:1px dashed rgba(107,66,38,.3); border-radius:12px; text-align:center; cursor:pointer; background:rgba(255,255,255,.55); }
@@ -1492,6 +1496,15 @@ body::before {
 .admin-system-map strong,.admin-system-map small { display:block; }
 .admin-system-map small { color:var(--muted); margin-top:3px; }
 .admin-system-map > span { grid-column:1/-1; height:1px; background:var(--line); }
+.admin-icon-picker { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; padding:6px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+.admin-icon-picker button { display:grid; place-items:center; gap:2px; min-height:58px; padding:6px 2px; border:1px solid transparent; border-radius:9px; color:var(--muted); background:transparent; cursor:pointer; }
+.admin-icon-picker button span { color:var(--accent); font-size:1.1rem; }
+.admin-icon-picker button small { font-size:.62rem; }
+.admin-icon-picker button.is-selected { color:var(--accent); border-color:rgba(107,66,38,.22); background:rgba(107,66,38,.08); }
+.admin-doc-diagram { margin:24px 0 0; }
+.admin-doc-diagram img { display:block; width:100%; border:1px solid var(--line); border-radius:16px; background:#fff; }
+.admin-doc-diagram figcaption { margin-top:8px; text-align:right; }
+.admin-doc-diagram a { color:var(--accent); font-weight:800; text-decoration:none; }
 
 .admin-provider-state {
   padding: 6px 9px;

@@ -336,6 +336,7 @@ function sendDraftPreview() {
     type: "bakeaholic:catalog-preview",
     catalog: collectCatalogDraft()
   }, window.location.origin);
+  window.setTimeout(() => focusStorefrontPreview(adminSectionSelect?.value || "store"), 60);
 }
 
 function scheduleDraftPreview() {
@@ -890,12 +891,8 @@ function normalizeBrandStorySlides(story) {
   });
 }
 
-function storyIconOptionsMarkup(selectedIcon) {
-  return storyIconOptions
-    .map((option) => `
-      <option value="${option.value}" ${option.value === selectedIcon ? "selected" : ""}>${storyIconGlyph(option.value)}  ${option.label}</option>
-    `)
-    .join("");
+function storyIconPickerMarkup(selectedIcon, pointIndex) {
+  return `<input type="hidden" data-story-point-icon="${pointIndex}" value="${selectedIcon}" /><div class="admin-icon-picker" role="group" aria-label="Choose icon">${storyIconOptions.map((option) => `<button type="button" class="${option.value === selectedIcon ? "is-selected" : ""}" data-story-icon-choice="${option.value}" title="${option.label}"><span>${storyIconGlyph(option.value)}</span><small>${option.label}</small></button>`).join("")}</div>`;
 }
 
 function storyIconGlyph(value) {
@@ -935,7 +932,7 @@ function storySlideMarkup(slide, index) {
         </div>
         <div class="admin-field">
           <label>Icon 1</label>
-          <select data-story-point-icon="0">${storyIconOptionsMarkup(points[0].icon)}</select>
+          ${storyIconPickerMarkup(points[0].icon, 0)}
         </div>
         <div class="admin-field">
           <label>Note 2</label>
@@ -943,7 +940,7 @@ function storySlideMarkup(slide, index) {
         </div>
         <div class="admin-field">
           <label>Icon 2</label>
-          <select data-story-point-icon="1">${storyIconOptionsMarkup(points[1].icon)}</select>
+          ${storyIconPickerMarkup(points[1].icon, 1)}
         </div>
         <div class="admin-field">
           <label>Note 3</label>
@@ -951,7 +948,7 @@ function storySlideMarkup(slide, index) {
         </div>
         <div class="admin-field">
           <label>Icon 3</label>
-          <select data-story-point-icon="2">${storyIconOptionsMarkup(points[2].icon)}</select>
+          ${storyIconPickerMarkup(points[2].icon, 2)}
         </div>
         <div class="admin-field"><label>Image fit</label><select data-story-field="imageFit"><option value="cover" ${slide.imageFit !== "contain" ? "selected" : ""}>Fill frame</option><option value="contain" ${slide.imageFit === "contain" ? "selected" : ""}>Show whole image</option></select></div>
         <div class="admin-field"><label>Image alignment</label><select data-story-field="imagePosition">${imagePositionOptions(slide.imagePosition)}</select></div>
@@ -990,6 +987,12 @@ function renderBrandStory() {
   brandStorySlideList.innerHTML = slides.map((slide, index) => storySlideMarkup(slide, index)).join("");
   brandStorySlideList.querySelectorAll("[data-story-slide-index]").forEach((card) => {
     card.addEventListener("focusin", () => focusStorefrontPreview("story", Number(card.dataset.storySlideIndex)));
+    card.querySelectorAll("[data-story-icon-choice]").forEach((button) => button.addEventListener("click", () => {
+      const picker = button.closest(".admin-icon-picker");
+      picker.querySelectorAll("button").forEach((item) => item.classList.toggle("is-selected", item === button));
+      picker.previousElementSibling.value = button.dataset.storyIconChoice;
+      markCatalogDirty();
+    }));
   });
   brandStorySlideList.querySelectorAll("[data-remove-story-slide]").forEach((button) => button.addEventListener("click", () => {
     const slides = normalizeBrandStorySlides(collectBrandStory());
@@ -1759,6 +1762,14 @@ document.getElementById("refreshStorefrontPreview")?.addEventListener("click", r
 storefrontPreviewFrame?.addEventListener("load", () => {
   if (state.catalogDirty) {
     window.setTimeout(sendDraftPreview, 80);
+  }
+  window.setTimeout(() => focusStorefrontPreview(adminSectionSelect?.value || "store"), 240);
+});
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin || event.source !== storefrontPreviewFrame?.contentWindow) return;
+  if (event.data?.type === "bakeaholic:preview-ready") {
+    if (state.catalogDirty) sendDraftPreview();
+    window.setTimeout(() => focusStorefrontPreview(adminSectionSelect?.value || "store"), 80);
   }
 });
 document.getElementById("adminProductSearch")?.addEventListener("input", (event) => {

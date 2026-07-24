@@ -1398,6 +1398,10 @@ async function bootstrap() {
     hydrateDetailsForm();
   }
 
+  if (isAdminPreview) {
+    window.parent.postMessage({ type: "bakeaholic:preview-ready" }, window.location.origin);
+  }
+
 }
 
 window.addEventListener("message", (event) => {
@@ -1412,6 +1416,7 @@ window.addEventListener("message", (event) => {
   const selectors = { store: ".app-header", promo: ".promo-banner", story: ".brand-story-card", categories: "#catalog", catalog: "#catalog", discounts: ".app-header" };
   const target = document.querySelector(selectors[event.data.section] || ".brand-story-card");
   if (event.data.section === "story") {
+    stopBrandStoryAutoplay();
     brandStorySlideIndex = Number(event.data.itemIndex || 0);
     updateBrandStorySlide();
   }
