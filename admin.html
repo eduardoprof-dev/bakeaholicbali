@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260724-storefront-studio-v3" />
+    <link rel="stylesheet" href="styles.css?v=20260724-storefront-studio-v4" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -65,7 +65,6 @@
             </select>
             <span id="storefrontPublishState" class="admin-publish-state" hidden><span></span>All changes published</span>
             <button id="saveCatalogButton" class="admin-button" type="button" hidden>Publish changes</button>
-            <button id="addProductButton" class="admin-button secondary" type="button" hidden>Add product</button>
           </div>
           <span id="adminStatus" class="admin-status">Loading catalog...</span>
         </header>
@@ -359,7 +358,7 @@
           <div class="admin-integration-layout">
             <article class="admin-integration-card">
               <div class="admin-provider-heading">
-                <span class="admin-provider-mark">GM</span>
+                <span class="admin-provider-mark is-google" aria-hidden="true">G</span>
                 <div><h3>Google Maps</h3><p>Address search, route validation and kitchen location.</p></div>
                 <span class="admin-provider-state" data-provider-status="googleMaps">Checking</span>
               </div>
@@ -374,7 +373,7 @@
 
             <article class="admin-integration-card">
               <div class="admin-provider-heading">
-                <span class="admin-provider-mark">BI</span>
+                <span class="admin-provider-mark is-biteship" aria-hidden="true">B</span>
                 <div><h3>Biteship</h3><p>Delivery quotes, courier booking and tracking updates.</p></div>
                 <span class="admin-provider-state" data-provider-status="biteship">Checking</span>
               </div>
@@ -401,7 +400,7 @@
 
             <article class="admin-integration-card">
               <div class="admin-provider-heading">
-                <span class="admin-provider-mark">XE</span>
+                <span class="admin-provider-mark is-xendit" aria-hidden="true">X</span>
                 <div><h3>Xendit</h3><p>QRIS, virtual accounts, cards, callbacks and refunds.</p></div>
                 <span class="admin-provider-state" data-provider-status="xendit">Checking</span>
               </div>
@@ -491,6 +490,15 @@
                 <h3>Start here</h3>
                 <p>The Overview is the daily control room. Work from its priority queue first. Use Integrations only when credentials, provider settings or approved WhatsApp template names change.</p>
                 <div class="admin-doc-callout"><strong>Owner rule</strong><span>Never edit a secret, callback or template mapping simply to “try something.” Record the old value and reason before every change.</span></div>
+                <div class="admin-system-map" aria-label="Bakeaholic system architecture">
+                  <div><strong>Customer</strong><small>Storefront</small></div><i>→</i>
+                  <div><strong>Cloudflare</strong><small>Security + DNS</small></div><i>→</i>
+                  <div><strong>Railway</strong><small>Bakeaholic server</small></div>
+                  <span></span>
+                  <div><strong>Xendit</strong><small>Payments</small></div>
+                  <div><strong>Biteship</strong><small>Delivery</small></div>
+                  <div><strong>WhatsApp</strong><small>Messages</small></div>
+                </div>
               </article>
 
               <article id="docs-orders" class="admin-doc-article">
@@ -590,14 +598,18 @@ node --test server.test.js</code></div>
         </section>
 
         <section class="admin-panel" data-admin-section="story" hidden>
-          <h2>Homepage Carousel</h2>
-          <p class="helper-text">Edit the three story slides at the top of the storefront. Use existing image paths from the product image fields.</p>
+          <div class="admin-section-head">
+            <div><h2>Homepage Carousel</h2><p class="helper-text">Edit slides and see the selected area highlighted in the draft preview.</p></div>
+            <button id="addStorySlideButton" class="admin-button secondary" type="button">Add slide</button>
+          </div>
           <div class="story-slide-editor-list" id="brandStorySlideList"></div>
         </section>
 
         <section class="admin-panel" data-admin-section="categories" hidden>
-          <h2>Categories</h2>
-          <p class="helper-text">Keep category ids stable if products already use them.</p>
+          <div class="admin-section-head">
+            <div><h2>Categories</h2><p class="helper-text">Keep category ids stable if products already use them.</p></div>
+            <button id="addCategoryButton" class="admin-button secondary" type="button">Add category</button>
+          </div>
           <div id="categoryList" class="product-editor-list"></div>
         </section>
 
@@ -608,10 +620,10 @@ node --test server.test.js</code></div>
               <h2>Products</h2>
               <p class="helper-text">Search, open only the product you need, then publish all changes together.</p>
             </div>
-            <label class="admin-catalog-search">
-              <span>Search products</span>
-              <input id="adminProductSearch" type="search" placeholder="Name, SKU or category" />
-            </label>
+            <div class="admin-inventory-actions">
+              <label class="admin-catalog-search"><span>Search products</span><input id="adminProductSearch" type="search" placeholder="Name, SKU or category" /></label>
+              <button id="addProductButton" class="admin-button secondary" type="button">Add product</button>
+            </div>
           </div>
           <div id="productList" class="product-editor-list"></div>
         </section>
@@ -642,6 +654,6 @@ node --test server.test.js</code></div>
       </main>
     </div>
 
-    <script src="admin.js?v=20260724-storefront-studio-v3"></script>
+    <script src="admin.js?v=20260724-storefront-studio-v4"></script>
   </body>
 </html>

@@ -1161,8 +1161,8 @@ function normalizeBrandStorySlides(story) {
     ? story.slides
     : [{ ...fallbackSlides[0], ...story }, ...fallbackSlides.slice(1)];
 
-  return fallbackSlides.map((fallback, index) => {
-    const slide = storySlides[index] || fallback;
+  return storySlides.map((slide, index) => {
+    const fallback = fallbackSlides[index] || fallbackSlides[0];
     return {
       ...fallback,
       ...slide,
@@ -1188,7 +1188,7 @@ function storySlideMarkup(slide, index) {
           ${points.map((point) => `<span data-story-icon="${escapeHtml(point.icon)}">${escapeHtml(point.label)}</span>`).join("")}
         </div>
       </div>
-      <img class="brand-story-image" src="${escapeHtml(versionedAsset(slide.imagePath))}" alt="${escapeHtml(slide.imageAlt || "Bakeaholic packaged snacks")}" ${index === 0 ? "fetchpriority=\"high\"" : "loading=\"lazy\""} decoding="async" />
+      <img class="brand-story-image" src="${escapeHtml(versionedAsset(slide.imagePath))}" alt="${escapeHtml(slide.imageAlt || "Bakeaholic packaged snacks")}" style="object-fit:${slide.imageFit === "contain" ? "contain" : "cover"};object-position:${imagePosition(slide)}" ${index === 0 ? "fetchpriority=\"high\"" : "loading=\"lazy\""} decoding="async" />
     </article>
   `;
 }
@@ -1404,6 +1404,19 @@ window.addEventListener("message", (event) => {
   if (!isAdminPreview || event.origin !== window.location.origin) return;
   if (event.data?.type !== "bakeaholic:catalog-preview" || !event.data.catalog) return;
   applyCatalogPayload(event.data.catalog);
+});
+
+window.addEventListener("message", (event) => {
+  if (!isAdminPreview || event.origin !== window.location.origin || event.data?.type !== "bakeaholic:preview-focus") return;
+  document.querySelectorAll(".admin-preview-highlight").forEach((element) => element.classList.remove("admin-preview-highlight"));
+  const selectors = { store: ".app-header", promo: ".promo-banner", story: ".brand-story-card", categories: "#catalog", catalog: "#catalog", discounts: ".app-header" };
+  const target = document.querySelector(selectors[event.data.section] || ".brand-story-card");
+  if (event.data.section === "story") {
+    brandStorySlideIndex = Number(event.data.itemIndex || 0);
+    updateBrandStorySlide();
+  }
+  target?.classList.add("admin-preview-highlight");
+  target?.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 
 addressButton.addEventListener("click", () => {
