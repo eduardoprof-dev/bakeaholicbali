@@ -36,6 +36,10 @@ const addressText = document.getElementById("addressText");
 const deliveryFeeLine = document.getElementById("deliveryFeeLine");
 const searchBar = document.querySelector(".search-bar");
 const searchInput = document.getElementById("searchInput");
+const storefrontLogo = document.getElementById("storefrontLogo");
+const footerLogo = document.querySelector(".footer-logo");
+const momentGuideKicker = document.getElementById("momentGuideKicker");
+const momentGuideTitle = document.getElementById("momentGuideTitle");
 const categoryChips = document.getElementById("categoryChips");
 const catalog = document.getElementById("catalog");
 const promoKicker = document.getElementById("promoKicker");
@@ -1336,6 +1340,25 @@ function applyCatalogPayload(payload) {
   state.categories = payload.categories;
   state.items = payload.items;
 
+  if (storefrontLogo) {
+    storefrontLogo.src = versionedAsset(state.store.logoPath || "/assets/bakeaholic-logo.jpg");
+    storefrontLogo.alt = state.store.name || "Bakeaholic Bali";
+  }
+  if (footerLogo) {
+    footerLogo.src = versionedAsset(state.store.logoPath || "/assets/bakeaholic-logo.jpg");
+    footerLogo.alt = state.store.name || "Bakeaholic Bali";
+  }
+  if (searchInput) searchInput.placeholder = state.store.searchPlaceholder || "Search products...";
+  document.querySelector(".search-icon")?.setAttribute("data-icon-style", state.store.searchIconStyle || "outline");
+  document.getElementById("cartLink")?.setAttribute("data-icon-style", state.store.cartIconStyle || "outline");
+  document.getElementById("loginButton")?.setAttribute("data-icon-style", state.store.loginIconStyle || "outline");
+  if (momentGuideKicker) momentGuideKicker.textContent = state.store.momentGuideKicker || "Shop by Category";
+  if (momentGuideTitle) momentGuideTitle.textContent = state.store.momentGuideTitle || "Pick the snack for what you need today.";
+  ["Sweet craving", "Coffee break", "Morning pantry", "Kids favorite"].forEach((fallback, index) => {
+    const label = document.getElementById(`momentCard${index}Label`);
+    if (label) label.textContent = state.store[`momentCard${index}Label`] || fallback;
+  });
+
   if (storeEyebrow) {
     storeEyebrow.textContent = state.store.eyebrow;
   }
@@ -1357,6 +1380,8 @@ function applyCatalogPayload(payload) {
   renderBrandStory();
   whatsappPrompt.textContent = withVerificationPrompt(state.store.whatsappPrompt);
   modeBanner.hidden = appMode !== "test";
+  const modeBannerTitle = modeBanner?.querySelector("strong");
+  if (modeBannerTitle) modeBannerTitle.textContent = state.store.testModeTitle || "Sandbox test mode";
   modeBannerBody.textContent = state.store.testModeDescription;
   syncFooterLinks();
   renderChips();
@@ -1423,6 +1448,17 @@ window.addEventListener("message", (event) => {
   const pointIndex = Number(String(field).split("-").at(-1) || 0) + 1;
   const fieldSelectors = {
     storeName: ".brand-logo",
+    storeLogoPathInput: ".brand-logo",
+    searchPlaceholderInput: "#searchInput",
+    searchIconStyleInput: ".search-icon",
+    cartIconStyleInput: "#cartLink",
+    loginIconStyleInput: "#loginButton",
+    momentGuideKickerInput: "#momentGuideKicker",
+    momentGuideTitleInput: "#momentGuideTitle",
+    momentCard0LabelInput: "#momentCard0Label",
+    momentCard1LabelInput: "#momentCard1Label",
+    momentCard2LabelInput: "#momentCard2Label",
+    momentCard3LabelInput: "#momentCard3Label",
     orderWhatsapp: "#footerWhatsappLink",
     storeEyebrowInput: "#storeEyebrow",
     instagramUrlInput: "#footerInstagramLink",
@@ -1448,6 +1484,23 @@ window.addEventListener("message", (event) => {
   const sectionSelectors = { store: ".app-header", promo: "#promoCard", story: activeStory, categories: ".moment-guide", catalog: "#catalog", discounts: ".app-header" };
   const fieldSelector = fieldSelectors[field];
   let target = fieldSelector ? document.querySelector(fieldSelector) : null;
+  if (section === "catalog" && event.data.itemId) {
+    const product = [...document.querySelectorAll(".product-card")].find((card) => card.dataset.productId === event.data.itemId);
+    const productFieldSelectors = {
+      name: "h3",
+      description: ".product-copy > p",
+      imagePath: ".product-thumb",
+      imageFit: ".product-thumb",
+      imagePosition: ".product-thumb",
+      badge: ".product-badge",
+      price: ".product-bottom strong",
+      rating: ".product-meta span:nth-child(1)",
+      reviews: ".product-meta span:nth-child(2)",
+      shelfLife: ".product-meta span:nth-child(3)"
+    };
+    const productFieldSelector = productFieldSelectors[field];
+    target = (product && productFieldSelector ? product.querySelector(productFieldSelector) : null) || product || target;
+  }
   if (!target && section === "catalog") target = document.querySelectorAll(".product-card")[Number(event.data.itemIndex || 0)];
   if (!target && section === "categories") target = document.querySelectorAll(".moment-card")[Number(event.data.itemIndex || 0)];
   if (!target) target = document.querySelector(sectionSelectors[section] || ".brand-story-card");

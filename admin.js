@@ -47,11 +47,13 @@ const saveVouchersButton = document.getElementById("saveVouchersButton");
 const adminSectionSelect = document.getElementById("adminSectionSelect");
 const adminNavButtons = document.querySelectorAll("[data-admin-target]");
 const adminSections = document.querySelectorAll("[data-admin-section]");
-const catalogActionSections = new Set(["store", "promo", "story", "categories", "catalog"]);
+const storefrontStudioSections = new Set(["store", "promo", "story", "categories", "catalog"]);
+const catalogActionSections = new Set([...storefrontStudioSections, "operations-settings"]);
 const liveTestStorageKey = "bakeaholic-admin-live-tests-20260724";
 const sectionHeadings = {
   dashboard: ["Bakeaholic Operations", "Good decisions start here."],
   store: ["Storefront", "Business settings"],
+  "operations-settings": ["Operations", "Checkout and business rules"],
   promo: ["Storefront", "Promo spotlight"],
   orders: ["Operations", "Orders and fulfilment"],
   discounts: ["Commerce", "Discount codes"],
@@ -64,6 +66,7 @@ const sectionHeadings = {
 
 const storeFields = {
   name: document.getElementById("storeName"),
+  logoPath: document.getElementById("storeLogoPathInput"),
   orderWhatsapp: document.getElementById("orderWhatsapp"),
   eyebrow: document.getElementById("storeEyebrowInput"),
   perkLabel: document.getElementById("perkLabelInput"),
@@ -86,9 +89,21 @@ const storeFields = {
   testModeDescription: document.getElementById("testModeDescriptionInput"),
   businessHoursOpen: document.getElementById("businessHoursOpenInput"),
   businessHoursClose: document.getElementById("businessHoursCloseInput"),
-  businessHoursTimezone: document.getElementById("businessHoursTimezoneInput")
+  businessHoursTimezone: document.getElementById("businessHoursTimezoneInput"),
+  searchPlaceholder: document.getElementById("searchPlaceholderInput"),
+  searchIconStyle: document.getElementById("searchIconStyleInput"),
+  cartIconStyle: document.getElementById("cartIconStyleInput"),
+  loginIconStyle: document.getElementById("loginIconStyleInput"),
+  momentGuideKicker: document.getElementById("momentGuideKickerInput"),
+  momentGuideTitle: document.getElementById("momentGuideTitleInput"),
+  momentCard0Label: document.getElementById("momentCard0LabelInput"),
+  momentCard1Label: document.getElementById("momentCard1LabelInput"),
+  momentCard2Label: document.getElementById("momentCard2LabelInput"),
+  momentCard3Label: document.getElementById("momentCard3LabelInput")
 };
 const numericStoreFields = new Set(["deliveryFee", "taxRate", "kitchenLat", "kitchenLng"]);
+const operationsSettingsGrid = document.getElementById("operationsSettingsGrid");
+document.querySelectorAll("[data-operation-field]").forEach((field) => operationsSettingsGrid?.appendChild(field));
 const kitchenMapElements = {
   search: document.getElementById("kitchenMapSearchInput"),
   map: document.getElementById("kitchenLocationMap"),
@@ -250,7 +265,7 @@ function setStatus(message) {
 }
 
 function showAdminSection(sectionName) {
-  const isStorefrontStudio = catalogActionSections.has(sectionName);
+  const isStorefrontStudio = storefrontStudioSections.has(sectionName);
   adminSections.forEach((section) => {
     section.hidden = section.dataset.adminSection !== sectionName;
   });
@@ -345,11 +360,13 @@ function scheduleDraftPreview() {
 }
 
 function focusStorefrontPreview(sectionName, itemIndex = 0, field = "") {
+  const productCard = productList?.querySelector(`[data-product-index="${itemIndex}"]`);
   storefrontPreviewFrame?.contentWindow?.postMessage({
     type: "bakeaholic:preview-focus",
     section: sectionName,
     itemIndex,
-    field
+    field,
+    itemId: productCard?.querySelector('[data-product-field="id"]')?.value || ""
   }, window.location.origin);
 }
 
@@ -542,6 +559,8 @@ function renderStore() {
   Object.entries(storeFields).forEach(([key, field]) => {
     field.value = state.catalog.store[key] || "";
   });
+  const logoPreview = document.getElementById("storeLogoPreview");
+  if (logoPreview) logoPreview.src = storeFields.logoPath.value || "/assets/bakeaholic-logo.jpg";
   syncKitchenMapFromFields();
 }
 
@@ -1057,10 +1076,11 @@ async function uploadImage(file, pathInput) {
 }
 
 function wireImageUploads(root) {
+  if (!root) return;
   root.querySelectorAll("[data-image-upload]").forEach((input) => {
     const zone = input.closest("[data-image-dropzone]");
-    const card = input.closest("[data-story-slide-index],[data-product-index]");
-    const pathInput = card.querySelector('[data-story-field="imagePath"],[data-product-field="imagePath"]');
+    const card = input.closest("[data-story-slide-index],[data-product-index],[data-admin-section]");
+    const pathInput = card.querySelector('[data-story-field="imagePath"],[data-product-field="imagePath"],[data-store-field="logoPath"]');
     input.addEventListener("change", () => uploadImage(input.files[0], pathInput).catch((error) => setStatus(error.message)));
     ["dragenter", "dragover"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.add("is-dragging"); }));
     ["dragleave", "drop"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.remove("is-dragging"); }));
@@ -1376,6 +1396,7 @@ function renderAll() {
   renderCategories();
   renderProducts();
   renderVouchers();
+  wireImageUploads(document.querySelector('[data-admin-section="store"]'));
 }
 
 function collectStore() {
@@ -1782,6 +1803,10 @@ document.querySelectorAll("[data-dashboard-target]").forEach((button) => {
   button.addEventListener("click", () => showAdminSection(button.dataset.dashboardTarget));
 });
 adminMain?.addEventListener("input", (event) => {
+  if (event.target === storeFields.logoPath) {
+    const logoPreview = document.getElementById("storeLogoPreview");
+    if (logoPreview) logoPreview.src = event.target.value.trim() || "/assets/bakeaholic-logo.jpg";
+  }
   const section = event.target.closest("[data-admin-section]");
   if (section && catalogActionSections.has(section.dataset.adminSection)) {
     markCatalogDirty();
