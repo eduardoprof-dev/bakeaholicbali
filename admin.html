@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260724-storefront-studio-v10" />
+    <link rel="stylesheet" href="styles.css?v=20260724-page-editors-v11" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -31,7 +31,13 @@
               <button class="admin-subnav-nested" type="button" data-admin-target="catalog">Products</button>
               <button type="button" data-admin-target="promo">Promo highlights</button>
               <button type="button" data-admin-target="discounts">Discounts</button>
-              <button type="button" data-admin-target="pages">Pages</button>
+              <span class="admin-subnav-label">Pages</span>
+              <button class="admin-subnav-nested" type="button" data-admin-target="checkout-page">Checkout</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="orders-page">Order history</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="addresses-page">Your addresses</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="invoice-page">Invoice</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="terms-page">Terms</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="privacy-page">Privacy</button>
             </div>
           </div>
           <button class="admin-nav-button" type="button" data-admin-target="orders">Orders</button>
@@ -63,7 +69,12 @@
               <option value="story">Storefront · Story Carousel</option>
               <option value="categories">Categories</option>
               <option value="catalog">Catalog</option>
-              <option value="pages">Storefront · Pages</option>
+              <option value="checkout-page">Pages · Checkout</option>
+              <option value="orders-page">Pages · Order history</option>
+              <option value="addresses-page">Pages · Your addresses</option>
+              <option value="invoice-page">Pages · Invoice</option>
+              <option value="terms-page">Pages · Terms</option>
+              <option value="privacy-page">Pages · Privacy</option>
               <option value="integrations">Integrations</option>
               <option value="documentation">Documentation</option>
             </select>
@@ -306,7 +317,7 @@
             <div class="admin-field"><label for="cartButtonLabelInput">Cart button description</label><input id="cartButtonLabelInput" type="text" /><small class="helper-text">Tooltip and screen-reader description.</small></div>
             <div class="admin-field"><label for="loginIconStyleInput">Login icon</label><select id="loginIconStyleInput"><option value="person">👤 Person</option><option value="person-circle">⭕ Person in circle</option><option value="profile-card">🪪 Profile card</option><option value="account-badge">✅ Account badge</option><option value="minimal-person">♙ Minimal person</option><option value="secure-account">🔐 Secure account</option><option value="avatar">🙂 Avatar</option><option value="members">👥 Members</option><option value="spark-account">✨ Featured account</option><option value="home-account">🏠 Customer home</option></select><small class="helper-text">Opens login or the customer account menu.</small></div>
             <div class="admin-field"><label for="loginButtonLabelInput">Login button description</label><input id="loginButtonLabelInput" type="text" /><small class="helper-text">Tooltip and screen-reader description.</small></div>
-            <section class="admin-location-editor admin-moment-editor">
+            <section class="admin-location-editor admin-moment-editor" id="shopByCategoryEditor">
               <div class="admin-location-editor-head"><div><h3>Shop by category</h3><p class="helper-text">Edit the heading and customer-facing labels shown above each category.</p></div></div>
               <div class="admin-grid">
                 <div class="admin-field"><label for="momentGuideKickerInput">Small label</label><input id="momentGuideKickerInput" type="text" /></div>
@@ -320,13 +331,38 @@
           </div>
         </section>
 
-        <section class="admin-panel" data-admin-section="pages" hidden>
-          <div class="admin-section-head"><div><h2>Storefront pages</h2><p class="helper-text">Edit the primary headings and supporting text on customer service pages.</p></div></div>
+        <section class="admin-panel" data-admin-section="checkout-page" hidden>
+          <div class="admin-section-head"><div><h2>Checkout page</h2><p class="helper-text">Edit this customer page independently.</p></div><a class="secondary-link" href="/cart.html" target="_blank">Open page</a></div>
+          <div class="admin-grid"><div class="admin-field"><label for="checkoutPageTitleInput">Page title</label><input id="checkoutPageTitleInput" type="text" /></div><div class="admin-field"><label for="checkoutPageSubtitleInput">Page description</label><textarea id="checkoutPageSubtitleInput"></textarea></div></div>
+        </section>
+        <section class="admin-panel" data-admin-section="orders-page" hidden>
+          <div class="admin-section-head"><div><h2>Order history page</h2><p class="helper-text">Edit this customer page independently.</p></div><a class="secondary-link" href="/orders.html" target="_blank">Open page</a></div>
+          <div class="admin-grid"><div class="admin-field"><label for="ordersPageTitleInput">Page title</label><input id="ordersPageTitleInput" type="text" /></div><div class="admin-field"><label for="ordersPageSubtitleInput">Page description</label><textarea id="ordersPageSubtitleInput"></textarea></div></div>
+        </section>
+        <section class="admin-panel" data-admin-section="addresses-page" hidden>
+          <div class="admin-section-head"><div><h2>Your addresses page</h2><p class="helper-text">Edit this customer page independently.</p></div><a class="secondary-link" href="/addresses.html" target="_blank">Open page</a></div>
+          <div class="admin-grid"><div class="admin-field"><label for="addressesPageTitleInput">Page title</label><input id="addressesPageTitleInput" type="text" /></div><div class="admin-field"><label for="addressesPageSubtitleInput">Page description</label><textarea id="addressesPageSubtitleInput"></textarea></div></div>
+        </section>
+        <section class="admin-panel" data-admin-section="invoice-page" hidden>
+          <div class="admin-section-head"><div><h2>Invoice page</h2><p class="helper-text">Edit the reusable wording shown on every invoice.</p></div></div>
+          <div class="admin-grid"><div class="admin-field"><label for="invoicePageLabelInput">Document label</label><input id="invoicePageLabelInput" type="text" /></div><div class="admin-field"><label for="invoiceFooterNoteInput">Footer note</label><textarea id="invoiceFooterNoteInput"></textarea></div></div>
+        </section>
+        <section class="admin-panel" data-admin-section="terms-page" hidden>
+          <div class="admin-section-head"><div><h2>Terms and Conditions</h2><p class="helper-text">One policy point per line. Changes publish to the legal page without exposing HTML.</p></div><a class="secondary-link" href="/terms.html" target="_blank">Open page</a></div>
           <div class="admin-grid">
-            <section class="admin-location-editor"><h3>Checkout</h3><div class="admin-grid"><div class="admin-field"><label for="checkoutPageTitleInput">Page title</label><input id="checkoutPageTitleInput" type="text" /></div><div class="admin-field"><label for="checkoutPageSubtitleInput">Page description</label><input id="checkoutPageSubtitleInput" type="text" /></div></div></section>
-            <section class="admin-location-editor"><h3>Order history</h3><div class="admin-grid"><div class="admin-field"><label for="ordersPageTitleInput">Page title</label><input id="ordersPageTitleInput" type="text" /></div><div class="admin-field"><label for="ordersPageSubtitleInput">Page description</label><input id="ordersPageSubtitleInput" type="text" /></div></div></section>
-            <section class="admin-location-editor"><h3>Your addresses</h3><div class="admin-grid"><div class="admin-field"><label for="addressesPageTitleInput">Page title</label><input id="addressesPageTitleInput" type="text" /></div><div class="admin-field"><label for="addressesPageSubtitleInput">Page description</label><input id="addressesPageSubtitleInput" type="text" /></div></div></section>
-            <section class="admin-location-editor"><h3>Invoice</h3><div class="admin-grid"><div class="admin-field"><label for="invoicePageLabelInput">Document label</label><input id="invoicePageLabelInput" type="text" /></div><div class="admin-field"><label for="invoiceFooterNoteInput">Footer note</label><input id="invoiceFooterNoteInput" type="text" /></div></div></section>
+            <div class="admin-field"><label for="termsPageTitleInput">Page title</label><input id="termsPageTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="termsEffectiveDateInput">Effective date</label><input id="termsEffectiveDateInput" type="text" placeholder="April 21, 2026" /></div>
+            <div class="admin-field admin-grid-wide"><label for="termsIntroInput">Introduction</label><textarea id="termsIntroInput" rows="4"></textarea></div>
+            <div class="admin-field admin-grid-wide"><label for="termsPointsInput">Policy points</label><textarea id="termsPointsInput" rows="10"></textarea><small class="helper-text">Use “Heading: explanation” on each line.</small></div>
+          </div>
+        </section>
+        <section class="admin-panel" data-admin-section="privacy-page" hidden>
+          <div class="admin-section-head"><div><h2>Privacy Policy</h2><p class="helper-text">One policy point per line. Changes publish to the legal page without exposing HTML.</p></div><a class="secondary-link" href="/terms.html#privacy" target="_blank">Open page</a></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="privacyPageTitleInput">Page title</label><input id="privacyPageTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="privacyEffectiveDateInput">Effective date</label><input id="privacyEffectiveDateInput" type="text" placeholder="April 21, 2026" /></div>
+            <div class="admin-field admin-grid-wide"><label for="privacyIntroInput">Introduction</label><textarea id="privacyIntroInput" rows="4"></textarea></div>
+            <div class="admin-field admin-grid-wide"><label for="privacyPointsInput">Policy points</label><textarea id="privacyPointsInput" rows="10"></textarea><small class="helper-text">Use “Heading: explanation” on each line.</small></div>
           </div>
         </section>
 
@@ -674,6 +710,6 @@ node --test server.test.js</code></div>
       </main>
     </div>
 
-    <script src="admin.js?v=20260724-storefront-studio-v10"></script>
+    <script src="admin.js?v=20260724-page-editors-v11"></script>
   </body>
 </html>

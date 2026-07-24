@@ -1824,6 +1824,10 @@ body::before {
   gap: 12px;
 }
 
+.admin-grid-wide {
+  grid-column: 1 / -1;
+}
+
 .admin-grid.three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

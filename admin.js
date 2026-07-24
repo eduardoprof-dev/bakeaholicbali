@@ -48,13 +48,19 @@ const adminSectionSelect = document.getElementById("adminSectionSelect");
 const adminNavButtons = document.querySelectorAll("[data-admin-target]");
 const adminSections = document.querySelectorAll("[data-admin-section]");
 const storefrontStudioSections = new Set(["store", "promo", "story", "categories", "catalog"]);
-const catalogActionSections = new Set([...storefrontStudioSections, "operations-settings", "pages"]);
+const pageEditorSections = new Set(["checkout-page", "orders-page", "addresses-page", "invoice-page", "terms-page", "privacy-page"]);
+const catalogActionSections = new Set([...storefrontStudioSections, "operations-settings", ...pageEditorSections]);
 const liveTestStorageKey = "bakeaholic-admin-live-tests-20260724";
 const sectionHeadings = {
   dashboard: ["Bakeaholic Operations", "Good decisions start here."],
   store: ["Storefront", "Business settings"],
   "operations-settings": ["Operations", "Checkout and business rules"],
-  pages: ["Storefront", "Customer pages"],
+  "checkout-page": ["Pages", "Checkout"],
+  "orders-page": ["Pages", "Order history"],
+  "addresses-page": ["Pages", "Your addresses"],
+  "invoice-page": ["Pages", "Invoice"],
+  "terms-page": ["Pages", "Terms and Conditions"],
+  "privacy-page": ["Pages", "Privacy Policy"],
   promo: ["Storefront", "Promo spotlight"],
   orders: ["Operations", "Orders and fulfilment"],
   discounts: ["Commerce", "Discount codes"],
@@ -113,7 +119,15 @@ const storeFields = {
   addressesPageTitle: document.getElementById("addressesPageTitleInput"),
   addressesPageSubtitle: document.getElementById("addressesPageSubtitleInput"),
   invoicePageLabel: document.getElementById("invoicePageLabelInput"),
-  invoiceFooterNote: document.getElementById("invoiceFooterNoteInput")
+  invoiceFooterNote: document.getElementById("invoiceFooterNoteInput"),
+  termsPageTitle: document.getElementById("termsPageTitleInput"),
+  termsEffectiveDate: document.getElementById("termsEffectiveDateInput"),
+  termsIntro: document.getElementById("termsIntroInput"),
+  termsPoints: document.getElementById("termsPointsInput"),
+  privacyPageTitle: document.getElementById("privacyPageTitleInput"),
+  privacyEffectiveDate: document.getElementById("privacyEffectiveDateInput"),
+  privacyIntro: document.getElementById("privacyIntroInput"),
+  privacyPoints: document.getElementById("privacyPointsInput")
 };
 const numericStoreFields = new Set(["deliveryFee", "taxRate", "kitchenLat", "kitchenLng"]);
 const storeFieldDefaults = {
@@ -140,12 +154,20 @@ const storeFieldDefaults = {
   addressesPageTitle: "Your Addresses",
   addressesPageSubtitle: "Choose a default delivery address or save another one for future orders.",
   invoicePageLabel: "Invoice / Receipt",
-  invoiceFooterNote: "Use this invoice for delivery handoff and customer payment receipt."
+  invoiceFooterNote: "Use this invoice for delivery handoff and customer payment receipt.",
+  termsPageTitle: "Terms and Conditions",
+  termsEffectiveDate: "April 21, 2026",
+  termsIntro: "By placing an order with Bakeaholic Bali, you agree to these terms. Orders are subject to product availability, delivery availability, payment confirmation, and address accuracy.",
+  termsPoints: "Order confirmation: Orders are confirmed after checkout and payment instructions are generated.\nDelivery: Delivery fees are estimated from your pinned map location and may change if the address is incorrect or incomplete.\nPayments: Orders must be paid through the approved payment methods shown at checkout.\nOrder issues: Missing, incorrect, or damaged items should be reported within 24 hours after delivery.\nCancellations: Orders may be cancelled before payment or before fulfilment begins. Paid orders may require manual review before refund or replacement.\nCustomer conduct: Customers are expected to provide accurate contact and delivery details.",
+  privacyPageTitle: "Privacy Policy",
+  privacyEffectiveDate: "April 21, 2026",
+  privacyIntro: "We collect the information needed to process your order, including name, WhatsApp number, delivery address, map pin, order notes, and payment status. We use this information only for order processing, delivery coordination, customer support, and service improvement.",
+  privacyPoints: "Data collection: We collect contact, delivery, order, and payment-status information.\nData use: Your information is used to process orders, estimate delivery, confirm payment, and provide support.\nData sharing: Delivery and payment information may be shared with service providers such as payment gateways, courier partners, and WhatsApp messaging tools when needed to fulfil your order.\nData protection: We take reasonable steps to protect customer information from unauthorized access or misuse.\nCustomer support: For privacy or order questions, contact us through the WhatsApp link on the site."
 };
 const operationsSettingsGrid = document.getElementById("operationsSettingsGrid");
 document.querySelectorAll("[data-operation-field]").forEach((field) => operationsSettingsGrid?.appendChild(field));
 const headerSettingsGrid = document.getElementById("headerSettingsGrid");
-["storeName", "storeLogoPathInput", "searchPlaceholderInput", "searchIconStyleInput", "cartIconStyleInput", "cartButtonLabelInput", "loginIconStyleInput", "loginButtonLabelInput"].forEach((id) => {
+["storeName", "storeLogoPathInput", "searchIconStyleInput", "searchPlaceholderInput", "cartIconStyleInput", "cartButtonLabelInput", "loginIconStyleInput", "loginButtonLabelInput"].forEach((id) => {
   const field = document.getElementById(id)?.closest(".admin-field");
   if (field) headerSettingsGrid?.appendChild(field);
 });
@@ -154,6 +176,9 @@ const footerSettingsGrid = document.getElementById("footerSettingsGrid");
   const field = document.getElementById(id)?.closest(".admin-field");
   if (field) footerSettingsGrid?.appendChild(field);
 });
+const storySection = document.querySelector('[data-admin-section="story"]');
+const shopByCategoryEditor = document.getElementById("shopByCategoryEditor");
+if (storySection && shopByCategoryEditor) storySection.appendChild(shopByCategoryEditor);
 const kitchenMapElements = {
   search: document.getElementById("kitchenMapSearchInput"),
   map: document.getElementById("kitchenLocationMap"),
@@ -316,14 +341,15 @@ function setStatus(message) {
 
 function showAdminSection(sectionName) {
   const isStorefrontStudio = storefrontStudioSections.has(sectionName);
+  const isCatalogEditor = catalogActionSections.has(sectionName);
   adminSections.forEach((section) => {
     section.hidden = section.dataset.adminSection !== sectionName;
   });
   adminNavButtons.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.adminTarget === sectionName);
   });
-  saveCatalogButton.hidden = !isStorefrontStudio || !state.catalogDirty;
-  storefrontPublishState.hidden = !isStorefrontStudio;
+  saveCatalogButton.hidden = !isCatalogEditor || !state.catalogDirty;
+  storefrontPublishState.hidden = !isCatalogEditor;
   storefrontPreviewPanel.hidden = !isStorefrontStudio;
   adminMain.classList.toggle("is-storefront-studio", isStorefrontStudio);
   if (isStorefrontStudio && !adminMain.classList.contains("is-desktop-preview")) {
