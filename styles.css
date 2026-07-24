@@ -852,6 +852,15 @@ body::before {
   padding-left: 12px;
 }
 
+.admin-subnav-label {
+  padding: 10px 10px 3px;
+  color: rgba(45, 32, 25, 0.52);
+  font-size: 0.69rem;
+  font-weight: 850;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
 .admin-subnav button {
   border: 0;
   background: transparent;
@@ -868,6 +877,23 @@ body::before {
 .admin-subnav button.is-active {
   color: var(--accent);
   background: rgba(107, 66, 38, 0.08);
+}
+
+.admin-subnav button.admin-subnav-nested {
+  margin-left: 9px;
+  width: calc(100% - 9px);
+  position: relative;
+}
+
+.admin-subnav button.admin-subnav-nested::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 4px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
 }
 
 .admin-sidebar-links {
@@ -888,8 +914,10 @@ body::before {
 }
 
 .admin-main.is-storefront-studio {
-  grid-template-columns: minmax(620px, 1fr) minmax(390px, 480px);
+  grid-template-columns: minmax(420px, 520px) minmax(620px, 1fr);
   align-items: start;
+  max-width: none;
+  padding-right: clamp(18px, 2vw, 34px);
 }
 
 .admin-main.is-storefront-studio > .admin-topbar,
@@ -902,13 +930,26 @@ body::before {
   grid-column: 1;
 }
 
+.admin-main.is-storefront-studio > [data-admin-section]:not([hidden]) .admin-grid,
+.admin-main.is-storefront-studio > [data-admin-section]:not([hidden]) .admin-grid.three {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.admin-main.is-storefront-studio > [data-admin-section]:not([hidden]) .admin-location-editor {
+  grid-column: auto;
+}
+
+.admin-main.is-storefront-studio > [data-admin-section]:not([hidden]) .admin-kitchen-map {
+  min-height: 260px;
+}
+
 @media (min-width: 1900px) {
   .admin-main {
     max-width: none;
   }
 }
 
-@media (max-width: 1320px) {
+@media (max-width: 1180px) {
   .admin-main.is-storefront-studio {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1883,7 +1924,7 @@ body::before {
   top: 20px;
   grid-column: 2;
   min-width: 0;
-  padding: 16px;
+  padding: 18px;
   border: 1px solid rgba(107, 66, 38, 0.12);
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.88);
@@ -1953,8 +1994,8 @@ body::before {
 .admin-preview-viewport {
   display: flex;
   justify-content: center;
-  height: calc(100vh - 210px);
-  min-height: 560px;
+  height: calc(100vh - 226px);
+  min-height: 620px;
   overflow: hidden;
   border: 1px solid rgba(107, 66, 38, 0.14);
   border-radius: 14px;
@@ -1977,15 +2018,14 @@ body::before {
 }
 
 .admin-preview-viewport.is-desktop {
-  justify-content: flex-start;
+  justify-content: stretch;
 }
 
 .admin-preview-viewport.is-desktop iframe {
-  width: 1440px;
-  min-width: 1440px;
-  transform: scale(0.31);
-  transform-origin: top left;
-  height: 322%;
+  width: 100%;
+  min-width: 0;
+  transform: none;
+  height: 100%;
 }
 
 .admin-preview-footer {
@@ -2682,6 +2722,17 @@ body::before {
   .admin-grid.three,
   .admin-flow-grid {
     grid-template-columns: 1fr;
+  }
+
+  .admin-main.is-storefront-studio > [data-admin-section]:not([hidden]) .admin-grid,
+  .admin-main.is-storefront-studio > [data-admin-section]:not([hidden]) .admin-grid.three {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-main.is-storefront-studio > [data-admin-section]:not([hidden]) .admin-field,
+  .admin-main.is-storefront-studio > [data-admin-section]:not([hidden]) .admin-image-preview-field {
+    grid-column: 1;
+    min-width: 0;
   }
 
   .admin-order-grid,

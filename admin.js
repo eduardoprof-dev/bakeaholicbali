@@ -254,6 +254,9 @@ function showAdminSection(sectionName) {
   storefrontPublishState.hidden = !isStorefrontStudio;
   storefrontPreviewPanel.hidden = !isStorefrontStudio;
   adminMain.classList.toggle("is-storefront-studio", isStorefrontStudio);
+  if (!isStorefrontStudio) {
+    adminMain.classList.remove("is-desktop-preview");
+  }
   addProductButton.hidden = sectionName !== "catalog";
   if (adminSectionSelect) {
     adminSectionSelect.value = sectionName;
@@ -289,10 +292,12 @@ function updatePublishState() {
 }
 
 function markCatalogDirty() {
-  if (state.catalogDirty) return;
-  state.catalogDirty = true;
-  updatePublishState();
-  setStatus("You have unpublished storefront changes.");
+  if (!state.catalogDirty) {
+    state.catalogDirty = true;
+    updatePublishState();
+    setStatus("Draft preview updated. Publish when you are ready.");
+  }
+  scheduleDraftPreview();
 }
 
 function refreshStorefrontPreview() {
@@ -300,6 +305,31 @@ function refreshStorefrontPreview() {
   const url = new URL("/index.html", window.location.origin);
   url.searchParams.set("admin-preview", String(Date.now()));
   storefrontPreviewFrame.src = url.toString();
+}
+
+function collectCatalogDraft() {
+  return {
+    store: collectStore(),
+    promo: collectPromo(),
+    brandStory: collectBrandStory(),
+    categories: collectCategories(),
+    items: collectProducts()
+  };
+}
+
+let draftPreviewTimer = 0;
+
+function sendDraftPreview() {
+  if (!storefrontPreviewFrame?.contentWindow || !state.catalog) return;
+  storefrontPreviewFrame.contentWindow.postMessage({
+    type: "bakeaholic:catalog-preview",
+    catalog: collectCatalogDraft()
+  }, window.location.origin);
+}
+
+function scheduleDraftPreview() {
+  window.clearTimeout(draftPreviewTimer);
+  draftPreviewTimer = window.setTimeout(sendDraftPreview, 220);
 }
 
 function dashboardAttentionItems() {
@@ -1305,13 +1335,7 @@ function collectProducts() {
 async function saveCatalog() {
   try {
     setStatus("Saving catalog...");
-    const payload = {
-      store: collectStore(),
-      promo: collectPromo(),
-      brandStory: collectBrandStory(),
-      categories: collectCategories(),
-      items: collectProducts()
-    };
+    const payload = collectCatalogDraft();
     const response = await request("/api/admin/catalog", {
       method: "PUT",
       body: JSON.stringify(payload)
@@ -1639,6 +1663,11 @@ adminMain?.addEventListener("change", (event) => {
   }
 });
 document.getElementById("refreshStorefrontPreview")?.addEventListener("click", refreshStorefrontPreview);
+storefrontPreviewFrame?.addEventListener("load", () => {
+  if (state.catalogDirty) {
+    window.setTimeout(sendDraftPreview, 80);
+  }
+});
 document.getElementById("adminProductSearch")?.addEventListener("input", (event) => {
   const query = event.target.value.trim().toLowerCase();
   productList.querySelectorAll("[data-product-index]").forEach((card) => {
@@ -1658,6 +1687,7 @@ document.querySelectorAll("[data-preview-device]").forEach((button) => {
     });
     storefrontPreviewViewport.classList.toggle("is-mobile", button.dataset.previewDevice === "mobile");
     storefrontPreviewViewport.classList.toggle("is-desktop", button.dataset.previewDevice === "desktop");
+    adminMain.classList.toggle("is-desktop-preview", button.dataset.previewDevice === "desktop");
   });
 });
 window.addEventListener("beforeunload", (event) => {

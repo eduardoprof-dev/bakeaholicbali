@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260723-storefront-studio-v1" />
+    <link rel="stylesheet" href="styles.css?v=20260724-storefront-studio-v3" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -24,24 +24,16 @@
             <button class="admin-nav-button" type="button" data-admin-target="store">Storefront</button>
             <div class="admin-subnav">
               <button type="button" data-admin-target="store">Storefront settings</button>
-              <button type="button" data-admin-target="promo">Promo spotlight</button>
+              <span class="admin-subnav-label">Home page</span>
+              <button class="admin-subnav-nested" type="button" data-admin-target="story">Story carousel</button>
+              <span class="admin-subnav-label">Catalog</span>
+              <button class="admin-subnav-nested" type="button" data-admin-target="categories">Categories</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="catalog">Products</button>
+              <button type="button" data-admin-target="promo">Promo highlights</button>
+              <button type="button" data-admin-target="discounts">Discounts</button>
             </div>
           </div>
           <button class="admin-nav-button" type="button" data-admin-target="orders">Orders</button>
-          <button class="admin-nav-button" type="button" data-admin-target="discounts">Discounts</button>
-          <div class="admin-nav-group">
-            <button class="admin-nav-button" type="button" data-admin-target="story">Homepage</button>
-            <div class="admin-subnav">
-              <button type="button" data-admin-target="story">Story carousel</button>
-            </div>
-          </div>
-          <div class="admin-nav-group">
-            <button class="admin-nav-button" type="button" data-admin-target="catalog">Catalog</button>
-            <div class="admin-subnav">
-              <button type="button" data-admin-target="categories">Categories</button>
-              <button type="button" data-admin-target="catalog">Products</button>
-            </div>
-          </div>
           <button class="admin-nav-button" type="button" data-admin-target="integrations">Integrations</button>
           <button class="admin-nav-button" type="button" data-admin-target="documentation">Documentation</button>
         </nav>
@@ -62,10 +54,10 @@
             <select id="adminSectionSelect" class="admin-section-select" aria-label="Admin section">
               <option value="dashboard">Overview</option>
               <option value="store">Storefront</option>
-              <option value="promo">Promo Spotlight</option>
+              <option value="promo">Promo Highlights</option>
               <option value="orders">Orders</option>
-              <option value="discounts">Discounts</option>
-              <option value="story">Homepage</option>
+              <option value="discounts">Storefront · Discounts</option>
+              <option value="story">Storefront · Story Carousel</option>
               <option value="categories">Categories</option>
               <option value="catalog">Catalog</option>
               <option value="integrations">Integrations</option>
@@ -627,8 +619,8 @@ node --test server.test.js</code></div>
         <aside id="storefrontPreviewPanel" class="admin-preview-panel" hidden>
           <div class="admin-preview-toolbar">
             <div>
-              <span class="admin-card-kicker">Live storefront</span>
-              <strong>Preview</strong>
+              <span class="admin-card-kicker">Storefront editor</span>
+              <strong>Draft preview</strong>
             </div>
             <div class="admin-preview-devices" aria-label="Preview size">
               <button class="is-active" type="button" data-preview-device="mobile" aria-label="Mobile preview">Mobile</button>
@@ -637,7 +629,7 @@ node --test server.test.js</code></div>
           </div>
           <div class="admin-preview-note">
             <span class="admin-preview-dot"></span>
-            <span>Shows the currently published storefront. Publish changes to refresh it.</span>
+            <span>Updates as you edit. Customers see changes only after you publish.</span>
           </div>
           <div id="storefrontPreviewViewport" class="admin-preview-viewport is-mobile">
             <iframe id="storefrontPreviewFrame" title="Bakeaholic storefront preview" src="/index.html?admin-preview=1"></iframe>
@@ -650,6 +642,6 @@ node --test server.test.js</code></div>
       </main>
     </div>
 
-    <script src="admin.js?v=20260723-storefront-studio-v1"></script>
+    <script src="admin.js?v=20260724-storefront-studio-v3"></script>
   </body>
 </html>
