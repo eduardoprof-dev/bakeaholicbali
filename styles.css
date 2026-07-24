@@ -1508,6 +1508,12 @@ body::before {
 .admin-icon-menu button span { width:22px; font-size:1.05rem; text-align:center; }
 .admin-icon-menu button small { font-size:.72rem; }
 .admin-icon-menu button:hover,.admin-icon-menu button.is-selected { color:var(--accent); border-color:rgba(107,66,38,.18); background:rgba(107,66,38,.07); }
+.admin-logo-editor { grid-column:1/-1; }
+.admin-logo-preview { display:grid; place-items:center; width:180px; min-height:110px; padding:12px; border:1px solid var(--line); border-radius:14px; background:#fff; }
+.admin-logo-preview img { display:block; max-width:100%; max-height:90px; object-fit:contain; }
+.admin-moment-editor { grid-column:1/-1; }
+[data-icon-style="soft"] { border-radius:10px; background:rgba(107,66,38,.08); }
+[data-icon-style="bold"] svg { stroke-width:2.7px; }
 .admin-doc-diagram { margin:24px 0 0; }
 .admin-doc-diagram img { display:block; width:100%; border:1px solid var(--line); border-radius:16px; background:#fff; }
 .admin-doc-diagram figcaption { margin-top:8px; text-align:right; }
