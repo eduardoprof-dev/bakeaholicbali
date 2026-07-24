@@ -23,6 +23,7 @@ const accountSummaryButton = document.getElementById("accountSummaryButton");
 const accountOrderHistoryLink = document.getElementById("accountOrderHistoryLink");
 const accountAddressesLink = document.getElementById("accountAddressesLink");
 const accountLogoutButton = document.getElementById("accountLogoutButton");
+let pageStore = {};
 
 function formatOrderDate(value) {
   return new Date(value).toLocaleDateString("en-GB", {
@@ -78,8 +79,8 @@ function renderOrders(orders) {
   ordersApp.innerHTML = `
     <section class="account-page-hero">
       <div>
-        <h1>Your Orders</h1>
-        <p class="account-page-copy">Track your recent purchases and open full order details any time.</p>
+        <h1>${accountCommon.escapeHtml(pageStore.ordersPageTitle || "Your Orders")}</h1>
+        <p class="account-page-copy">${accountCommon.escapeHtml(pageStore.ordersPageSubtitle || "Track your recent purchases and open full order details any time.")}</p>
       </div>
     </section>
     <section class="orders-table">
@@ -113,6 +114,7 @@ function renderOrders(orders) {
 }
 
 async function bootstrap() {
+  pageStore = (await accountCommon.request(appMode, "/api/menu")).store || {};
   const draft = accountCommon.loadDraft(draftKey, { customer: {} });
   const phone = draft?.customer?.phone;
   homeLink.href = `/index.html${modeQuery}`;
@@ -136,7 +138,7 @@ async function bootstrap() {
   });
 
   if (!draft?.customer?.phoneVerifiedAt || !phone) {
-    renderEmpty("Your Orders", "Log in with your WhatsApp number to see your purchase history.");
+    renderEmpty(pageStore.ordersPageTitle || "Your Orders", "Log in with your WhatsApp number to see your purchase history.");
     return;
   }
 

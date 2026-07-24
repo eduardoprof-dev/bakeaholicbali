@@ -4,6 +4,7 @@ let appMode = params.get("mode") === "test" ? "test" : "live";
 let orderId = params.get("order") || "";
 let token = params.get("token") || "";
 const invoiceApp = document.getElementById("invoiceApp");
+let pageStore = {};
 
 if (ref && !orderId) {
   const [refOrderId, refToken, refMode] = ref.split(".");
@@ -133,7 +134,7 @@ function renderDocument(payload) {
 
       <div class="invoice-title-row">
         <div>
-          <p class="eyebrow">Invoice / Receipt</p>
+          <p class="eyebrow">${escapeHtml(pageStore.invoicePageLabel || "Invoice / Receipt")}</p>
           <h1>${escapeHtml(order.id)}</h1>
         </div>
         <div class="invoice-status ${invoiceStatusClass(order.status)}">
@@ -188,7 +189,7 @@ function renderDocument(payload) {
       </section>
 
       <footer class="invoice-footer">
-        <p>Use this invoice for delivery handoff and customer payment receipt.</p>
+        <p>${escapeHtml(pageStore.invoiceFooterNote || "Use this invoice for delivery handoff and customer payment receipt.")}</p>
       </footer>
     </section>
   `;
@@ -202,8 +203,14 @@ function renderDocument(payload) {
   printButton?.addEventListener("click", () => window.print());
 }
 
-requestDocument()
-  .then(renderDocument)
+Promise.all([
+  requestDocument(),
+  fetch("/api/menu", { headers: { "X-App-Mode": appMode } }).then((response) => response.json()).catch(() => ({}))
+])
+  .then(([documentPayload, menuPayload]) => {
+    pageStore = menuPayload.store || {};
+    renderDocument(documentPayload);
+  })
   .catch((error) => {
     invoiceApp.innerHTML = `
       <section class="payment-page-card">

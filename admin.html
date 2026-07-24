@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260724-storefront-studio-v9" />
+    <link rel="stylesheet" href="styles.css?v=20260724-storefront-studio-v10" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -31,6 +31,7 @@
               <button class="admin-subnav-nested" type="button" data-admin-target="catalog">Products</button>
               <button type="button" data-admin-target="promo">Promo highlights</button>
               <button type="button" data-admin-target="discounts">Discounts</button>
+              <button type="button" data-admin-target="pages">Pages</button>
             </div>
           </div>
           <button class="admin-nav-button" type="button" data-admin-target="orders">Orders</button>
@@ -62,6 +63,7 @@
               <option value="story">Storefront · Story Carousel</option>
               <option value="categories">Categories</option>
               <option value="catalog">Catalog</option>
+              <option value="pages">Storefront · Pages</option>
               <option value="integrations">Integrations</option>
               <option value="documentation">Documentation</option>
             </select>
@@ -246,6 +248,7 @@
               <div class="admin-logo-preview"><img id="footerLogoPreview" src="/assets/bakeaholic-logo.jpg" alt="Footer logo preview" /></div>
             </div>
             <div class="admin-field"><label for="footerTaglineInput">Footer tagline</label><textarea id="footerTaglineInput"></textarea></div>
+            <div class="admin-field"><label for="footerContactLabelInput">Contact heading</label><input id="footerContactLabelInput" type="text" /></div>
             <div class="admin-field">
               <label for="instagramUrlInput">Instagram URL</label>
               <input id="instagramUrlInput" type="url" />
@@ -253,11 +256,15 @@
             <div class="admin-field">
               <label for="termsUrlInput">Terms URL</label>
               <input id="termsUrlInput" type="text" />
+              <a class="secondary-link" href="/terms.html" target="_blank">Open Terms page</a>
             </div>
+            <div class="admin-field"><label for="termsLabelInput">Terms link text</label><input id="termsLabelInput" type="text" /></div>
             <div class="admin-field">
               <label for="privacyUrlInput">Privacy URL</label>
               <input id="privacyUrlInput" type="text" />
+              <a class="secondary-link" href="/terms.html#privacy" target="_blank">Open Privacy page</a>
             </div>
+            <div class="admin-field"><label for="privacyLabelInput">Privacy link text</label><input id="privacyLabelInput" type="text" /></div>
             <section class="admin-location-editor" data-operation-field>
               <div class="admin-location-editor-head">
                 <div>
@@ -294,9 +301,11 @@
               <input id="pickupDescriptionInput" type="text" />
             </div>
             <div class="admin-field"><label for="searchPlaceholderInput">Search box hint</label><input id="searchPlaceholderInput" type="text" /><small class="helper-text">Example text customers see before typing a product search.</small></div>
-            <div class="admin-field"><label for="searchIconStyleInput">Search icon</label><select id="searchIconStyleInput"><option value="magnifier">Magnifier</option><option value="circle-search">Circle search</option><option value="scan-search">Scan search</option><option value="bold-search">Bold magnifier</option><option value="minimal-search">Minimal search</option></select></div>
-            <div class="admin-field"><label for="cartIconStyleInput">Cart icon</label><select id="cartIconStyleInput"><option value="cart">Shopping cart</option><option value="bag">Shopping bag</option><option value="basket">Shopping basket</option><option value="box">Order box</option><option value="trolley">Store trolley</option></select></div>
-            <div class="admin-field"><label for="loginIconStyleInput">Login icon</label><select id="loginIconStyleInput"><option value="person">Person</option><option value="person-circle">Person in circle</option><option value="profile-card">Profile card</option><option value="account-badge">Account badge</option><option value="minimal-person">Minimal person</option></select></div>
+            <div class="admin-field"><label for="searchIconStyleInput">Search icon</label><select id="searchIconStyleInput"><option value="magnifier">🔍 Magnifier</option><option value="circle-search">⭕ Circle search</option><option value="scan-search">⌗ Scan search</option><option value="bold-search">🔎 Bold magnifier</option><option value="minimal-search">⌕ Minimal search</option><option value="search-plus">⊕ Search plus</option><option value="search-lines">☷ Search list</option><option value="search-location">⌖ Location search</option><option value="search-heart">♡ Favorite search</option><option value="search-star">☆ Featured search</option></select></div>
+            <div class="admin-field"><label for="cartIconStyleInput">Cart icon</label><select id="cartIconStyleInput"><option value="cart">🛒 Shopping cart</option><option value="bag">🛍 Shopping bag</option><option value="basket">🧺 Shopping basket</option><option value="box">📦 Order box</option><option value="trolley">🛒 Store trolley</option><option value="cart-plus">⊕ Cart plus</option><option value="tote">👜 Tote bag</option><option value="receipt-order">🧾 Order receipt</option><option value="gift-order">🎁 Gift order</option><option value="store-order">🏪 Store order</option></select><small class="helper-text">Opens the customer's current cart and checkout.</small></div>
+            <div class="admin-field"><label for="cartButtonLabelInput">Cart button description</label><input id="cartButtonLabelInput" type="text" /><small class="helper-text">Tooltip and screen-reader description.</small></div>
+            <div class="admin-field"><label for="loginIconStyleInput">Login icon</label><select id="loginIconStyleInput"><option value="person">👤 Person</option><option value="person-circle">⭕ Person in circle</option><option value="profile-card">🪪 Profile card</option><option value="account-badge">✅ Account badge</option><option value="minimal-person">♙ Minimal person</option><option value="secure-account">🔐 Secure account</option><option value="avatar">🙂 Avatar</option><option value="members">👥 Members</option><option value="spark-account">✨ Featured account</option><option value="home-account">🏠 Customer home</option></select><small class="helper-text">Opens login or the customer account menu.</small></div>
+            <div class="admin-field"><label for="loginButtonLabelInput">Login button description</label><input id="loginButtonLabelInput" type="text" /><small class="helper-text">Tooltip and screen-reader description.</small></div>
             <section class="admin-location-editor admin-moment-editor">
               <div class="admin-location-editor-head"><div><h3>Shop by category</h3><p class="helper-text">Edit the heading and customer-facing labels shown above each category.</p></div></div>
               <div class="admin-grid">
@@ -308,6 +317,16 @@
                 <div class="admin-field"><label for="momentCard3LabelInput">Munchie Mallow label</label><input id="momentCard3LabelInput" type="text" /></div>
               </div>
             </section>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="pages" hidden>
+          <div class="admin-section-head"><div><h2>Storefront pages</h2><p class="helper-text">Edit the primary headings and supporting text on customer service pages.</p></div></div>
+          <div class="admin-grid">
+            <section class="admin-location-editor"><h3>Checkout</h3><div class="admin-grid"><div class="admin-field"><label for="checkoutPageTitleInput">Page title</label><input id="checkoutPageTitleInput" type="text" /></div><div class="admin-field"><label for="checkoutPageSubtitleInput">Page description</label><input id="checkoutPageSubtitleInput" type="text" /></div></div></section>
+            <section class="admin-location-editor"><h3>Order history</h3><div class="admin-grid"><div class="admin-field"><label for="ordersPageTitleInput">Page title</label><input id="ordersPageTitleInput" type="text" /></div><div class="admin-field"><label for="ordersPageSubtitleInput">Page description</label><input id="ordersPageSubtitleInput" type="text" /></div></div></section>
+            <section class="admin-location-editor"><h3>Your addresses</h3><div class="admin-grid"><div class="admin-field"><label for="addressesPageTitleInput">Page title</label><input id="addressesPageTitleInput" type="text" /></div><div class="admin-field"><label for="addressesPageSubtitleInput">Page description</label><input id="addressesPageSubtitleInput" type="text" /></div></div></section>
+            <section class="admin-location-editor"><h3>Invoice</h3><div class="admin-grid"><div class="admin-field"><label for="invoicePageLabelInput">Document label</label><input id="invoicePageLabelInput" type="text" /></div><div class="admin-field"><label for="invoiceFooterNoteInput">Footer note</label><input id="invoiceFooterNoteInput" type="text" /></div></div></section>
           </div>
         </section>
 
@@ -655,6 +674,6 @@ node --test server.test.js</code></div>
       </main>
     </div>
 
-    <script src="admin.js?v=20260724-storefront-studio-v9"></script>
+    <script src="admin.js?v=20260724-storefront-studio-v10"></script>
   </body>
 </html>
