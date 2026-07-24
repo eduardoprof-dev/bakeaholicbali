@@ -38,6 +38,7 @@ const searchBar = document.querySelector(".search-bar");
 const searchInput = document.getElementById("searchInput");
 const storefrontLogo = document.getElementById("storefrontLogo");
 const footerLogo = document.querySelector(".footer-logo");
+const footerTagline = document.querySelector(".footer-tagline");
 const momentGuideKicker = document.getElementById("momentGuideKicker");
 const momentGuideTitle = document.getElementById("momentGuideTitle");
 const categoryChips = document.getElementById("categoryChips");
@@ -1333,6 +1334,45 @@ async function resetTestData() {
   await refreshCart();
 }
 
+function configurableHeaderIcon(type, variant = "") {
+  const icons = {
+    search: {
+      magnifier: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg>',
+      "circle-search": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="10.5" cy="10.5" r="3.5"/><path d="m13 13 3 3"/></svg>',
+      "scan-search": '<svg viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><circle cx="11" cy="11" r="4"/><path d="m14 14 3 3"/></svg>',
+      "bold-search": '<svg viewBox="0 0 24 24" class="is-bold"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/></svg>',
+      "minimal-search": '<svg viewBox="0 0 24 24"><circle cx="9.5" cy="9.5" r="5"/><path d="m13.5 13.5 6 6"/></svg>'
+    },
+    cart: {
+      cart: '<svg viewBox="0 0 24 24"><path d="M6.5 6.5h14l-1.6 8.2H8L6.5 6.5Z"/><path d="M3.5 4h2.1l.9 2.5"/><circle cx="9" cy="19" r="1.4"/><circle cx="18" cy="19" r="1.4"/></svg>',
+      bag: '<svg viewBox="0 0 24 24"><path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/></svg>',
+      basket: '<svg viewBox="0 0 24 24"><path d="m4 10 2 10h12l2-10H4Z"/><path d="m8 10 4-6 4 6M9 13v4M15 13v4"/></svg>',
+      box: '<svg viewBox="0 0 24 24"><path d="m4 7 8-4 8 4v10l-8 4-8-4V7Z"/><path d="m4 7 8 4 8-4M12 11v10"/></svg>',
+      trolley: '<svg viewBox="0 0 24 24"><path d="M4 5h2l2 10h10l2-7H7"/><path d="M9 11h9"/><circle cx="10" cy="19" r="1.3"/><circle cx="18" cy="19" r="1.3"/></svg>'
+    },
+    login: {
+      person: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.3"/><path d="M5.5 20c1.2-4 3.4-6 6.5-6s5.3 2 6.5 6"/></svg>',
+      "person-circle": '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9" r="3"/><path d="M6.5 19c1.2-3.2 3-4.8 5.5-4.8s4.3 1.6 5.5 4.8"/></svg>',
+      "profile-card": '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.3"/><path d="M5.5 17c.7-2.1 1.9-3.2 3.5-3.2s2.8 1.1 3.5 3.2M14 9h4M14 13h4"/></svg>',
+      "account-badge": '<svg viewBox="0 0 24 24"><circle cx="10" cy="9" r="3"/><path d="M4 19c1-3.7 3-5.5 6-5.5s5 1.8 6 5.5"/><circle cx="18" cy="7" r="3"/></svg>',
+      "minimal-person": '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M7 19c.7-3.2 2.4-4.8 5-4.8s4.3 1.6 5 4.8"/></svg>'
+    }
+  };
+  const choices = icons[type];
+  return choices?.[variant] || choices?.[Object.keys(choices)[0]] || "";
+}
+
+function applyHeaderIcons() {
+  const searchIcon = document.querySelector(".search-icon");
+  if (searchIcon) searchIcon.innerHTML = configurableHeaderIcon("search", state.store.searchIconStyle);
+  const cartLink = document.getElementById("cartLink");
+  const cartSvg = cartLink?.querySelector("svg");
+  if (cartSvg) cartSvg.outerHTML = configurableHeaderIcon("cart", state.store.cartIconStyle);
+  const loginButton = document.getElementById("loginButton");
+  const loginSvg = loginButton?.querySelector("svg");
+  if (loginSvg) loginSvg.outerHTML = configurableHeaderIcon("login", state.store.loginIconStyle);
+}
+
 function applyCatalogPayload(payload) {
   state.store = payload.store;
   state.promo = payload.promo;
@@ -1345,13 +1385,12 @@ function applyCatalogPayload(payload) {
     storefrontLogo.alt = state.store.name || "Bakeaholic Bali";
   }
   if (footerLogo) {
-    footerLogo.src = versionedAsset(state.store.logoPath || "/assets/bakeaholic-logo.jpg");
+    footerLogo.src = versionedAsset(state.store.footerLogoPath || state.store.logoPath || "/assets/bakeaholic-logo.jpg");
     footerLogo.alt = state.store.name || "Bakeaholic Bali";
   }
+  if (footerTagline) footerTagline.textContent = state.store.footerTagline || "Bali's original packaged treats and wholesome snacks.";
   if (searchInput) searchInput.placeholder = state.store.searchPlaceholder || "Search products...";
-  document.querySelector(".search-icon")?.setAttribute("data-icon-style", state.store.searchIconStyle || "outline");
-  document.getElementById("cartLink")?.setAttribute("data-icon-style", state.store.cartIconStyle || "outline");
-  document.getElementById("loginButton")?.setAttribute("data-icon-style", state.store.loginIconStyle || "outline");
+  applyHeaderIcons();
   if (momentGuideKicker) momentGuideKicker.textContent = state.store.momentGuideKicker || "Shop by Category";
   if (momentGuideTitle) momentGuideTitle.textContent = state.store.momentGuideTitle || "Pick the snack for what you need today.";
   ["Sweet craving", "Coffee break", "Morning pantry", "Kids favorite"].forEach((fallback, index) => {
@@ -1449,6 +1488,8 @@ window.addEventListener("message", (event) => {
   const fieldSelectors = {
     storeName: ".brand-logo",
     storeLogoPathInput: ".brand-logo",
+    footerLogoPathInput: ".footer-logo",
+    footerTaglineInput: ".footer-tagline",
     searchPlaceholderInput: "#searchInput",
     searchIconStyleInput: ".search-icon",
     cartIconStyleInput: "#cartLink",

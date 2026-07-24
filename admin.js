@@ -70,8 +70,8 @@ const storeFields = {
   orderWhatsapp: document.getElementById("orderWhatsapp"),
   eyebrow: document.getElementById("storeEyebrowInput"),
   perkLabel: document.getElementById("perkLabelInput"),
-  perkTitle: document.getElementById("perkTitleInput"),
-  perkDescription: document.getElementById("perkDescriptionInput"),
+  footerLogoPath: document.getElementById("footerLogoPathInput"),
+  footerTagline: document.getElementById("footerTaglineInput"),
   instagramUrl: document.getElementById("instagramUrlInput"),
   termsUrl: document.getElementById("termsUrlInput"),
   privacyUrl: document.getElementById("privacyUrlInput"),
@@ -102,8 +102,31 @@ const storeFields = {
   momentCard3Label: document.getElementById("momentCard3LabelInput")
 };
 const numericStoreFields = new Set(["deliveryFee", "taxRate", "kitchenLat", "kitchenLng"]);
+const storeFieldDefaults = {
+  footerTagline: "Bali's original packaged treats and wholesome snacks.",
+  searchPlaceholder: "Search products...",
+  searchIconStyle: "magnifier",
+  cartIconStyle: "cart",
+  loginIconStyle: "person",
+  momentGuideKicker: "Shop by Category",
+  momentGuideTitle: "Pick the snack for what you need today.",
+  momentCard0Label: "Sweet craving",
+  momentCard1Label: "Coffee break",
+  momentCard2Label: "Morning pantry",
+  momentCard3Label: "Kids favorite"
+};
 const operationsSettingsGrid = document.getElementById("operationsSettingsGrid");
 document.querySelectorAll("[data-operation-field]").forEach((field) => operationsSettingsGrid?.appendChild(field));
+const headerSettingsGrid = document.getElementById("headerSettingsGrid");
+["storeName", "storeLogoPathInput", "searchPlaceholderInput", "searchIconStyleInput", "cartIconStyleInput", "loginIconStyleInput"].forEach((id) => {
+  const field = document.getElementById(id)?.closest(".admin-field");
+  if (field) headerSettingsGrid?.appendChild(field);
+});
+const footerSettingsGrid = document.getElementById("footerSettingsGrid");
+["footerLogoPathInput", "footerTaglineInput", "orderWhatsapp", "instagramUrlInput", "termsUrlInput", "privacyUrlInput"].forEach((id) => {
+  const field = document.getElementById(id)?.closest(".admin-field");
+  if (field) footerSettingsGrid?.appendChild(field);
+});
 const kitchenMapElements = {
   search: document.getElementById("kitchenMapSearchInput"),
   map: document.getElementById("kitchenLocationMap"),
@@ -557,10 +580,13 @@ function renderIntegrations(integrations) {
 
 function renderStore() {
   Object.entries(storeFields).forEach(([key, field]) => {
-    field.value = state.catalog.store[key] || "";
+    const saved = state.catalog.store[key];
+    field.value = saved || storeFieldDefaults[key] || "";
   });
   const logoPreview = document.getElementById("storeLogoPreview");
   if (logoPreview) logoPreview.src = storeFields.logoPath.value || "/assets/bakeaholic-logo.jpg";
+  const footerLogoPreview = document.getElementById("footerLogoPreview");
+  if (footerLogoPreview) footerLogoPreview.src = storeFields.footerLogoPath.value || storeFields.logoPath.value || "/assets/bakeaholic-logo.jpg";
   syncKitchenMapFromFields();
 }
 
@@ -1080,7 +1106,7 @@ function wireImageUploads(root) {
   root.querySelectorAll("[data-image-upload]").forEach((input) => {
     const zone = input.closest("[data-image-dropzone]");
     const card = input.closest("[data-story-slide-index],[data-product-index],[data-admin-section]");
-    const pathInput = card.querySelector('[data-story-field="imagePath"],[data-product-field="imagePath"],[data-store-field="logoPath"]');
+    const pathInput = document.getElementById(input.dataset.pathInput) || card.querySelector('[data-story-field="imagePath"],[data-product-field="imagePath"],[data-store-field="logoPath"],[data-store-field="footerLogoPath"]');
     input.addEventListener("change", () => uploadImage(input.files[0], pathInput).catch((error) => setStatus(error.message)));
     ["dragenter", "dragover"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.add("is-dragging"); }));
     ["dragleave", "drop"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.remove("is-dragging"); }));
@@ -1806,6 +1832,10 @@ adminMain?.addEventListener("input", (event) => {
   if (event.target === storeFields.logoPath) {
     const logoPreview = document.getElementById("storeLogoPreview");
     if (logoPreview) logoPreview.src = event.target.value.trim() || "/assets/bakeaholic-logo.jpg";
+  }
+  if (event.target === storeFields.footerLogoPath) {
+    const footerLogoPreview = document.getElementById("footerLogoPreview");
+    if (footerLogoPreview) footerLogoPreview.src = event.target.value.trim() || storeFields.logoPath.value || "/assets/bakeaholic-logo.jpg";
   }
   const section = event.target.closest("[data-admin-section]");
   if (section && catalogActionSections.has(section.dataset.adminSection)) {

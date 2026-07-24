@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260724-storefront-studio-v8" />
+    <link rel="stylesheet" href="styles.css?v=20260724-storefront-studio-v9" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -209,6 +209,14 @@
             </div>
           </div>
           <div class="admin-grid">
+            <section class="admin-location-editor admin-store-region">
+              <div class="admin-location-editor-head"><div><span class="admin-card-kicker">Storefront header</span><h3>Header and navigation</h3><p class="helper-text">Logo, search wording and the three navigation icons shown at the top of the store.</p></div></div>
+              <div class="admin-grid" id="headerSettingsGrid"></div>
+            </section>
+            <section class="admin-location-editor admin-store-region">
+              <div class="admin-location-editor-head"><div><span class="admin-card-kicker">Storefront footer</span><h3>Footer and contact</h3><p class="helper-text">Footer logo, tagline, WhatsApp and public links shown at the bottom of the store.</p></div></div>
+              <div class="admin-grid" id="footerSettingsGrid"></div>
+            </section>
             <div class="admin-field">
               <label for="storeName">Store name</label>
               <input id="storeName" type="text" />
@@ -217,7 +225,7 @@
               <label for="storeLogoPathInput">Store logo</label>
               <input id="storeLogoPathInput" data-store-field="logoPath" class="admin-code-input" type="text" />
               <label class="admin-image-dropzone" data-image-dropzone>
-                <input type="file" accept="image/png,image/jpeg,image/webp" data-image-upload="store-logo" />
+                <input type="file" accept="image/png,image/jpeg,image/webp" data-image-upload="store-logo" data-path-input="storeLogoPathInput" />
                 <span><strong>Choose logo</strong> or drag and drop</span>
                 <small>Transparent PNG, JPG or WebP · max 6 MB</small>
               </label>
@@ -227,14 +235,17 @@
               <label for="orderWhatsapp">WhatsApp number</label>
               <input id="orderWhatsapp" type="text" />
             </div>
-            <div class="admin-field">
-              <label for="perkTitleInput">Contact title</label>
-              <input id="perkTitleInput" type="text" />
+            <div class="admin-field admin-logo-editor">
+              <label for="footerLogoPathInput">Footer logo</label>
+              <input id="footerLogoPathInput" data-store-field="footerLogoPath" class="admin-code-input" type="text" />
+              <label class="admin-image-dropzone" data-image-dropzone>
+                <input type="file" accept="image/png,image/jpeg,image/webp" data-image-upload="footer-logo" data-path-input="footerLogoPathInput" />
+                <span><strong>Choose footer logo</strong> or drag and drop</span>
+                <small>Leave blank to reuse the header logo</small>
+              </label>
+              <div class="admin-logo-preview"><img id="footerLogoPreview" src="/assets/bakeaholic-logo.jpg" alt="Footer logo preview" /></div>
             </div>
-            <div class="admin-field">
-              <label for="perkDescriptionInput">Contact note</label>
-              <input id="perkDescriptionInput" type="text" />
-            </div>
+            <div class="admin-field"><label for="footerTaglineInput">Footer tagline</label><textarea id="footerTaglineInput"></textarea></div>
             <div class="admin-field">
               <label for="instagramUrlInput">Instagram URL</label>
               <input id="instagramUrlInput" type="url" />
@@ -282,10 +293,10 @@
               <label for="pickupDescriptionInput">Pickup description</label>
               <input id="pickupDescriptionInput" type="text" />
             </div>
-            <div class="admin-field"><label for="searchPlaceholderInput">Search placeholder</label><input id="searchPlaceholderInput" type="text" /></div>
-            <div class="admin-field"><label for="searchIconStyleInput">Search icon style</label><select id="searchIconStyleInput"><option value="outline">Outline</option><option value="soft">Soft</option><option value="bold">Bold</option></select></div>
-            <div class="admin-field"><label for="cartIconStyleInput">Cart icon style</label><select id="cartIconStyleInput"><option value="outline">Outline</option><option value="soft">Soft</option><option value="bold">Bold</option></select></div>
-            <div class="admin-field"><label for="loginIconStyleInput">Login icon style</label><select id="loginIconStyleInput"><option value="outline">Outline</option><option value="soft">Soft</option><option value="bold">Bold</option></select></div>
+            <div class="admin-field"><label for="searchPlaceholderInput">Search box hint</label><input id="searchPlaceholderInput" type="text" /><small class="helper-text">Example text customers see before typing a product search.</small></div>
+            <div class="admin-field"><label for="searchIconStyleInput">Search icon</label><select id="searchIconStyleInput"><option value="magnifier">Magnifier</option><option value="circle-search">Circle search</option><option value="scan-search">Scan search</option><option value="bold-search">Bold magnifier</option><option value="minimal-search">Minimal search</option></select></div>
+            <div class="admin-field"><label for="cartIconStyleInput">Cart icon</label><select id="cartIconStyleInput"><option value="cart">Shopping cart</option><option value="bag">Shopping bag</option><option value="basket">Shopping basket</option><option value="box">Order box</option><option value="trolley">Store trolley</option></select></div>
+            <div class="admin-field"><label for="loginIconStyleInput">Login icon</label><select id="loginIconStyleInput"><option value="person">Person</option><option value="person-circle">Person in circle</option><option value="profile-card">Profile card</option><option value="account-badge">Account badge</option><option value="minimal-person">Minimal person</option></select></div>
             <section class="admin-location-editor admin-moment-editor">
               <div class="admin-location-editor-head"><div><h3>Shop by category</h3><p class="helper-text">Edit the heading and customer-facing labels shown above each category.</p></div></div>
               <div class="admin-grid">
@@ -644,6 +655,6 @@ node --test server.test.js</code></div>
       </main>
     </div>
 
-    <script src="admin.js?v=20260724-storefront-studio-v8"></script>
+    <script src="admin.js?v=20260724-storefront-studio-v9"></script>
   </body>
 </html>
