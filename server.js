@@ -53,6 +53,8 @@ const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4173);
 const bundledCatalogPath = path.join(bundledDataDir, "catalog.json");
 const catalogPath = path.join(dataDir, "catalog.json");
+const uploadsDir = path.join(dataDir, "uploads");
+fs.mkdirSync(uploadsDir, { recursive: true });
 const integrationsPath = path.join(dataDir, "integrations.json");
 
 const DEFAULT_BRAND_STORY = {
@@ -2816,12 +2818,12 @@ function parseBody(request) {
   });
 }
 
-function parseRawBody(request) {
+function parseRawBody(request, maxLength = 1e6) {
   return new Promise((resolve, reject) => {
     let raw = "";
     request.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 1e6) {
+      if (raw.length > maxLength) {
         reject(new Error("Request body too large"));
       }
     });
@@ -3292,7 +3294,7 @@ function normalizeBrandStorySlides(brandStoryInput) {
       ];
 
   return inputSlides
-    .slice(0, 3)
+    .slice(0, 8)
     .map((slide, index) => {
       const fallback = DEFAULT_BRAND_STORY.slides[index] || DEFAULT_BRAND_STORY.slides[0];
       return {
@@ -3302,6 +3304,8 @@ function normalizeBrandStorySlides(brandStoryInput) {
         secondaryBody: String(slide?.secondaryBody || fallback.secondaryBody).trim(),
         imagePath: String(slide?.imagePath || fallback.imagePath).trim(),
         imageAlt: String(slide?.imageAlt || fallback.imageAlt).trim(),
+        imageFit: slide?.imageFit === "contain" ? "contain" : "cover",
+        imagePosition: ["center", "top", "bottom", "left", "right"].includes(slide?.imagePosition) ? slide.imagePosition : "center",
         points: (Array.isArray(slide?.points) ? slide.points : fallback.points)
           .map((point, pointIndex) => normalizeStoryPoint(point, fallback.points[pointIndex]?.icon || "leaf"))
           .filter((point) => point.label)
@@ -6683,6 +6687,25 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "POST" && pathname === "/api/admin/upload-image") {
+    const session = requireAdminSession(request, response);
+    if (!session) return true;
+    parseRawBody(request, 9e6).then((raw) => {
+      const body = JSON.parse(raw || "{}");
+      const match = String(body.dataUrl || "").match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
+      if (!match) throw new Error("Only JPG, PNG and WebP images are supported.");
+      const extension = match[1] === "jpeg" ? "jpg" : match[1];
+      const buffer = Buffer.from(match[2], "base64");
+      if (!buffer.length || buffer.length > 6 * 1024 * 1024) throw new Error("Image must be smaller than 6 MB.");
+      const originalName = String(body.name || "image");
+      const base = path.basename(originalName, path.extname(originalName)).replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "image";
+      const filename = `${Date.now()}-${base}.${extension}`;
+      fs.writeFileSync(path.join(uploadsDir, filename), buffer);
+      sendJson(response, 200, { ok: true, path: `/uploads/${filename}` });
+    }).catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
   if (request.method === "PUT" && pathname === "/api/admin/vouchers") {
     const session = requireAdminSession(request, response);
     if (!session) {
@@ -7163,6 +7186,17 @@ const server = http.createServer((request, response) => {
     if (!handled) {
       sendJson(response, 404, { error: "Not found" });
     }
+    return;
+  }
+
+  if ((request.method === "GET" || request.method === "HEAD") && requestUrl.pathname.startsWith("/uploads/")) {
+    const uploadName = path.basename(requestUrl.pathname);
+    const uploadPath = path.join(uploadsDir, uploadName);
+    if (!uploadPath.startsWith(`${uploadsDir}${path.sep}`) || !fs.existsSync(uploadPath)) {
+      sendJson(response, 404, { error: "File not found" });
+      return;
+    }
+    sendFile(response, uploadPath);
     return;
   }
 

@@ -22,6 +22,8 @@ const testWhatsappTemplatesButton = document.getElementById("testWhatsappTemplat
 const inspectWhatsappTemplatesButton = document.getElementById("inspectWhatsappTemplatesButton");
 const whatsappTemplateTestResults = document.getElementById("whatsappTemplateTestResults");
 const addProductButton = document.getElementById("addProductButton");
+const addCategoryButton = document.getElementById("addCategoryButton");
+const addStorySlideButton = document.getElementById("addStorySlideButton");
 const adminLogoutButton = document.getElementById("adminLogoutButton");
 const adminStatus = document.getElementById("adminStatus");
 const adminPageEyebrow = document.getElementById("adminPageEyebrow");
@@ -121,6 +123,11 @@ const storyIconOptions = [
   { value: "cart", label: "Online order" },
   { value: "cup", label: "Cafe" },
   { value: "boxes", label: "Wholesale" }
+  ,{ value: "heart", label: "Favorite" }
+  ,{ value: "star", label: "Quality" }
+  ,{ value: "home", label: "Homemade" }
+  ,{ value: "truck", label: "Delivery" }
+  ,{ value: "sparkle", label: "New" }
 ];
 
 const integrationFields = {
@@ -254,6 +261,9 @@ function showAdminSection(sectionName) {
   storefrontPublishState.hidden = !isStorefrontStudio;
   storefrontPreviewPanel.hidden = !isStorefrontStudio;
   adminMain.classList.toggle("is-storefront-studio", isStorefrontStudio);
+  if (isStorefrontStudio && !adminMain.classList.contains("is-desktop-preview")) {
+    adminMain.classList.add("is-mobile-preview");
+  }
   if (!isStorefrontStudio) {
     adminMain.classList.remove("is-desktop-preview");
   }
@@ -277,6 +287,7 @@ function showAdminSection(sectionName) {
       syncKitchenMapFromFields();
     }, 0);
   }
+  if (isStorefrontStudio) window.setTimeout(() => focusStorefrontPreview(sectionName), 120);
 }
 
 function updatePublishState() {
@@ -330,6 +341,14 @@ function sendDraftPreview() {
 function scheduleDraftPreview() {
   window.clearTimeout(draftPreviewTimer);
   draftPreviewTimer = window.setTimeout(sendDraftPreview, 220);
+}
+
+function focusStorefrontPreview(sectionName, itemIndex = 0) {
+  storefrontPreviewFrame?.contentWindow?.postMessage({
+    type: "bakeaholic:preview-focus",
+    section: sectionName,
+    itemIndex
+  }, window.location.origin);
 }
 
 function dashboardAttentionItems() {
@@ -858,8 +877,8 @@ function normalizeBrandStorySlides(story) {
     ? story.slides
     : [{ ...defaults[0], ...(story || {}) }, ...defaults.slice(1)];
 
-  return defaults.map((fallback, index) => {
-    const slide = slides[index] || fallback;
+  return slides.map((slide, index) => {
+    const fallback = defaults[index] || defaults[0];
     return {
       ...fallback,
       ...slide,
@@ -874,24 +893,29 @@ function normalizeBrandStorySlides(story) {
 function storyIconOptionsMarkup(selectedIcon) {
   return storyIconOptions
     .map((option) => `
-      <option value="${option.value}" ${option.value === selectedIcon ? "selected" : ""}>${option.label}</option>
+      <option value="${option.value}" ${option.value === selectedIcon ? "selected" : ""}>${storyIconGlyph(option.value)}  ${option.label}</option>
     `)
     .join("");
+}
+
+function storyIconGlyph(value) {
+  return ({ oats:"◉", coconut:"◒", cashew:"◜", gift:"◇", leaf:"❧", batch:"✦", spoon:"◖", pack:"▣", cart:"⌑", cup:"♨", boxes:"▦", heart:"♥", star:"★", home:"⌂", truck:"➜", sparkle:"✧" })[value] || "•";
 }
 
 function storySlideMarkup(slide, index) {
   const points = [0, 1, 2].map((pointIndex) => normalizeStoryPoint(slide.points?.[pointIndex]));
   return `
     <article class="story-slide-editor-card" data-story-slide-index="${index}">
-      <h3>Slide ${index + 1}</h3>
+      <div class="story-slide-editor-head"><h3>Slide ${index + 1}</h3><button class="admin-text-button is-danger" type="button" data-remove-story-slide="${index}">Remove</button></div>
       <div class="admin-grid">
         <div class="admin-field">
           <label>Small label</label>
           <input data-story-field="kicker" type="text" value="${escapeHtml(slide.kicker || "")}" />
         </div>
         <div class="admin-field">
-          <label>Image path</label>
+          <label>Slide image</label>
           <input class="admin-code-input" data-story-field="imagePath" type="text" value="${escapeHtml(slide.imagePath || "")}" />
+          ${imageUploadMarkup("story", index)}
         </div>
         <div class="admin-field" style="grid-column: 1 / -1;">
           <label>Title</label>
@@ -929,15 +953,25 @@ function storySlideMarkup(slide, index) {
           <label>Icon 3</label>
           <select data-story-point-icon="2">${storyIconOptionsMarkup(points[2].icon)}</select>
         </div>
+        <div class="admin-field"><label>Image fit</label><select data-story-field="imageFit"><option value="cover" ${slide.imageFit !== "contain" ? "selected" : ""}>Fill frame</option><option value="contain" ${slide.imageFit === "contain" ? "selected" : ""}>Show whole image</option></select></div>
+        <div class="admin-field"><label>Image alignment</label><select data-story-field="imagePosition">${imagePositionOptions(slide.imagePosition)}</select></div>
         <div class="admin-field admin-image-preview-field">
           <label>Slide image preview</label>
           <div class="admin-image-preview-frame wide">
-            <img class="admin-image-preview" data-story-preview src="${escapeHtml(slide.imagePath || defaultBrandStory().imagePath)}" alt="Homepage carousel preview" />
+            <img class="admin-image-preview" data-story-preview src="${escapeHtml(slide.imagePath || defaultBrandStory().imagePath)}" alt="Homepage carousel preview" style="object-fit:${slide.imageFit || "cover"};object-position:${normalizeImagePosition(slide.imagePosition)}" />
           </div>
         </div>
       </div>
     </article>
   `;
+}
+
+function imagePositionOptions(value = "center") {
+  return ["center", "top", "bottom", "left", "right"].map((position) => `<option value="${position}" ${position === value ? "selected" : ""}>${position[0].toUpperCase()}${position.slice(1)}</option>`).join("");
+}
+
+function imageUploadMarkup(kind, index) {
+  return `<label class="admin-image-dropzone" data-image-dropzone><input type="file" accept="image/png,image/jpeg,image/webp" data-image-upload="${kind}" data-image-index="${index}" /><span><strong>Choose image</strong> or drag and drop</span><small>JPG, PNG or WebP · max 6 MB</small></label>`;
 }
 
 function syncBrandStoryPreview(card) {
@@ -954,6 +988,46 @@ function renderBrandStory() {
   };
   const slides = normalizeBrandStorySlides(story);
   brandStorySlideList.innerHTML = slides.map((slide, index) => storySlideMarkup(slide, index)).join("");
+  brandStorySlideList.querySelectorAll("[data-story-slide-index]").forEach((card) => {
+    card.addEventListener("focusin", () => focusStorefrontPreview("story", Number(card.dataset.storySlideIndex)));
+  });
+  brandStorySlideList.querySelectorAll("[data-remove-story-slide]").forEach((button) => button.addEventListener("click", () => {
+    const slides = normalizeBrandStorySlides(collectBrandStory());
+    if (slides.length <= 1) return;
+    slides.splice(Number(button.dataset.removeStorySlide), 1);
+    state.catalog.brandStory = { ...slides[0], slides };
+    renderBrandStory();
+    markCatalogDirty();
+  }));
+  wireImageUploads(brandStorySlideList);
+}
+
+async function uploadImage(file, pathInput) {
+  if (!file || file.size > 6 * 1024 * 1024) throw new Error("Choose an image smaller than 6 MB.");
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const response = await request("/api/admin/upload-image", {
+    method: "POST",
+    body: JSON.stringify({ name: file.name, dataUrl })
+  });
+  pathInput.value = response.path;
+  pathInput.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function wireImageUploads(root) {
+  root.querySelectorAll("[data-image-upload]").forEach((input) => {
+    const zone = input.closest("[data-image-dropzone]");
+    const card = input.closest("[data-story-slide-index],[data-product-index]");
+    const pathInput = card.querySelector('[data-story-field="imagePath"],[data-product-field="imagePath"]');
+    input.addEventListener("change", () => uploadImage(input.files[0], pathInput).catch((error) => setStatus(error.message)));
+    ["dragenter", "dragover"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.add("is-dragging"); }));
+    ["dragleave", "drop"].forEach((name) => zone.addEventListener(name, (event) => { event.preventDefault(); zone.classList.remove("is-dragging"); }));
+    zone.addEventListener("drop", (event) => uploadImage(event.dataTransfer.files[0], pathInput).catch((error) => setStatus(error.message)));
+  });
 }
 
 function escapeHtml(value) {
@@ -1077,8 +1151,9 @@ function productMarkup(product, index) {
           <input data-product-field="barcode" type="text" value="${product.barcode || ""}" />
         </div>
         <div class="admin-field">
-          <label>Image path</label>
+          <label>Product image</label>
           <input class="admin-code-input" data-product-field="imagePath" type="text" value="${product.imagePath || ""}" />
+          ${imageUploadMarkup("product", index)}
         </div>
         <div class="admin-field">
           <label>Image fit</label>
@@ -1181,6 +1256,7 @@ function renderProducts() {
       field.addEventListener("change", syncPreview);
     });
   });
+  wireImageUploads(productList);
 }
 
 function voucherTypeOptions(selectedType) {
@@ -1571,6 +1647,21 @@ function addProduct() {
   markCatalogDirty();
 }
 
+function addCategory() {
+  state.catalog.categories.push({ id: `category-${Date.now()}`, label: "New category", description: "" });
+  renderCategories();
+  markCatalogDirty();
+}
+
+function addStorySlide() {
+  const slides = normalizeBrandStorySlides(collectBrandStory());
+  const fallback = defaultBrandStory().slides[0];
+  slides.push({ ...fallback, kicker: "New story", title: "New carousel slide", body: "", secondaryBody: "", imageFit: "cover", imagePosition: "center", points: [] });
+  state.catalog.brandStory = { ...slides[0], slides };
+  renderBrandStory();
+  markCatalogDirty();
+}
+
 async function bootstrap() {
   await ensureAdminSession();
   const [catalog, integrations, voucherResponse, publicConfig, orderResponse] = await Promise.all([
@@ -1606,6 +1697,8 @@ saveIntegrationsButton.addEventListener("click", saveIntegrations);
 testWhatsappTemplatesButton.addEventListener("click", testWhatsappTemplates);
 inspectWhatsappTemplatesButton.addEventListener("click", inspectWhatsappTemplates);
 addProductButton.addEventListener("click", addProduct);
+addCategoryButton?.addEventListener("click", addCategory);
+addStorySlideButton?.addEventListener("click", addStorySlide);
 saveVouchersButton?.addEventListener("click", saveVouchers);
 addVoucherButton?.addEventListener("click", addVoucher);
 adminLogoutButton.addEventListener("click", logoutAdmin);
@@ -1688,6 +1781,7 @@ document.querySelectorAll("[data-preview-device]").forEach((button) => {
     storefrontPreviewViewport.classList.toggle("is-mobile", button.dataset.previewDevice === "mobile");
     storefrontPreviewViewport.classList.toggle("is-desktop", button.dataset.previewDevice === "desktop");
     adminMain.classList.toggle("is-desktop-preview", button.dataset.previewDevice === "desktop");
+    adminMain.classList.toggle("is-mobile-preview", button.dataset.previewDevice === "mobile");
   });
 });
 window.addEventListener("beforeunload", (event) => {
