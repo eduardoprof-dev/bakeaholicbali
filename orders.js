@@ -6,6 +6,7 @@ const formatRupiah = new Intl.NumberFormat("id-ID", {
 
 const params = new URLSearchParams(window.location.search);
 const appMode = params.get("mode") === "test" ? "test" : "live";
+const isAdminPreview = params.has("admin-preview");
 const modeQuery = appMode === "test" ? "?mode=test" : "";
 const shopperStateVersion = "20260604-session-cart";
 const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
@@ -69,8 +70,8 @@ function renderEmpty(title, copy) {
       </div>
     </section>
     <section class="empty-state-card account-empty-state">
-      <strong>No orders yet.</strong>
-      <p>Your completed and cancelled orders will appear here.</p>
+      <strong>${accountCommon.escapeHtml(pageStore.ordersEmptyTitle || "No orders yet.")}</strong>
+      <p>${accountCommon.escapeHtml(pageStore.ordersEmptyCopy || "Your completed and cancelled orders will appear here.")}</p>
     </section>
   `;
 }
@@ -85,9 +86,9 @@ function renderOrders(orders) {
     </section>
     <section class="orders-table">
       <div class="orders-table-head">
-        <span>Purchase ID</span>
-        <span>Total price</span>
-        <span>Status</span>
+        <span>${accountCommon.escapeHtml(pageStore.ordersIdHeading || "Purchase ID")}</span>
+        <span>${accountCommon.escapeHtml(pageStore.ordersTotalHeading || "Total price")}</span>
+        <span>${accountCommon.escapeHtml(pageStore.ordersStatusHeading || "Status")}</span>
         <span></span>
       </div>
       ${orders.map((order) => `
@@ -105,7 +106,7 @@ function renderOrders(orders) {
           </div>
           <div>${statusMarkup(order.status)}</div>
           <div class="order-row-actions">
-            <a class="secondary-button button-link" href="/pay.html${modeQuery ? `${modeQuery}&order=${encodeURIComponent(order.id)}` : `?order=${encodeURIComponent(order.id)}`}">View Order</a>
+            <a class="secondary-button button-link" href="/pay.html${modeQuery ? `${modeQuery}&order=${encodeURIComponent(order.id)}` : `?order=${encodeURIComponent(order.id)}`}">${accountCommon.escapeHtml(pageStore.ordersViewLabel || "View Order")}</a>
           </div>
         </article>
       `).join("")}
@@ -115,6 +116,10 @@ function renderOrders(orders) {
 
 async function bootstrap() {
   pageStore = (await accountCommon.request(appMode, "/api/menu")).store || {};
+  if (isAdminPreview) {
+    renderOrders([{ id: "BAK-PREVIEW", createdAt: new Date().toISOString(), itemCount: 2, status: "paid", pricing: { total: 94000 } }]);
+    return;
+  }
   const draft = accountCommon.loadDraft(draftKey, { customer: {} });
   const phone = draft?.customer?.phone;
   homeLink.href = `/index.html${modeQuery}`;
@@ -159,4 +164,10 @@ bootstrap().catch((error) => {
       <p>${accountCommon.escapeHtml(error.message)}</p>
     </section>
   `;
+});
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin || event.data?.type !== "bakeaholic:catalog-preview") return;
+  pageStore = event.data.catalog?.store || pageStore;
+  if (isAdminPreview) renderOrders([{ id: "BAK-PREVIEW", createdAt: new Date().toISOString(), itemCount: 2, status: "paid", pricing: { total: 94000 } }]);
 });

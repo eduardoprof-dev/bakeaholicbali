@@ -1,5 +1,6 @@
 const params = new URLSearchParams(window.location.search);
 const appMode = params.get("mode") === "test" ? "test" : "live";
+const isAdminPreview = params.has("admin-preview");
 const modeQuery = appMode === "test" ? "?mode=test" : "";
 const shopperStateVersion = "20260604-session-cart";
 const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
@@ -76,7 +77,7 @@ function render() {
         <h1>${accountCommon.escapeHtml(pageStore.addressesPageTitle || "Your Addresses")}</h1>
         <p class="account-page-copy">${accountCommon.escapeHtml(pageStore.addressesPageSubtitle || "Choose a default delivery address or save another one for future orders.")}</p>
       </div>
-      <button class="account-page-action" id="addAddressButton" type="button">+ Add new</button>
+      <button class="account-page-action" id="addAddressButton" type="button">${accountCommon.escapeHtml(pageStore.addressesAddLabel || "+ Add new")}</button>
     </section>
     ${hasAddresses ? `
       <section class="address-grid">
@@ -89,7 +90,7 @@ function render() {
                   <h2>${accountCommon.escapeHtml(address.label || "Saved address")}</h2>
                 </div>
               </div>
-              ${address.id === state.defaultAddressId ? '<span class="default-tag">Default</span>' : ""}
+              ${address.id === state.defaultAddressId ? `<span class="default-tag">${accountCommon.escapeHtml(pageStore.addressesDefaultLabel || "Default")}</span>` : ""}
             </div>
             <div class="address-card-body">
               <p>${accountCommon.escapeHtml(address.formattedAddress)}</p>
@@ -105,8 +106,8 @@ function render() {
       </section>
     ` : `
       <section class="empty-state-card account-empty-state">
-        <strong>No saved addresses yet.</strong>
-        <p>Add your first delivery address and we’ll remember it for next time.</p>
+        <strong>${accountCommon.escapeHtml(pageStore.addressesEmptyTitle || "No saved addresses yet.")}</strong>
+        <p>${accountCommon.escapeHtml(pageStore.addressesEmptyCopy || "Add your first delivery address and we’ll remember it for next time.")}</p>
       </section>
     `}
   `;
@@ -194,6 +195,11 @@ async function initializeLocationPicker() {
 async function bootstrap() {
   pageStore = (await accountCommon.request(appMode, "/api/menu")).store || {};
   state.draft = accountCommon.loadDraft(draftKey, { customer: {}, destination: null });
+  if (isAdminPreview) {
+    state.addresses = [];
+    render();
+    return;
+  }
   homeLink.href = `/index.html${modeQuery}`;
   cartLink.href = `/cart.html${modeQuery}`;
   accountCommon.bindAccountMenu({
@@ -238,4 +244,10 @@ bootstrap().catch((error) => {
       <p>${accountCommon.escapeHtml(error.message)}</p>
     </section>
   `;
+});
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin || event.data?.type !== "bakeaholic:catalog-preview") return;
+  pageStore = event.data.catalog?.store || pageStore;
+  if (isAdminPreview) render();
 });

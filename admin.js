@@ -47,7 +47,7 @@ const saveVouchersButton = document.getElementById("saveVouchersButton");
 const adminSectionSelect = document.getElementById("adminSectionSelect");
 const adminNavButtons = document.querySelectorAll("[data-admin-target]");
 const adminSections = document.querySelectorAll("[data-admin-section]");
-const storefrontStudioSections = new Set(["store", "promo", "story", "categories", "catalog"]);
+const storefrontStudioSections = new Set(["store", "promo", "story", "categories", "catalog", "checkout-page", "orders-page", "addresses-page", "invoice-page"]);
 const pageEditorSections = new Set(["checkout-page", "orders-page", "addresses-page", "invoice-page", "terms-page", "privacy-page"]);
 const catalogActionSections = new Set([...storefrontStudioSections, "operations-settings", ...pageEditorSections]);
 const liveTestStorageKey = "bakeaholic-admin-live-tests-20260724";
@@ -114,12 +114,35 @@ const storeFields = {
   momentCard3Label: document.getElementById("momentCard3LabelInput"),
   checkoutPageTitle: document.getElementById("checkoutPageTitleInput"),
   checkoutPageSubtitle: document.getElementById("checkoutPageSubtitleInput"),
+  checkoutCustomerTitle: document.getElementById("checkoutCustomerTitleInput"),
+  checkoutPaymentTitleText: document.getElementById("checkoutPaymentTitleTextInput"),
+  checkoutSubmitLabel: document.getElementById("checkoutSubmitLabelInput"),
+  checkoutSummaryTitle: document.getElementById("checkoutSummaryTitleInput"),
   ordersPageTitle: document.getElementById("ordersPageTitleInput"),
   ordersPageSubtitle: document.getElementById("ordersPageSubtitleInput"),
+  ordersIdHeading: document.getElementById("ordersIdHeadingInput"),
+  ordersTotalHeading: document.getElementById("ordersTotalHeadingInput"),
+  ordersStatusHeading: document.getElementById("ordersStatusHeadingInput"),
+  ordersViewLabel: document.getElementById("ordersViewLabelInput"),
+  ordersEmptyTitle: document.getElementById("ordersEmptyTitleInput"),
+  ordersEmptyCopy: document.getElementById("ordersEmptyCopyInput"),
   addressesPageTitle: document.getElementById("addressesPageTitleInput"),
   addressesPageSubtitle: document.getElementById("addressesPageSubtitleInput"),
+  addressesAddLabel: document.getElementById("addressesAddLabelInput"),
+  addressesDefaultLabel: document.getElementById("addressesDefaultLabelInput"),
+  addressesEmptyTitle: document.getElementById("addressesEmptyTitleInput"),
+  addressesEmptyCopy: document.getElementById("addressesEmptyCopyInput"),
   invoicePageLabel: document.getElementById("invoicePageLabelInput"),
   invoiceFooterNote: document.getElementById("invoiceFooterNoteInput"),
+  invoiceCustomerHeading: document.getElementById("invoiceCustomerHeadingInput"),
+  invoiceAddressHeading: document.getElementById("invoiceAddressHeadingInput"),
+  invoicePaymentHeading: document.getElementById("invoicePaymentHeadingInput"),
+  invoiceOrderHeading: document.getElementById("invoiceOrderHeadingInput"),
+  invoiceItemHeading: document.getElementById("invoiceItemHeadingInput"),
+  invoiceQuantityHeading: document.getElementById("invoiceQuantityHeadingInput"),
+  invoicePriceHeading: document.getElementById("invoicePriceHeadingInput"),
+  invoiceTotalHeading: document.getElementById("invoiceTotalHeadingInput"),
+  invoiceTotalPaidLabel: document.getElementById("invoiceTotalPaidLabelInput"),
   termsPageTitle: document.getElementById("termsPageTitleInput"),
   termsEffectiveDate: document.getElementById("termsEffectiveDateInput"),
   termsIntro: document.getElementById("termsIntroInput"),
@@ -149,12 +172,35 @@ const storeFieldDefaults = {
   momentCard3Label: "Kids favorite",
   checkoutPageTitle: "Checkout",
   checkoutPageSubtitle: "Complete your delivery and payment details.",
+  checkoutCustomerTitle: "Customer details",
+  checkoutPaymentTitleText: "Choose payment method",
+  checkoutSubmitLabel: "Continue to payment",
+  checkoutSummaryTitle: "Order summary",
   ordersPageTitle: "Your Orders",
   ordersPageSubtitle: "Track your recent purchases and open full order details any time.",
+  ordersIdHeading: "Purchase ID",
+  ordersTotalHeading: "Total price",
+  ordersStatusHeading: "Status",
+  ordersViewLabel: "View Order",
+  ordersEmptyTitle: "No orders yet.",
+  ordersEmptyCopy: "Your completed and cancelled orders will appear here.",
   addressesPageTitle: "Your Addresses",
   addressesPageSubtitle: "Choose a default delivery address or save another one for future orders.",
+  addressesAddLabel: "+ Add new",
+  addressesDefaultLabel: "Default",
+  addressesEmptyTitle: "No saved addresses yet.",
+  addressesEmptyCopy: "Add your first delivery address and we’ll remember it for next time.",
   invoicePageLabel: "Invoice / Receipt",
   invoiceFooterNote: "Use this invoice for delivery handoff and customer payment receipt.",
+  invoiceCustomerHeading: "Customer",
+  invoiceAddressHeading: "Your address",
+  invoicePaymentHeading: "Payment",
+  invoiceOrderHeading: "Order",
+  invoiceItemHeading: "Item",
+  invoiceQuantityHeading: "Qty",
+  invoicePriceHeading: "Price",
+  invoiceTotalHeading: "Total",
+  invoiceTotalPaidLabel: "Total paid",
   termsPageTitle: "Terms and Conditions",
   termsEffectiveDate: "April 21, 2026",
   termsIntro: "By placing an order with Bakeaholic Bali, you agree to these terms. Orders are subject to product availability, delivery availability, payment confirmation, and address accuracy.",
@@ -362,6 +408,7 @@ function showAdminSection(sectionName) {
   if (adminSectionSelect) {
     adminSectionSelect.value = sectionName;
   }
+  if (isStorefrontStudio) ensurePreviewPage(sectionName);
   const heading = sectionHeadings[sectionName] || sectionHeadings.dashboard;
   if (adminPageEyebrow) adminPageEyebrow.textContent = heading[0];
   if (adminPageTitle) adminPageTitle.textContent = heading[1];
@@ -404,7 +451,46 @@ function markCatalogDirty() {
 
 function refreshStorefrontPreview() {
   if (!storefrontPreviewFrame) return;
-  const url = new URL("/index.html", window.location.origin);
+  const sectionName = adminSectionSelect?.value || "store";
+  const url = new URL(previewPathForSection(sectionName), window.location.origin);
+  url.searchParams.set("admin-preview", String(Date.now()));
+  storefrontPreviewFrame.src = url.toString();
+}
+
+function previewPathForSection(sectionName) {
+  return {
+    "checkout-page": "/cart.html",
+    "orders-page": "/orders.html",
+    "addresses-page": "/addresses.html",
+    "invoice-page": "/invoice.html"
+  }[sectionName] || "/index.html";
+}
+
+function ensurePreviewPage(sectionName) {
+  if (!storefrontPreviewFrame) return;
+  const desiredPath = previewPathForSection(sectionName);
+  const pageNames = {
+    "checkout-page": "Checkout",
+    "orders-page": "Order history",
+    "addresses-page": "Your addresses",
+    "invoice-page": "Invoice"
+  };
+  const pageName = pageNames[sectionName];
+  const editorLabel = document.getElementById("previewEditorLabel");
+  const editorTitle = document.getElementById("previewEditorTitle");
+  const openLink = document.getElementById("previewOpenLink");
+  if (editorLabel) editorLabel.textContent = pageName ? "Page editor" : "Storefront editor";
+  if (editorTitle) editorTitle.textContent = pageName ? `${pageName} draft preview` : "Draft preview";
+  if (openLink) {
+    openLink.href = desiredPath;
+    openLink.textContent = `Open ${pageName || "storefront"} ↗`;
+  }
+  try {
+    if (new URL(storefrontPreviewFrame.src, window.location.origin).pathname === desiredPath) return;
+  } catch (_error) {
+    // Replace an invalid or incomplete preview URL below.
+  }
+  const url = new URL(desiredPath, window.location.origin);
   url.searchParams.set("admin-preview", String(Date.now()));
   storefrontPreviewFrame.src = url.toString();
 }
@@ -436,6 +522,56 @@ function scheduleDraftPreview() {
 }
 
 function focusStorefrontPreview(sectionName, itemIndex = 0, field = "") {
+  if (["checkout-page", "orders-page", "addresses-page", "invoice-page"].includes(sectionName) && storefrontPreviewFrame?.contentDocument) {
+    const selectors = {
+      checkoutPageTitleInput: "#checkoutPageTitle",
+      checkoutPageSubtitleInput: "#checkoutPageSubtitle",
+      checkoutCustomerTitleInput: "#checkoutCustomerTitle",
+      checkoutPaymentTitleTextInput: "#checkoutPaymentTitle",
+      checkoutSubmitLabelInput: "#submitOrderButton",
+      checkoutSummaryTitleInput: "#checkoutSummaryTitle",
+      ordersPageTitleInput: ".account-page-hero h1",
+      ordersPageSubtitleInput: ".account-page-copy",
+      ordersIdHeadingInput: ".orders-table-head span:nth-child(1)",
+      ordersTotalHeadingInput: ".orders-table-head span:nth-child(2)",
+      ordersStatusHeadingInput: ".orders-table-head span:nth-child(3)",
+      ordersViewLabelInput: ".order-row-actions a",
+      ordersEmptyTitleInput: ".account-empty-state strong",
+      ordersEmptyCopyInput: ".account-empty-state p",
+      addressesPageTitleInput: ".account-page-hero h1",
+      addressesPageSubtitleInput: ".account-page-copy",
+      addressesAddLabelInput: "#addAddressButton",
+      addressesDefaultLabelInput: ".default-tag",
+      addressesEmptyTitleInput: ".account-empty-state strong",
+      addressesEmptyCopyInput: ".account-empty-state p",
+      invoicePageLabelInput: ".invoice-title-row .eyebrow",
+      invoiceCustomerHeadingInput: ".invoice-grid > div:nth-child(1) h2",
+      invoiceAddressHeadingInput: ".invoice-grid > div:nth-child(2) h2",
+      invoicePaymentHeadingInput: ".invoice-grid > div:nth-child(3) h2",
+      invoiceOrderHeadingInput: ".invoice-grid > div:nth-child(4) h2",
+      invoiceItemHeadingInput: ".invoice-table th:nth-child(1)",
+      invoiceQuantityHeadingInput: ".invoice-table th:nth-child(2)",
+      invoicePriceHeadingInput: ".invoice-table th:nth-child(3)",
+      invoiceTotalHeadingInput: ".invoice-table th:nth-child(4)",
+      invoiceTotalPaidLabelInput: ".invoice-grand-total span",
+      invoiceFooterNoteInput: ".invoice-note"
+    };
+    const doc = storefrontPreviewFrame.contentDocument;
+    doc.querySelectorAll("[data-admin-page-highlight]").forEach((element) => {
+      element.style.outline = "";
+      element.style.outlineOffset = "";
+      element.removeAttribute("data-admin-page-highlight");
+    });
+    const selector = selectors[field];
+    const element = selector ? doc.querySelector(selector) : null;
+    if (element) {
+      element.setAttribute("data-admin-page-highlight", "true");
+      element.style.outline = "1px solid #b86f3f";
+      element.style.outlineOffset = "3px";
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    return;
+  }
   const productCard = productList?.querySelector(`[data-product-index="${itemIndex}"]`);
   storefrontPreviewFrame?.contentWindow?.postMessage({
     type: "bakeaholic:preview-focus",
