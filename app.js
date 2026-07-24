@@ -142,6 +142,7 @@ let otpResendAvailableAt = 0;
 let otpTimerId = 0;
 let volatileCartSessionId = "";
 const pendingCartAdds = new Set();
+const isAdminPreview = params.has("admin-preview");
 
 const whatsappIcon = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1328,15 +1329,13 @@ async function resetTestData() {
   await refreshCart();
 }
 
-async function bootstrap() {
-  const payload = await request("/api/menu");
+function applyCatalogPayload(payload) {
   state.store = payload.store;
   state.promo = payload.promo;
   state.brandStory = payload.brandStory;
   state.categories = payload.categories;
   state.items = payload.items;
 
-  document.title = "Bakeaholic Online Shop";
   if (storeEyebrow) {
     storeEyebrow.textContent = state.store.eyebrow;
   }
@@ -1360,6 +1359,17 @@ async function bootstrap() {
   modeBanner.hidden = appMode !== "test";
   modeBannerBody.textContent = state.store.testModeDescription;
   syncFooterLinks();
+  renderChips();
+  renderCatalog();
+  updateActiveCategoryFromScroll();
+  updateAddressChrome();
+}
+
+async function bootstrap() {
+  const payload = await request("/api/menu");
+  applyCatalogPayload(payload);
+
+  document.title = "Bakeaholic Online Shop";
   locationPicker = window.BakeaholicLocationPicker?.createLocationPicker({
     rootId: "locationModal",
     kitchen: {
@@ -1379,10 +1389,6 @@ async function bootstrap() {
   });
   syncFulfillmentUi();
   hydrateDetailsForm();
-  renderChips();
-  renderCatalog();
-  updateActiveCategoryFromScroll();
-  updateAddressChrome();
   renderOrderBanner();
   await refreshCart();
 
@@ -1393,6 +1399,12 @@ async function bootstrap() {
   }
 
 }
+
+window.addEventListener("message", (event) => {
+  if (!isAdminPreview || event.origin !== window.location.origin) return;
+  if (event.data?.type !== "bakeaholic:catalog-preview" || !event.data.catalog) return;
+  applyCatalogPayload(event.data.catalog);
+});
 
 addressButton.addEventListener("click", () => {
   openModal(locationModal);
