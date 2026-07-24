@@ -2396,7 +2396,7 @@ function defaultSecurityHeaders(cacheControl = "no-store") {
       "form-action 'self'",
       "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://maps.googleapis.com https://*.xendit.co",
       "style-src 'self' 'unsafe-inline' https://unpkg.com https://maps.googleapis.com",
-      "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://maps.googleapis.com https://maps.gstatic.com https://*.xendit.co https://api.qrserver.com",
+      "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://maps.googleapis.com https://maps.gstatic.com https://*.xendit.co https://api.qrserver.com https://biteship.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "connect-src 'self' https://nominatim.openstreetmap.org https://maps.googleapis.com https://*.xendit.co",
       "frame-src 'self' https://checkout.xendit.co https://checkout-staging.xendit.co https://*.xendit.co",

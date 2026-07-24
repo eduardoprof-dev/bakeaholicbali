@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260724-storefront-studio-v4" />
+    <link rel="stylesheet" href="styles.css?v=20260724-storefront-studio-v6" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -358,7 +358,7 @@
           <div class="admin-integration-layout">
             <article class="admin-integration-card">
               <div class="admin-provider-heading">
-                <span class="admin-provider-mark is-google" aria-hidden="true">G</span>
+                <span class="admin-provider-logo"><img src="/assets/brands/google-maps.svg" alt="" /><strong>Google Maps</strong></span>
                 <div><h3>Google Maps</h3><p>Address search, route validation and kitchen location.</p></div>
                 <span class="admin-provider-state" data-provider-status="googleMaps">Checking</span>
               </div>
@@ -373,7 +373,7 @@
 
             <article class="admin-integration-card">
               <div class="admin-provider-heading">
-                <span class="admin-provider-mark is-biteship" aria-hidden="true">B</span>
+                <span class="admin-provider-logo is-wordmark"><img src="https://biteship.com/images/biteship-logo.svg" alt="" /></span>
                 <div><h3>Biteship</h3><p>Delivery quotes, courier booking and tracking updates.</p></div>
                 <span class="admin-provider-state" data-provider-status="biteship">Checking</span>
               </div>
@@ -400,7 +400,7 @@
 
             <article class="admin-integration-card">
               <div class="admin-provider-heading">
-                <span class="admin-provider-mark is-xendit" aria-hidden="true">X</span>
+                <span class="admin-provider-logo"><img src="/assets/brands/xendit.svg" alt="" /><strong>Xendit</strong></span>
                 <div><h3>Xendit</h3><p>QRIS, virtual accounts, cards, callbacks and refunds.</p></div>
                 <span class="admin-provider-state" data-provider-status="xendit">Checking</span>
               </div>
@@ -426,7 +426,7 @@
 
             <article class="admin-integration-card admin-integration-card-wide">
               <div class="admin-provider-heading">
-                <span class="admin-provider-mark">WA</span>
+                <span class="admin-provider-logo"><img src="/assets/brands/whatsapp.svg" alt="" /><strong>WhatsApp</strong></span>
                 <div><h3>WhatsApp Business</h3><p>Authentication, customer updates and staff action messages.</p></div>
                 <span class="admin-provider-state" data-provider-status="whatsapp">Checking</span>
               </div>
@@ -490,15 +490,7 @@
                 <h3>Start here</h3>
                 <p>The Overview is the daily control room. Work from its priority queue first. Use Integrations only when credentials, provider settings or approved WhatsApp template names change.</p>
                 <div class="admin-doc-callout"><strong>Owner rule</strong><span>Never edit a secret, callback or template mapping simply to “try something.” Record the old value and reason before every change.</span></div>
-                <div class="admin-system-map" aria-label="Bakeaholic system architecture">
-                  <div><strong>Customer</strong><small>Storefront</small></div><i>→</i>
-                  <div><strong>Cloudflare</strong><small>Security + DNS</small></div><i>→</i>
-                  <div><strong>Railway</strong><small>Bakeaholic server</small></div>
-                  <span></span>
-                  <div><strong>Xendit</strong><small>Payments</small></div>
-                  <div><strong>Biteship</strong><small>Delivery</small></div>
-                  <div><strong>WhatsApp</strong><small>Messages</small></div>
-                </div>
+                <figure class="admin-doc-diagram"><img src="/assets/docs/system-architecture.svg" alt="Bakeaholic system architecture diagram" /><figcaption><a href="/assets/docs/system-architecture.svg" download>Download architecture image</a></figcaption></figure>
               </article>
 
               <article id="docs-orders" class="admin-doc-article">
@@ -516,6 +508,7 @@
                   <i>→</i>
                   <div><span>5</span><strong>Deliver</strong><small>Biteship tracking</small></div>
                 </div>
+                <figure class="admin-doc-diagram"><img src="/assets/docs/order-workflow.svg" alt="Customer order workflow diagram" /><figcaption><a href="/assets/docs/order-workflow.svg" download>Download order workflow image</a></figcaption></figure>
                 <ul>
                   <li>Do not approve delivery before payment is confirmed and the package is ready.</li>
                   <li>If the website and Xendit disagree, inspect the callback before asking the customer to act.</li>
@@ -654,6 +647,6 @@ node --test server.test.js</code></div>
       </main>
     </div>
 
-    <script src="admin.js?v=20260724-storefront-studio-v4"></script>
+    <script src="admin.js?v=20260724-storefront-studio-v6"></script>
   </body>
 </html>
