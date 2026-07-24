@@ -1646,8 +1646,7 @@ async function bootstrap() {
   state.promo = payload.promo;
   state.items = payload.items;
   state.paymentMethods = payload.paymentMethods;
-  document.getElementById("checkoutPageTitle").textContent = state.store.checkoutPageTitle || "Checkout";
-  document.getElementById("checkoutPageSubtitle").textContent = state.store.checkoutPageSubtitle || "Complete your delivery and payment details.";
+  applyCheckoutPageCopy();
 
   modeBanner.hidden = appMode !== "test";
   document.title = "Checkout | Bakeaholic Online Shop";
@@ -1805,4 +1804,25 @@ bootstrap().catch((error) => {
       </section>
     </div>
   `;
+});
+
+function applyCheckoutPageCopy() {
+  const copy = {
+    checkoutPageTitle: ["checkoutPageTitle", "Checkout"],
+    checkoutPageSubtitle: ["checkoutPageSubtitle", "Complete your delivery and payment details."],
+    checkoutCustomerTitle: ["checkoutCustomerTitle", "Customer details"],
+    checkoutPaymentTitleText: ["checkoutPaymentTitle", "Choose payment method"],
+    checkoutSubmitLabel: ["submitOrderButton", "Continue to payment"],
+    checkoutSummaryTitle: ["checkoutSummaryTitle", "Order summary"]
+  };
+  Object.entries(copy).forEach(([key, [id, fallback]]) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = state.store?.[key] || fallback;
+  });
+}
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin || event.data?.type !== "bakeaholic:catalog-preview") return;
+  state.store = event.data.catalog?.store || state.store;
+  applyCheckoutPageCopy();
 });

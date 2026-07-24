@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260724-page-editors-v11" />
+    <link rel="stylesheet" href="styles.css?v=20260724-visual-pages-v12" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -28,8 +28,8 @@
               <button class="admin-subnav-nested" type="button" data-admin-target="story">Story carousel</button>
               <span class="admin-subnav-label">Catalog</span>
               <button class="admin-subnav-nested" type="button" data-admin-target="categories">Categories</button>
-              <button class="admin-subnav-nested" type="button" data-admin-target="catalog">Products</button>
               <button type="button" data-admin-target="promo">Promo highlights</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="catalog">Products</button>
               <button type="button" data-admin-target="discounts">Discounts</button>
               <span class="admin-subnav-label">Pages</span>
               <button class="admin-subnav-nested" type="button" data-admin-target="checkout-page">Checkout</button>
@@ -333,19 +333,54 @@
 
         <section class="admin-panel" data-admin-section="checkout-page" hidden>
           <div class="admin-section-head"><div><h2>Checkout page</h2><p class="helper-text">Edit this customer page independently.</p></div><a class="secondary-link" href="/cart.html" target="_blank">Open page</a></div>
-          <div class="admin-grid"><div class="admin-field"><label for="checkoutPageTitleInput">Page title</label><input id="checkoutPageTitleInput" type="text" /></div><div class="admin-field"><label for="checkoutPageSubtitleInput">Page description</label><textarea id="checkoutPageSubtitleInput"></textarea></div></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="checkoutPageTitleInput">Page title</label><input id="checkoutPageTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="checkoutPageSubtitleInput">Page description</label><textarea id="checkoutPageSubtitleInput"></textarea></div>
+            <div class="admin-field"><label for="checkoutCustomerTitleInput">Customer details heading</label><input id="checkoutCustomerTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="checkoutPaymentTitleTextInput">Payment heading</label><input id="checkoutPaymentTitleTextInput" type="text" /></div>
+            <div class="admin-field"><label for="checkoutSubmitLabelInput">Continue button</label><input id="checkoutSubmitLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="checkoutSummaryTitleInput">Order summary heading</label><input id="checkoutSummaryTitleInput" type="text" /></div>
+          </div>
         </section>
         <section class="admin-panel" data-admin-section="orders-page" hidden>
           <div class="admin-section-head"><div><h2>Order history page</h2><p class="helper-text">Edit this customer page independently.</p></div><a class="secondary-link" href="/orders.html" target="_blank">Open page</a></div>
-          <div class="admin-grid"><div class="admin-field"><label for="ordersPageTitleInput">Page title</label><input id="ordersPageTitleInput" type="text" /></div><div class="admin-field"><label for="ordersPageSubtitleInput">Page description</label><textarea id="ordersPageSubtitleInput"></textarea></div></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="ordersPageTitleInput">Page title</label><input id="ordersPageTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersPageSubtitleInput">Page description</label><textarea id="ordersPageSubtitleInput"></textarea></div>
+            <div class="admin-field"><label for="ordersIdHeadingInput">Order column</label><input id="ordersIdHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersTotalHeadingInput">Total column</label><input id="ordersTotalHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersStatusHeadingInput">Status column</label><input id="ordersStatusHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersViewLabelInput">View order button</label><input id="ordersViewLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersEmptyTitleInput">Empty-state title</label><input id="ordersEmptyTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersEmptyCopyInput">Empty-state description</label><textarea id="ordersEmptyCopyInput"></textarea></div>
+          </div>
         </section>
         <section class="admin-panel" data-admin-section="addresses-page" hidden>
           <div class="admin-section-head"><div><h2>Your addresses page</h2><p class="helper-text">Edit this customer page independently.</p></div><a class="secondary-link" href="/addresses.html" target="_blank">Open page</a></div>
-          <div class="admin-grid"><div class="admin-field"><label for="addressesPageTitleInput">Page title</label><input id="addressesPageTitleInput" type="text" /></div><div class="admin-field"><label for="addressesPageSubtitleInput">Page description</label><textarea id="addressesPageSubtitleInput"></textarea></div></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="addressesPageTitleInput">Page title</label><input id="addressesPageTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="addressesPageSubtitleInput">Page description</label><textarea id="addressesPageSubtitleInput"></textarea></div>
+            <div class="admin-field"><label for="addressesAddLabelInput">Add address button</label><input id="addressesAddLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="addressesDefaultLabelInput">Default badge</label><input id="addressesDefaultLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="addressesEmptyTitleInput">Empty-state title</label><input id="addressesEmptyTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="addressesEmptyCopyInput">Empty-state description</label><textarea id="addressesEmptyCopyInput"></textarea></div>
+          </div>
         </section>
         <section class="admin-panel" data-admin-section="invoice-page" hidden>
           <div class="admin-section-head"><div><h2>Invoice page</h2><p class="helper-text">Edit the reusable wording shown on every invoice.</p></div></div>
-          <div class="admin-grid"><div class="admin-field"><label for="invoicePageLabelInput">Document label</label><input id="invoicePageLabelInput" type="text" /></div><div class="admin-field"><label for="invoiceFooterNoteInput">Footer note</label><textarea id="invoiceFooterNoteInput"></textarea></div></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="invoicePageLabelInput">Document label</label><input id="invoicePageLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceCustomerHeadingInput">Customer heading</label><input id="invoiceCustomerHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceAddressHeadingInput">Address heading</label><input id="invoiceAddressHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoicePaymentHeadingInput">Payment heading</label><input id="invoicePaymentHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceOrderHeadingInput">Order heading</label><input id="invoiceOrderHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceItemHeadingInput">Item column</label><input id="invoiceItemHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceQuantityHeadingInput">Quantity column</label><input id="invoiceQuantityHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoicePriceHeadingInput">Price column</label><input id="invoicePriceHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceTotalHeadingInput">Total column</label><input id="invoiceTotalHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceTotalPaidLabelInput">Grand-total label</label><input id="invoiceTotalPaidLabelInput" type="text" /></div>
+            <div class="admin-field admin-grid-wide"><label for="invoiceFooterNoteInput">Footer note</label><textarea id="invoiceFooterNoteInput"></textarea></div>
+          </div>
         </section>
         <section class="admin-panel" data-admin-section="terms-page" hidden>
           <div class="admin-section-head"><div><h2>Terms and Conditions</h2><p class="helper-text">One policy point per line. Changes publish to the legal page without exposing HTML.</p></div><a class="secondary-link" href="/terms.html" target="_blank">Open page</a></div>
@@ -687,8 +722,8 @@ node --test server.test.js</code></div>
         <aside id="storefrontPreviewPanel" class="admin-preview-panel" hidden>
           <div class="admin-preview-toolbar">
             <div>
-              <span class="admin-card-kicker">Storefront editor</span>
-              <strong>Draft preview</strong>
+              <span class="admin-card-kicker" id="previewEditorLabel">Storefront editor</span>
+              <strong id="previewEditorTitle">Draft preview</strong>
             </div>
             <div class="admin-preview-devices" aria-label="Preview size">
               <button class="is-active" type="button" data-preview-device="mobile" aria-label="Mobile preview">Mobile</button>
@@ -704,12 +739,12 @@ node --test server.test.js</code></div>
           </div>
           <div class="admin-preview-footer">
             <button id="refreshStorefrontPreview" class="admin-text-button" type="button">Refresh preview</button>
-            <a href="/index.html" target="_blank" rel="noreferrer">Open storefront ↗</a>
+            <a id="previewOpenLink" href="/index.html" target="_blank" rel="noreferrer">Open storefront ↗</a>
           </div>
         </aside>
       </main>
     </div>
 
-    <script src="admin.js?v=20260724-page-editors-v11"></script>
+    <script src="admin.js?v=20260724-visual-pages-v12"></script>
   </body>
 </html>

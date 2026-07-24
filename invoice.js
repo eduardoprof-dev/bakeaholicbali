@@ -1,4 +1,5 @@
 const params = new URLSearchParams(window.location.search);
+const isAdminPreview = params.has("admin-preview");
 const ref = params.get("ref") || "";
 let appMode = params.get("mode") === "test" ? "test" : "live";
 let orderId = params.get("order") || "";
@@ -145,23 +146,23 @@ function renderDocument(payload) {
 
       <section class="invoice-grid">
         <div>
-          <h2>Customer</h2>
+          <h2>${escapeHtml(pageStore.invoiceCustomerHeading || "Customer")}</h2>
           <p><strong>${escapeHtml(order.customer?.name || "Customer")}</strong></p>
           <p>${escapeHtml(order.customer?.phone || "")}</p>
           <p>${escapeHtml(order.customer?.email || "")}</p>
         </div>
         <div>
-          <h2>Your address</h2>
+          <h2>${escapeHtml(pageStore.invoiceAddressHeading || "Your address")}</h2>
           <p>${escapeHtml(order.fulfillment?.address || order.customer?.address || "-")}</p>
           <p>${escapeHtml(order.fulfillment?.deliveryNotes || "")}</p>
         </div>
         <div>
-          <h2>Payment</h2>
+          <h2>${escapeHtml(pageStore.invoicePaymentHeading || "Payment")}</h2>
           <p>${escapeHtml(paymentLabel(order))}</p>
           <p>Paid at: ${order.paidAt ? escapeHtml(formatDate(order.paidAt)) : "-"}</p>
         </div>
         <div>
-          <h2>Order</h2>
+          <h2>${escapeHtml(pageStore.invoiceOrderHeading || "Order")}</h2>
           <p>Created: ${escapeHtml(formatDate(order.createdAt))}</p>
           <p>Items: ${order.itemCount || 0}</p>
         </div>
@@ -172,10 +173,10 @@ function renderDocument(payload) {
       <table class="invoice-table">
         <thead>
           <tr>
-            <th>Item</th>
-            <th>Qty</th>
-            <th>Price</th>
-            <th>Total</th>
+            <th>${escapeHtml(pageStore.invoiceItemHeading || "Item")}</th>
+            <th>${escapeHtml(pageStore.invoiceQuantityHeading || "Qty")}</th>
+            <th>${escapeHtml(pageStore.invoicePriceHeading || "Price")}</th>
+            <th>${escapeHtml(pageStore.invoiceTotalHeading || "Total")}</th>
           </tr>
         </thead>
         <tbody>${lineItemRows(order)}</tbody>
@@ -185,11 +186,11 @@ function renderDocument(payload) {
         <div><span>Subtotal</span><strong>${formatRupiah.format(order.pricing?.subtotal || 0)}</strong></div>
         <div><span>Delivery fee</span><strong>${formatRupiah.format(order.pricing?.deliveryFee || 0)}</strong></div>
         <div><span>Tax</span><strong>${formatRupiah.format(order.pricing?.tax || 0)}</strong></div>
-        <div class="invoice-grand-total"><span>Total paid</span><strong>${formatRupiah.format(order.pricing?.total || 0)}</strong></div>
+        <div class="invoice-grand-total"><span>${escapeHtml(pageStore.invoiceTotalPaidLabel || "Total paid")}</span><strong>${formatRupiah.format(order.pricing?.total || 0)}</strong></div>
       </section>
 
       <footer class="invoice-footer">
-        <p>${escapeHtml(pageStore.invoiceFooterNote || "Use this invoice for delivery handoff and customer payment receipt.")}</p>
+        <p class="invoice-note">${escapeHtml(pageStore.invoiceFooterNote || "Use this invoice for delivery handoff and customer payment receipt.")}</p>
       </footer>
     </section>
   `;
@@ -203,8 +204,24 @@ function renderDocument(payload) {
   printButton?.addEventListener("click", () => window.print());
 }
 
+const previewDocument = {
+  store: { name: "Bakeaholic Bali", perkTitle: "WhatsApp +62 815-5700-627" },
+  order: {
+    id: "BAK-PREVIEW",
+    status: "paid",
+    createdAt: new Date().toISOString(),
+    paidAt: new Date().toISOString(),
+    itemCount: 1,
+    customer: { name: "Customer name", phone: "+62 812 3456 7890", email: "customer@example.com" },
+    fulfillment: { address: "Customer delivery address, Bali", deliveryNotes: "" },
+    payment: { method: "QRIS" },
+    lineItems: [{ itemId: "preview-product", quantity: 1, item: { name: "Bakeaholic product", price: 75000 }, lineTotal: 75000 }],
+    pricing: { subtotal: 75000, deliveryFee: 11000, tax: 8600, total: 94600 }
+  }
+};
+
 Promise.all([
-  requestDocument(),
+  isAdminPreview ? Promise.resolve(previewDocument) : requestDocument(),
   fetch("/api/menu", { headers: { "X-App-Mode": appMode } }).then((response) => response.json()).catch(() => ({}))
 ])
   .then(([documentPayload, menuPayload]) => {
@@ -219,3 +236,9 @@ Promise.all([
       </section>
     `;
   });
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin || event.data?.type !== "bakeaholic:catalog-preview") return;
+  pageStore = event.data.catalog?.store || pageStore;
+  if (isAdminPreview) renderDocument(previewDocument);
+});
