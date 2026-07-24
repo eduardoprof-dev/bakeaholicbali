@@ -33,6 +33,7 @@ const state = {
   locationPicker: null,
   publicConfig: null
 };
+let pageStore = {};
 
 function saveDraft() {
   localStorage.setItem(draftKey, JSON.stringify(state.draft));
@@ -72,8 +73,8 @@ function render() {
   addressesApp.innerHTML = `
     <section class="account-page-hero">
       <div>
-        <h1>Your Addresses</h1>
-        <p class="account-page-copy">Choose a default delivery address or save another one for future orders.</p>
+        <h1>${accountCommon.escapeHtml(pageStore.addressesPageTitle || "Your Addresses")}</h1>
+        <p class="account-page-copy">${accountCommon.escapeHtml(pageStore.addressesPageSubtitle || "Choose a default delivery address or save another one for future orders.")}</p>
       </div>
       <button class="account-page-action" id="addAddressButton" type="button">+ Add new</button>
     </section>
@@ -191,6 +192,7 @@ async function initializeLocationPicker() {
 }
 
 async function bootstrap() {
+  pageStore = (await accountCommon.request(appMode, "/api/menu")).store || {};
   state.draft = accountCommon.loadDraft(draftKey, { customer: {}, destination: null });
   homeLink.href = `/index.html${modeQuery}`;
   cartLink.href = `/cart.html${modeQuery}`;

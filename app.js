@@ -473,10 +473,12 @@ function syncFooterLinks() {
 
   if (footerTermsLink) {
     footerTermsLink.href = state.store?.termsUrl || "#terms";
+    footerTermsLink.textContent = state.store?.termsLabel || "Terms and Conditions";
   }
 
   if (footerPrivacyLink) {
     footerPrivacyLink.href = state.store?.privacyUrl || "#privacy";
+    footerPrivacyLink.textContent = state.store?.privacyLabel || "Privacy Policy";
   }
 }
 
@@ -1335,6 +1337,12 @@ async function resetTestData() {
 }
 
 function configurableHeaderIcon(type, variant = "") {
+  const aliases = {
+    search: { "search-plus": "circle-search", "search-lines": "scan-search", "search-location": "minimal-search", "search-heart": "circle-search", "search-star": "bold-search" },
+    cart: { "cart-plus": "cart", tote: "bag", "receipt-order": "box", "gift-order": "basket", "store-order": "trolley" },
+    login: { "secure-account": "account-badge", avatar: "person-circle", members: "profile-card", "spark-account": "account-badge", "home-account": "minimal-person" }
+  };
+  variant = aliases[type]?.[variant] || variant;
   const icons = {
     search: {
       magnifier: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg>',
@@ -1391,6 +1399,18 @@ function applyCatalogPayload(payload) {
   if (footerTagline) footerTagline.textContent = state.store.footerTagline || "Bali's original packaged treats and wholesome snacks.";
   if (searchInput) searchInput.placeholder = state.store.searchPlaceholder || "Search products...";
   applyHeaderIcons();
+  const cartLink = document.getElementById("cartLink");
+  const loginButton = document.getElementById("loginButton");
+  if (cartLink) {
+    cartLink.setAttribute("aria-label", state.store.cartButtonLabel || "Open cart");
+    cartLink.title = state.store.cartButtonLabel || "Open cart";
+  }
+  if (loginButton) {
+    loginButton.setAttribute("aria-label", state.store.loginButtonLabel || "Login or open account");
+    loginButton.title = state.store.loginButtonLabel || "Login or open account";
+  }
+  const footerContactHeading = document.querySelector(".footer-contact > strong");
+  if (footerContactHeading) footerContactHeading.textContent = state.store.footerContactLabel || "CONTACT US";
   if (momentGuideKicker) momentGuideKicker.textContent = state.store.momentGuideKicker || "Shop by Category";
   if (momentGuideTitle) momentGuideTitle.textContent = state.store.momentGuideTitle || "Pick the snack for what you need today.";
   ["Sweet craving", "Coffee break", "Morning pantry", "Kids favorite"].forEach((fallback, index) => {
@@ -1490,6 +1510,11 @@ window.addEventListener("message", (event) => {
     storeLogoPathInput: ".brand-logo",
     footerLogoPathInput: ".footer-logo",
     footerTaglineInput: ".footer-tagline",
+    footerContactLabelInput: ".footer-contact > strong",
+    termsLabelInput: "#footerTermsLink",
+    privacyLabelInput: "#footerPrivacyLink",
+    cartButtonLabelInput: "#cartLink",
+    loginButtonLabelInput: "#loginButton",
     searchPlaceholderInput: "#searchInput",
     searchIconStyleInput: ".search-icon",
     cartIconStyleInput: "#cartLink",

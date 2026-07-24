@@ -1516,6 +1516,8 @@ body::before {
 [data-icon-style="soft"] { border-radius:10px; background:rgba(107,66,38,.08); }
 [data-icon-style="bold"] svg { stroke-width:2.7px; }
 .header-icon-link svg.is-bold,.search-icon svg.is-bold { stroke-width:2.8px; }
+.page-header-copy { display:grid; gap:2px; text-align:center; }
+.page-header-copy p { margin:0; color:var(--muted); font-size:.72rem; }
 .admin-doc-diagram { margin:24px 0 0; }
 .admin-doc-diagram img { display:block; width:100%; border:1px solid var(--line); border-radius:16px; background:#fff; }
 .admin-doc-diagram figcaption { margin-top:8px; text-align:right; }

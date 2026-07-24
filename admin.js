@@ -48,12 +48,13 @@ const adminSectionSelect = document.getElementById("adminSectionSelect");
 const adminNavButtons = document.querySelectorAll("[data-admin-target]");
 const adminSections = document.querySelectorAll("[data-admin-section]");
 const storefrontStudioSections = new Set(["store", "promo", "story", "categories", "catalog"]);
-const catalogActionSections = new Set([...storefrontStudioSections, "operations-settings"]);
+const catalogActionSections = new Set([...storefrontStudioSections, "operations-settings", "pages"]);
 const liveTestStorageKey = "bakeaholic-admin-live-tests-20260724";
 const sectionHeadings = {
   dashboard: ["Bakeaholic Operations", "Good decisions start here."],
   store: ["Storefront", "Business settings"],
   "operations-settings": ["Operations", "Checkout and business rules"],
+  pages: ["Storefront", "Customer pages"],
   promo: ["Storefront", "Promo spotlight"],
   orders: ["Operations", "Orders and fulfilment"],
   discounts: ["Commerce", "Discount codes"],
@@ -72,6 +73,9 @@ const storeFields = {
   perkLabel: document.getElementById("perkLabelInput"),
   footerLogoPath: document.getElementById("footerLogoPathInput"),
   footerTagline: document.getElementById("footerTaglineInput"),
+  footerContactLabel: document.getElementById("footerContactLabelInput"),
+  termsLabel: document.getElementById("termsLabelInput"),
+  privacyLabel: document.getElementById("privacyLabelInput"),
   instagramUrl: document.getElementById("instagramUrlInput"),
   termsUrl: document.getElementById("termsUrlInput"),
   privacyUrl: document.getElementById("privacyUrlInput"),
@@ -93,37 +97,60 @@ const storeFields = {
   searchPlaceholder: document.getElementById("searchPlaceholderInput"),
   searchIconStyle: document.getElementById("searchIconStyleInput"),
   cartIconStyle: document.getElementById("cartIconStyleInput"),
+  cartButtonLabel: document.getElementById("cartButtonLabelInput"),
   loginIconStyle: document.getElementById("loginIconStyleInput"),
+  loginButtonLabel: document.getElementById("loginButtonLabelInput"),
   momentGuideKicker: document.getElementById("momentGuideKickerInput"),
   momentGuideTitle: document.getElementById("momentGuideTitleInput"),
   momentCard0Label: document.getElementById("momentCard0LabelInput"),
   momentCard1Label: document.getElementById("momentCard1LabelInput"),
   momentCard2Label: document.getElementById("momentCard2LabelInput"),
-  momentCard3Label: document.getElementById("momentCard3LabelInput")
+  momentCard3Label: document.getElementById("momentCard3LabelInput"),
+  checkoutPageTitle: document.getElementById("checkoutPageTitleInput"),
+  checkoutPageSubtitle: document.getElementById("checkoutPageSubtitleInput"),
+  ordersPageTitle: document.getElementById("ordersPageTitleInput"),
+  ordersPageSubtitle: document.getElementById("ordersPageSubtitleInput"),
+  addressesPageTitle: document.getElementById("addressesPageTitleInput"),
+  addressesPageSubtitle: document.getElementById("addressesPageSubtitleInput"),
+  invoicePageLabel: document.getElementById("invoicePageLabelInput"),
+  invoiceFooterNote: document.getElementById("invoiceFooterNoteInput")
 };
 const numericStoreFields = new Set(["deliveryFee", "taxRate", "kitchenLat", "kitchenLng"]);
 const storeFieldDefaults = {
   footerTagline: "Bali's original packaged treats and wholesome snacks.",
+  footerContactLabel: "CONTACT US",
+  termsLabel: "Terms and Conditions",
+  privacyLabel: "Privacy Policy",
   searchPlaceholder: "Search products...",
   searchIconStyle: "magnifier",
   cartIconStyle: "cart",
+  cartButtonLabel: "Open cart",
   loginIconStyle: "person",
+  loginButtonLabel: "Login or open account",
   momentGuideKicker: "Shop by Category",
   momentGuideTitle: "Pick the snack for what you need today.",
   momentCard0Label: "Sweet craving",
   momentCard1Label: "Coffee break",
   momentCard2Label: "Morning pantry",
-  momentCard3Label: "Kids favorite"
+  momentCard3Label: "Kids favorite",
+  checkoutPageTitle: "Checkout",
+  checkoutPageSubtitle: "Complete your delivery and payment details.",
+  ordersPageTitle: "Your Orders",
+  ordersPageSubtitle: "Track your recent purchases and open full order details any time.",
+  addressesPageTitle: "Your Addresses",
+  addressesPageSubtitle: "Choose a default delivery address or save another one for future orders.",
+  invoicePageLabel: "Invoice / Receipt",
+  invoiceFooterNote: "Use this invoice for delivery handoff and customer payment receipt."
 };
 const operationsSettingsGrid = document.getElementById("operationsSettingsGrid");
 document.querySelectorAll("[data-operation-field]").forEach((field) => operationsSettingsGrid?.appendChild(field));
 const headerSettingsGrid = document.getElementById("headerSettingsGrid");
-["storeName", "storeLogoPathInput", "searchPlaceholderInput", "searchIconStyleInput", "cartIconStyleInput", "loginIconStyleInput"].forEach((id) => {
+["storeName", "storeLogoPathInput", "searchPlaceholderInput", "searchIconStyleInput", "cartIconStyleInput", "cartButtonLabelInput", "loginIconStyleInput", "loginButtonLabelInput"].forEach((id) => {
   const field = document.getElementById(id)?.closest(".admin-field");
   if (field) headerSettingsGrid?.appendChild(field);
 });
 const footerSettingsGrid = document.getElementById("footerSettingsGrid");
-["footerLogoPathInput", "footerTaglineInput", "orderWhatsapp", "instagramUrlInput", "termsUrlInput", "privacyUrlInput"].forEach((id) => {
+["footerLogoPathInput", "footerTaglineInput", "footerContactLabelInput", "orderWhatsapp", "instagramUrlInput", "termsUrlInput", "termsLabelInput", "privacyUrlInput", "privacyLabelInput"].forEach((id) => {
   const field = document.getElementById(id)?.closest(".admin-field");
   if (field) footerSettingsGrid?.appendChild(field);
 });

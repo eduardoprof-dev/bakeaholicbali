@@ -87,6 +87,8 @@ const footerWhatsappLink = document.getElementById("footerWhatsappLink");
 const footerInstagramLink = document.getElementById("footerInstagramLink");
 const footerTermsLink = document.getElementById("footerTermsLink");
 const footerPrivacyLink = document.getElementById("footerPrivacyLink");
+const footerLogo = document.querySelector(".footer-logo");
+const footerTagline = document.querySelector(".footer-tagline");
 const submitOrderButton = document.getElementById("submitOrderButton");
 const modalScrim = document.getElementById("modalScrim");
 const paymentModal = document.getElementById("paymentModal");
@@ -1096,11 +1098,17 @@ function syncFooterLinks() {
 
   if (footerTermsLink) {
     footerTermsLink.href = state.store?.termsUrl || "#terms";
+    footerTermsLink.textContent = state.store?.termsLabel || "Terms and Conditions";
   }
 
   if (footerPrivacyLink) {
     footerPrivacyLink.href = state.store?.privacyUrl || "#privacy";
+    footerPrivacyLink.textContent = state.store?.privacyLabel || "Privacy Policy";
   }
+  const contactHeading = document.querySelector(".footer-contact > strong");
+  if (contactHeading) contactHeading.textContent = state.store?.footerContactLabel || "CONTACT US";
+  if (footerLogo) footerLogo.src = state.store?.footerLogoPath || state.store?.logoPath || "/assets/bakeaholic-logo.jpg";
+  if (footerTagline) footerTagline.textContent = state.store?.footerTagline || "Bali's original packaged treats and wholesome snacks.";
 }
 
 function syncFulfillmentUi() {
@@ -1638,6 +1646,8 @@ async function bootstrap() {
   state.promo = payload.promo;
   state.items = payload.items;
   state.paymentMethods = payload.paymentMethods;
+  document.getElementById("checkoutPageTitle").textContent = state.store.checkoutPageTitle || "Checkout";
+  document.getElementById("checkoutPageSubtitle").textContent = state.store.checkoutPageSubtitle || "Complete your delivery and payment details.";
 
   modeBanner.hidden = appMode !== "test";
   document.title = "Checkout | Bakeaholic Online Shop";
