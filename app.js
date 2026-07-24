@@ -1413,13 +1413,44 @@ window.addEventListener("message", (event) => {
 window.addEventListener("message", (event) => {
   if (!isAdminPreview || event.origin !== window.location.origin || event.data?.type !== "bakeaholic:preview-focus") return;
   document.querySelectorAll(".admin-preview-highlight").forEach((element) => element.classList.remove("admin-preview-highlight"));
-  const selectors = { store: ".app-header", promo: ".promo-banner", story: ".brand-story-card", categories: "#catalog", catalog: "#catalog", discounts: ".app-header" };
-  const target = document.querySelector(selectors[event.data.section] || ".brand-story-card");
+  const { section, field = "" } = event.data;
   if (event.data.section === "story") {
     stopBrandStoryAutoplay();
     brandStorySlideIndex = Number(event.data.itemIndex || 0);
     updateBrandStorySlide();
   }
+  const activeStory = `.brand-story-slide:nth-child(${Number(event.data.itemIndex || 0) + 1})`;
+  const pointIndex = Number(String(field).split("-").at(-1) || 0) + 1;
+  const fieldSelectors = {
+    storeName: ".brand-logo",
+    orderWhatsapp: "#footerWhatsappLink",
+    storeEyebrowInput: "#storeEyebrow",
+    instagramUrlInput: "#footerInstagramLink",
+    termsUrlInput: "#footerTermsLink",
+    privacyUrlInput: "#footerPrivacyLink",
+    addressLabelInput: "#addressTitle",
+    defaultAddressInput: "#addressText",
+    kitchenAddressInput: "#addressText",
+    promoKickerInput: "#promoKicker",
+    promoButtonLabel: "#promoAddButton",
+    promoItemId: "#promoCard",
+    kicker: `${activeStory} .feature-kicker`,
+    title: `${activeStory} h1`,
+    body: `${activeStory} .brand-story-copy > p:nth-of-type(2)`,
+    secondaryBody: `${activeStory} .brand-story-copy > p:nth-of-type(3)`,
+    imagePath: `${activeStory} .brand-story-image`,
+    imageFit: `${activeStory} .brand-story-image`,
+    imagePosition: `${activeStory} .brand-story-image`
+  };
+  if (field.startsWith("point-label-") || field.startsWith("point-icon-")) {
+    fieldSelectors[field] = `${activeStory} .brand-story-points span:nth-child(${pointIndex})`;
+  }
+  const sectionSelectors = { store: ".app-header", promo: "#promoCard", story: activeStory, categories: ".moment-guide", catalog: "#catalog", discounts: ".app-header" };
+  const fieldSelector = fieldSelectors[field];
+  let target = fieldSelector ? document.querySelector(fieldSelector) : null;
+  if (!target && section === "catalog") target = document.querySelectorAll(".product-card")[Number(event.data.itemIndex || 0)];
+  if (!target && section === "categories") target = document.querySelectorAll(".moment-card")[Number(event.data.itemIndex || 0)];
+  if (!target) target = document.querySelector(sectionSelectors[section] || ".brand-story-card");
   target?.classList.add("admin-preview-highlight");
   target?.scrollIntoView({ behavior: "smooth", block: "center" });
 });

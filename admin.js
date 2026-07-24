@@ -344,12 +344,32 @@ function scheduleDraftPreview() {
   draftPreviewTimer = window.setTimeout(sendDraftPreview, 220);
 }
 
-function focusStorefrontPreview(sectionName, itemIndex = 0) {
+function focusStorefrontPreview(sectionName, itemIndex = 0, field = "") {
   storefrontPreviewFrame?.contentWindow?.postMessage({
     type: "bakeaholic:preview-focus",
     section: sectionName,
-    itemIndex
+    itemIndex,
+    field
   }, window.location.origin);
+}
+
+function previewFocusDetails(target) {
+  const section = target?.closest?.("[data-admin-section]")?.dataset.adminSection || adminSectionSelect?.value || "store";
+  const storyCard = target?.closest?.("[data-story-slide-index]");
+  const productCard = target?.closest?.("[data-product-index]");
+  const categoryCard = target?.closest?.("[data-category-index]");
+  const field = target?.dataset?.storyField
+    || (target?.dataset?.storyPointLabel !== undefined ? `point-label-${target.dataset.storyPointLabel}` : "")
+    || (target?.dataset?.storyPointIcon !== undefined ? `point-icon-${target.dataset.storyPointIcon}` : "")
+    || target?.dataset?.productField
+    || target?.dataset?.categoryField
+    || target?.id
+    || "";
+  return {
+    section,
+    itemIndex: Number(storyCard?.dataset.storySlideIndex ?? productCard?.dataset.productIndex ?? categoryCard?.dataset.categoryIndex ?? 0),
+    field
+  };
 }
 
 function dashboardAttentionItems() {
@@ -892,11 +912,18 @@ function normalizeBrandStorySlides(story) {
 }
 
 function storyIconPickerMarkup(selectedIcon, pointIndex) {
-  return `<input type="hidden" data-story-point-icon="${pointIndex}" value="${selectedIcon}" /><div class="admin-icon-picker" role="group" aria-label="Choose icon">${storyIconOptions.map((option) => `<button type="button" class="${option.value === selectedIcon ? "is-selected" : ""}" data-story-icon-choice="${option.value}" title="${option.label}"><span>${storyIconGlyph(option.value)}</span><small>${option.label}</small></button>`).join("")}</div>`;
+  const selected = storyIconOptions.find((option) => option.value === selectedIcon) || storyIconOptions[0];
+  return `<input type="hidden" data-story-point-icon="${pointIndex}" value="${selected.value}" />
+    <details class="admin-icon-dropdown">
+      <summary><span class="admin-icon-glyph" data-selected-icon>${storyIconGlyph(selected.value)}</span><strong data-selected-label>${selected.label}</strong><span class="admin-icon-chevron">⌄</span></summary>
+      <div class="admin-icon-menu" role="listbox" aria-label="Choose icon">
+        ${storyIconOptions.map((option) => `<button type="button" class="${option.value === selected.value ? "is-selected" : ""}" data-story-icon-choice="${option.value}" role="option" aria-selected="${option.value === selected.value}"><span>${storyIconGlyph(option.value)}</span><small>${option.label}</small></button>`).join("")}
+      </div>
+    </details>`;
 }
 
 function storyIconGlyph(value) {
-  return ({ oats:"◉", coconut:"◒", cashew:"◜", gift:"◇", leaf:"❧", batch:"✦", spoon:"◖", pack:"▣", cart:"⌑", cup:"♨", boxes:"▦", heart:"♥", star:"★", home:"⌂", truck:"➜", sparkle:"✧" })[value] || "•";
+  return ({ oats:"🌾", coconut:"🥥", cashew:"🥜", gift:"🎁", leaf:"🌿", batch:"🧁", spoon:"🥄", pack:"📦", cart:"🛒", cup:"☕", boxes:"🏪", heart:"❤️", star:"⭐", home:"🏠", truck:"🚚", sparkle:"✨" })[value] || "•";
 }
 
 function storySlideMarkup(slide, index) {
@@ -986,11 +1013,19 @@ function renderBrandStory() {
   const slides = normalizeBrandStorySlides(story);
   brandStorySlideList.innerHTML = slides.map((slide, index) => storySlideMarkup(slide, index)).join("");
   brandStorySlideList.querySelectorAll("[data-story-slide-index]").forEach((card) => {
-    card.addEventListener("focusin", () => focusStorefrontPreview("story", Number(card.dataset.storySlideIndex)));
     card.querySelectorAll("[data-story-icon-choice]").forEach((button) => button.addEventListener("click", () => {
-      const picker = button.closest(".admin-icon-picker");
-      picker.querySelectorAll("button").forEach((item) => item.classList.toggle("is-selected", item === button));
-      picker.previousElementSibling.value = button.dataset.storyIconChoice;
+      const dropdown = button.closest(".admin-icon-dropdown");
+      const input = dropdown.previousElementSibling;
+      dropdown.querySelectorAll("button").forEach((item) => {
+        const selected = item === button;
+        item.classList.toggle("is-selected", selected);
+        item.setAttribute("aria-selected", String(selected));
+      });
+      input.value = button.dataset.storyIconChoice;
+      dropdown.querySelector("[data-selected-icon]").textContent = storyIconGlyph(button.dataset.storyIconChoice);
+      dropdown.querySelector("[data-selected-label]").textContent = storyIconOptions.find((option) => option.value === button.dataset.storyIconChoice)?.label || "";
+      dropdown.open = false;
+      focusStorefrontPreview("story", Number(card.dataset.storySlideIndex), `point-icon-${input.dataset.storyPointIcon}`);
       markCatalogDirty();
     }));
   });
@@ -1751,6 +1786,11 @@ adminMain?.addEventListener("input", (event) => {
   if (section && catalogActionSections.has(section.dataset.adminSection)) {
     markCatalogDirty();
   }
+});
+adminMain?.addEventListener("focusin", (event) => {
+  if (!event.target.matches("input, textarea, select, button, summary")) return;
+  const details = previewFocusDetails(event.target);
+  focusStorefrontPreview(details.section, details.itemIndex, details.field);
 });
 adminMain?.addEventListener("change", (event) => {
   const section = event.target.closest("[data-admin-section]");
