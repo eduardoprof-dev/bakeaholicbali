@@ -994,6 +994,83 @@ body::before {
   text-transform: none;
 }
 
+.admin-report-actions {
+  align-items: end;
+}
+
+.admin-report-export-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-report-export-buttons .admin-button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .admin-report-actions,
+  .admin-report-export-buttons {
+    width: 100%;
+  }
+
+  .admin-report-period {
+    width: 100%;
+  }
+
+  .admin-report-period select {
+    width: 100%;
+  }
+
+  .admin-report-export-buttons {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  body.is-printing-report {
+    background: #fff !important;
+  }
+
+  body.is-printing-report > * {
+    display: none !important;
+  }
+
+  body.is-printing-report .admin-shell {
+    display: block !important;
+  }
+
+  body.is-printing-report .admin-sidebar,
+  body.is-printing-report .admin-topbar,
+  body.is-printing-report .admin-report-actions,
+  body.is-printing-report .admin-status,
+  body.is-printing-report [data-admin-section]:not([data-admin-section="reports"]) {
+    display: none !important;
+  }
+
+  body.is-printing-report .admin-main,
+  body.is-printing-report [data-admin-section="reports"] {
+    display: block !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.is-printing-report .admin-report-card,
+  body.is-printing-report .admin-report-kpis article {
+    break-inside: avoid;
+    box-shadow: none;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+}
+
 .admin-report-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
