@@ -75,15 +75,15 @@ const storeFields = {
   name: document.getElementById("storeName"),
   logoPath: document.getElementById("storeLogoPathInput"),
   logoScale: document.getElementById("storeLogoScaleInput"),
-  logoPositionX: document.getElementById("storeLogoPositionXInput"),
-  logoPositionY: document.getElementById("storeLogoPositionYInput"),
+  logoOffsetX: document.getElementById("storeLogoPositionXInput"),
+  logoOffsetY: document.getElementById("storeLogoPositionYInput"),
   orderWhatsapp: document.getElementById("orderWhatsapp"),
   eyebrow: document.getElementById("storeEyebrowInput"),
   perkLabel: document.getElementById("perkLabelInput"),
   footerLogoPath: document.getElementById("footerLogoPathInput"),
   footerLogoScale: document.getElementById("footerLogoScaleInput"),
-  footerLogoPositionX: document.getElementById("footerLogoPositionXInput"),
-  footerLogoPositionY: document.getElementById("footerLogoPositionYInput"),
+  footerLogoOffsetX: document.getElementById("footerLogoPositionXInput"),
+  footerLogoOffsetY: document.getElementById("footerLogoPositionYInput"),
   footerTagline: document.getElementById("footerTaglineInput"),
   footerContactLabel: document.getElementById("footerContactLabelInput"),
   termsLabel: document.getElementById("termsLabelInput"),
@@ -158,14 +158,14 @@ const storeFields = {
   privacyIntro: document.getElementById("privacyIntroInput"),
   privacyPoints: document.getElementById("privacyPointsInput")
 };
-const numericStoreFields = new Set(["deliveryFee", "taxRate", "kitchenLat", "kitchenLng", "logoScale", "logoPositionX", "logoPositionY", "footerLogoScale", "footerLogoPositionX", "footerLogoPositionY"]);
+const numericStoreFields = new Set(["deliveryFee", "taxRate", "kitchenLat", "kitchenLng", "logoScale", "logoOffsetX", "logoOffsetY", "footerLogoScale", "footerLogoOffsetX", "footerLogoOffsetY"]);
 const storeFieldDefaults = {
   logoScale: 100,
-  logoPositionX: 50,
-  logoPositionY: 50,
+  logoOffsetX: 0,
+  logoOffsetY: 0,
   footerLogoScale: 100,
-  footerLogoPositionX: 50,
-  footerLogoPositionY: 50,
+  footerLogoOffsetX: 0,
+  footerLogoOffsetY: 0,
   footerTagline: "Bali's original packaged treats and wholesome snacks.",
   footerContactLabel: "CONTACT US",
   termsLabel: "Terms and Conditions",
@@ -800,13 +800,13 @@ function clampedMediaValue(value, fallback, min, max) {
 
 function mediaRangeControlsMarkup(fieldAttribute, item = {}) {
   const scale = clampedMediaValue(item.imageScale, 100, 50, 180);
-  const positionX = clampedMediaValue(item.imagePositionX, 50, 0, 100);
-  const positionY = clampedMediaValue(item.imagePositionY, 50, 0, 100);
+  const positionX = clampedMediaValue(item.imageOffsetX, 0, -100, 100);
+  const positionY = clampedMediaValue(item.imageOffsetY, 0, -100, 100);
   return `
     <div class="admin-media-controls admin-grid-wide">
       <label><span>Image size <output>${scale}%</output></span><input ${fieldAttribute}="imageScale" type="range" min="50" max="180" step="1" value="${scale}" /></label>
-      <label><span>Left ↔ Right <output>${positionX}%</output></span><input ${fieldAttribute}="imagePositionX" type="range" min="0" max="100" step="1" value="${positionX}" /></label>
-      <label><span>Up ↕ Down <output>${positionY}%</output></span><input ${fieldAttribute}="imagePositionY" type="range" min="0" max="100" step="1" value="${positionY}" /></label>
+      <label><span>Left ↔ Right <output>${positionX}%</output></span><input ${fieldAttribute}="imageOffsetX" type="range" min="-100" max="100" step="1" value="${positionX}" /></label>
+      <label><span>Up ↕ Down <output>${positionY}%</output></span><input ${fieldAttribute}="imageOffsetY" type="range" min="-100" max="100" step="1" value="${positionY}" /></label>
     </div>
   `;
 }
@@ -824,11 +824,11 @@ function syncLogoEditorPreview(type) {
   const preview = document.getElementById(isFooter ? "footerLogoPreview" : "storeLogoPreview");
   if (!preview) return;
   const scale = clampedMediaValue(storeFields[isFooter ? "footerLogoScale" : "logoScale"]?.value, 100, 50, 180);
-  const x = clampedMediaValue(storeFields[isFooter ? "footerLogoPositionX" : "logoPositionX"]?.value, 50, 0, 100);
-  const y = clampedMediaValue(storeFields[isFooter ? "footerLogoPositionY" : "logoPositionY"]?.value, 50, 0, 100);
-  preview.style.transform = `scale(${scale / 100})`;
-  preview.style.transformOrigin = `${x}% ${y}%`;
-  preview.style.objectPosition = `${x}% ${y}%`;
+  const x = clampedMediaValue(storeFields[isFooter ? "footerLogoOffsetX" : "logoOffsetX"]?.value, 0, -100, 100);
+  const y = clampedMediaValue(storeFields[isFooter ? "footerLogoOffsetY" : "logoOffsetY"]?.value, 0, -100, 100);
+  preview.style.transform = `translate(${x}%, ${y}%) scale(${scale / 100})`;
+  preview.style.transformOrigin = "center";
+  preview.style.objectPosition = "center";
 }
 
 function kitchenLocationFromFields() {
@@ -1305,7 +1305,7 @@ function renderBrandStory() {
   const slides = normalizeBrandStorySlides(story);
   brandStorySlideList.innerHTML = slides.map((slide, index) => storySlideMarkup(slide, index)).join("");
   brandStorySlideList.querySelectorAll("[data-story-slide-index]").forEach((card) => {
-    card.querySelectorAll('[data-story-field="imagePath"], [data-story-field="imageFit"], [data-story-field="imagePositionX"], [data-story-field="imagePositionY"], [data-story-field="imageScale"]').forEach((field) => {
+    card.querySelectorAll('[data-story-field="imagePath"], [data-story-field="imageFit"], [data-story-field="imageOffsetX"], [data-story-field="imageOffsetY"], [data-story-field="imageScale"]').forEach((field) => {
       field.addEventListener("input", () => syncBrandStoryPreview(card));
       field.addEventListener("change", () => syncBrandStoryPreview(card));
     });
@@ -1395,10 +1395,10 @@ function normalizeImagePosition(value) {
 }
 
 function productPreviewStyle(product) {
-  const x = clampedMediaValue(product.imagePositionX, 50, 0, 100);
-  const y = clampedMediaValue(product.imagePositionY, 50, 0, 100);
+  const x = clampedMediaValue(product.imageOffsetX, 0, -100, 100);
+  const y = clampedMediaValue(product.imageOffsetY, 0, -100, 100);
   const scale = clampedMediaValue(product.imageScale, 100, 50, 180);
-  return `object-fit: ${normalizeImageFit(product.imageFit)}; object-position: ${x}% ${y}%; transform: scale(${scale / 100}); transform-origin: ${x}% ${y}%;`;
+  return `object-fit: ${normalizeImageFit(product.imageFit)}; object-position: center; transform: translate(${x}%, ${y}%) scale(${scale / 100}); transform-origin: center;`;
 }
 
 function categoryMarkup(category, index) {
@@ -1563,16 +1563,16 @@ function renderProducts() {
     const syncPreview = () => {
       const pathField = card.querySelector('[data-product-field="imagePath"]');
       const fitField = card.querySelector('[data-product-field="imageFit"]');
-      const positionXField = card.querySelector('[data-product-field="imagePositionX"]');
-      const positionYField = card.querySelector('[data-product-field="imagePositionY"]');
+      const positionXField = card.querySelector('[data-product-field="imageOffsetX"]');
+      const positionYField = card.querySelector('[data-product-field="imageOffsetY"]');
       const scaleField = card.querySelector('[data-product-field="imageScale"]');
       const preview = card.querySelector("[data-product-preview]");
       const emptyState = card.querySelector("[data-product-preview-empty]");
       const imagePath = pathField?.value.trim() || "";
-      const x = clampedMediaValue(positionXField?.value, 50, 0, 100);
-      const y = clampedMediaValue(positionYField?.value, 50, 0, 100);
+      const x = clampedMediaValue(positionXField?.value, 0, -100, 100);
+      const y = clampedMediaValue(positionYField?.value, 0, -100, 100);
       const scale = clampedMediaValue(scaleField?.value, 100, 50, 180);
-      const previewStyle = `object-fit: ${normalizeImageFit(fitField?.value)}; object-position: ${x}% ${y}%; transform: scale(${scale / 100}); transform-origin: ${x}% ${y}%;`;
+      const previewStyle = `object-fit: ${normalizeImageFit(fitField?.value)}; object-position: center; transform: translate(${x}%, ${y}%) scale(${scale / 100}); transform-origin: center;`;
 
       if (imagePath) {
         if (preview) {
@@ -1586,7 +1586,7 @@ function renderProducts() {
       }
     };
 
-    card.querySelectorAll('[data-product-field="imagePath"], [data-product-field="imageFit"], [data-product-field="imagePositionX"], [data-product-field="imagePositionY"], [data-product-field="imageScale"]').forEach((field) => {
+    card.querySelectorAll('[data-product-field="imagePath"], [data-product-field="imageFit"], [data-product-field="imageOffsetX"], [data-product-field="imageOffsetY"], [data-product-field="imageScale"]').forEach((field) => {
       field.addEventListener("input", syncPreview);
       field.addEventListener("change", syncPreview);
     });
@@ -2092,10 +2092,10 @@ adminMain?.addEventListener("input", (event) => {
     const footerLogoPreview = document.getElementById("footerLogoPreview");
     if (footerLogoPreview) footerLogoPreview.src = event.target.value.trim() || storeFields.logoPath.value || "/assets/bakeaholic-logo.jpg";
   }
-  if ([storeFields.logoScale, storeFields.logoPositionX, storeFields.logoPositionY].includes(event.target)) {
+  if ([storeFields.logoScale, storeFields.logoOffsetX, storeFields.logoOffsetY].includes(event.target)) {
     syncLogoEditorPreview("store");
   }
-  if ([storeFields.footerLogoScale, storeFields.footerLogoPositionX, storeFields.footerLogoPositionY].includes(event.target)) {
+  if ([storeFields.footerLogoScale, storeFields.footerLogoOffsetX, storeFields.footerLogoOffsetY].includes(event.target)) {
     syncLogoEditorPreview("footer");
   }
   const section = event.target.closest("[data-admin-section]");
