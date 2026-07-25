@@ -604,6 +604,12 @@ function mediaTransform(item) {
   return `translate(${x}%, ${y}%) scale(${scale / 100})`;
 }
 
+function mediaFrameStyle(item) {
+  const x = Math.min(30, Math.max(-30, Number(item?.frameOffsetX ?? 0) || 0));
+  const y = Math.min(30, Math.max(-30, Number(item?.frameOffsetY ?? 0) || 0));
+  return `style="transform:translate(${x}%, ${y}%);transform-origin:center;"`;
+}
+
 function productImageStyle(item) {
   return `style="object-fit:${imageFit(item)};object-position:center;transform:${mediaTransform(item)};transform-origin:center;"`;
 }
@@ -628,7 +634,7 @@ function renderCatalog() {
                   const quantity = cartQuantityForItem(item.id);
                   return `
                   <article class="product-card" role="button" tabindex="0" data-product-id="${escapeHtml(item.id)}" aria-label="View ${escapeHtml(item.name)} details">
-                    <div class="product-thumb-wrap">
+                    <div class="product-thumb-wrap" ${mediaFrameStyle(item)}>
                       <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" ${productImageStyle(item)} />
                     </div>
                     <div class="product-copy">
@@ -1204,7 +1210,9 @@ function storySlideMarkup(slide, index) {
           ${points.map((point) => `<span data-story-icon="${escapeHtml(point.icon)}">${escapeHtml(point.label)}</span>`).join("")}
         </div>
       </div>
-      <img class="brand-story-image" src="${escapeHtml(versionedAsset(slide.imagePath))}" alt="${escapeHtml(slide.imageAlt || "Bakeaholic packaged snacks")}" style="object-fit:${slide.imageFit === "contain" ? "contain" : "cover"};object-position:center;transform:${mediaTransform(slide)};transform-origin:center" ${index === 0 ? "fetchpriority=\"high\"" : "loading=\"lazy\""} decoding="async" />
+      <div class="brand-story-media-frame" ${mediaFrameStyle(slide)}>
+        <img class="brand-story-image" src="${escapeHtml(versionedAsset(slide.imagePath))}" alt="${escapeHtml(slide.imageAlt || "Bakeaholic packaged snacks")}" style="object-fit:${slide.imageFit === "contain" ? "contain" : "cover"};object-position:center;transform:${mediaTransform(slide)};transform-origin:center" ${index === 0 ? "fetchpriority=\"high\"" : "loading=\"lazy\""} decoding="async" />
+      </div>
     </article>
   `;
 }
@@ -1512,6 +1520,30 @@ window.addEventListener("message", (event) => {
 });
 
 window.addEventListener("message", (event) => {
+  if (!isAdminPreview || event.origin !== window.location.origin || event.data?.type !== "bakeaholic:media-preview") return;
+  const { itemType, itemIndex = 0, itemId = "", media = {} } = event.data;
+  let frame = null;
+  let image = null;
+  if (itemType === "story") {
+    const slide = document.querySelector(`.brand-story-slide:nth-child(${Number(itemIndex) + 1})`);
+    frame = slide?.querySelector(".brand-story-media-frame");
+    image = slide?.querySelector(".brand-story-image");
+  } else if (itemType === "product") {
+    const cards = [...document.querySelectorAll(".product-card")];
+    const product = cards.find((card) => card.dataset.productId === itemId) || cards[Number(itemIndex)];
+    frame = product?.querySelector(".product-thumb-wrap");
+    image = product?.querySelector(".product-thumb");
+  }
+  if (!frame || !image) return;
+  frame.style.transform = `translate(${Number(media.frameOffsetX) || 0}%, ${Number(media.frameOffsetY) || 0}%)`;
+  frame.style.transformOrigin = "center";
+  image.style.objectFit = media.imageFit === "cover" ? "cover" : "contain";
+  image.style.objectPosition = "center";
+  image.style.transform = `translate(${Number(media.imageOffsetX) || 0}%, ${Number(media.imageOffsetY) || 0}%) scale(${(Number(media.imageScale) || 100) / 100})`;
+  image.style.transformOrigin = "center";
+});
+
+window.addEventListener("message", (event) => {
   if (!isAdminPreview || event.origin !== window.location.origin || event.data?.type !== "bakeaholic:preview-focus") return;
   document.querySelectorAll(".admin-preview-highlight").forEach((element) => element.classList.remove("admin-preview-highlight"));
   const { section, field = "" } = event.data;
@@ -1568,7 +1600,9 @@ window.addEventListener("message", (event) => {
     imagePosition: `${activeStory} .brand-story-image`,
     imageScale: `${activeStory} .brand-story-image`,
     imageOffsetX: `${activeStory} .brand-story-image`,
-    imageOffsetY: `${activeStory} .brand-story-image`
+    imageOffsetY: `${activeStory} .brand-story-image`,
+    frameOffsetX: `${activeStory} .brand-story-media-frame`,
+    frameOffsetY: `${activeStory} .brand-story-media-frame`
   };
   if (field.startsWith("point-label-") || field.startsWith("point-icon-")) {
     fieldSelectors[field] = `${activeStory} .brand-story-points span:nth-child(${pointIndex})`;
@@ -1587,6 +1621,8 @@ window.addEventListener("message", (event) => {
       imageScale: ".product-thumb",
       imageOffsetX: ".product-thumb",
       imageOffsetY: ".product-thumb",
+      frameOffsetX: ".product-thumb-wrap",
+      frameOffsetY: ".product-thumb-wrap",
       badge: ".product-badge",
       price: ".product-bottom strong",
       rating: ".product-meta span:nth-child(1)",
