@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260725-admin-reports-v15" />
+    <link rel="stylesheet" href="styles.css?v=20260725-admin-reports-v16" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -449,7 +449,7 @@
               <h2>Reports</h2>
               <p class="helper-text">Sales performance, order outcomes, best sellers, and customer purchasing locations from your order database.</p>
             </div>
-            <div class="admin-actions">
+            <div class="admin-actions admin-report-actions">
               <label class="admin-report-period">Period
                 <select id="reportPeriodSelect">
                   <option value="7">Last 7 days</option>
@@ -458,7 +458,11 @@
                   <option value="all">All time</option>
                 </select>
               </label>
-              <button id="exportCustomersButton" class="admin-button secondary" type="button">Export buyers CSV</button>
+              <div class="admin-report-export-buttons" aria-label="Report export actions">
+                <button id="exportCustomersButton" class="admin-button secondary" type="button">Download CSV</button>
+                <button id="downloadReportPdfButton" class="admin-button secondary" type="button">Download PDF</button>
+                <button id="printReportButton" class="admin-button secondary" type="button">Print A4</button>
+              </div>
             </div>
           </div>
           <div class="admin-report-kpis">
@@ -596,7 +600,9 @@
                   <div class="admin-field"><label for="whatsappAppIdInput">Meta app ID</label><input id="whatsappAppIdInput" type="text" autocomplete="off" /></div>
                   <div class="admin-field"><label for="whatsappAppSecretInput">Meta app secret</label><input id="whatsappAppSecretInput" type="password" autocomplete="off" /></div>
                   <div class="admin-field"><label for="whatsappGraphVersionInput">Graph version</label><input id="whatsappGraphVersionInput" type="text" placeholder="v22.0" /></div>
-                  <div class="admin-field"><label for="whatsappAdminNumberInput">Staff approval numbers</label><input id="whatsappAdminNumberInput" type="text" placeholder="62812..., 62813..." autocomplete="off" /><small>Comma-separated WhatsApp numbers. Every listed staff member receives order alerts and can approve or cancel.</small></div>
+                  <div class="admin-field"><label for="whatsappAdminNumberInput">Admin phone number</label><input id="whatsappAdminNumberInput" type="tel" placeholder="62812..." autocomplete="tel" /><small>Primary admin. Receives order alerts and can approve or cancel.</small></div>
+                  <div class="admin-field"><label for="whatsappAdminNumber2Input">Admin phone number 2</label><input id="whatsappAdminNumber2Input" type="tel" placeholder="Optional" autocomplete="tel" /><small>Optional second administrator.</small></div>
+                  <div class="admin-field"><label for="whatsappAdminNumber3Input">Admin phone number 3</label><input id="whatsappAdminNumber3Input" type="tel" placeholder="Optional" autocomplete="tel" /><small>Optional third administrator. Maximum three recipients.</small></div>
                   <div class="admin-field"><label for="whatsappTemplateLanguageInput">Template language</label><input id="whatsappTemplateLanguageInput" type="text" placeholder="en_US" /></div>
                 </div>
               </div>
@@ -616,7 +622,7 @@
               <div class="admin-provider-actions">
                 <button class="admin-button secondary" id="testWhatsappTemplatesButton" type="button">Run template diagnostics</button>
                 <button class="admin-button secondary" id="inspectWhatsappTemplatesButton" type="button">Compare with Meta schemas</button>
-                <span>Diagnostics send synthetic messages only to the first configured staff number. No order, stock, delivery or payment is created.</span>
+                <span>Diagnostics send synthetic messages only to Admin phone number 1. Real order alerts are sent to every configured admin number. No order, stock, delivery or payment is created.</span>
               </div>
               <pre class="helper-text" id="whatsappTemplateTestResults" hidden></pre>
             </article>
@@ -803,6 +809,6 @@ node --test server.test.js</code></div>
       </main>
     </div>
 
-    <script src="admin.js?v=20260725-admin-reports-v16"></script>
+    <script src="admin.js?v=20260725-admin-reports-v17"></script>
   </body>
 </html>
