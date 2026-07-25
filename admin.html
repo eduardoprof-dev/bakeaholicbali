@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260724-visual-pages-v12" />
+    <link rel="stylesheet" href="styles.css?v=20260725-media-controls-v13" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -243,6 +243,11 @@
                 <small>Transparent PNG, JPG or WebP · max 6 MB</small>
               </label>
               <div class="admin-logo-preview"><img id="storeLogoPreview" src="/assets/bakeaholic-logo.jpg" alt="Store logo preview" /></div>
+              <div class="admin-media-controls">
+                <label><span>Logo size <output data-range-output-for="storeLogoScaleInput">100%</output></span><input id="storeLogoScaleInput" type="range" min="50" max="180" step="1" /></label>
+                <label><span>Left ↔ Right <output data-range-output-for="storeLogoPositionXInput">50%</output></span><input id="storeLogoPositionXInput" type="range" min="0" max="100" step="1" /></label>
+                <label><span>Up ↕ Down <output data-range-output-for="storeLogoPositionYInput">50%</output></span><input id="storeLogoPositionYInput" type="range" min="0" max="100" step="1" /></label>
+              </div>
             </div>
             <div class="admin-field">
               <label for="orderWhatsapp">WhatsApp number</label>
@@ -257,6 +262,11 @@
                 <small>Leave blank to reuse the header logo</small>
               </label>
               <div class="admin-logo-preview"><img id="footerLogoPreview" src="/assets/bakeaholic-logo.jpg" alt="Footer logo preview" /></div>
+              <div class="admin-media-controls">
+                <label><span>Logo size <output data-range-output-for="footerLogoScaleInput">100%</output></span><input id="footerLogoScaleInput" type="range" min="50" max="180" step="1" /></label>
+                <label><span>Left ↔ Right <output data-range-output-for="footerLogoPositionXInput">50%</output></span><input id="footerLogoPositionXInput" type="range" min="0" max="100" step="1" /></label>
+                <label><span>Up ↕ Down <output data-range-output-for="footerLogoPositionYInput">50%</output></span><input id="footerLogoPositionYInput" type="range" min="0" max="100" step="1" /></label>
+              </div>
             </div>
             <div class="admin-field"><label for="footerTaglineInput">Footer tagline</label><textarea id="footerTaglineInput"></textarea></div>
             <div class="admin-field"><label for="footerContactLabelInput">Contact heading</label><input id="footerContactLabelInput" type="text" /></div>
@@ -745,6 +755,6 @@ node --test server.test.js</code></div>
       </main>
     </div>
 
-    <script src="admin.js?v=20260724-visual-pages-v12"></script>
+    <script src="admin.js?v=20260725-media-controls-v13"></script>
   </body>
 </html>
