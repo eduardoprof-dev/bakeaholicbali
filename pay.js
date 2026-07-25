@@ -22,6 +22,7 @@ const cartStateVersion = "20260623-cart-24h";
 const latestOrderKey = `bakeaholic-latest-order-${appMode}`;
 const checkoutLatestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
 const xenditComponentsSdkUrl = "https://cdn.jsdelivr.net/npm/xendit-components-web@0.0.24/sdk/dist/index.umd.js";
+const xenditComponentsSdkIntegrity = "sha384-f7WJhUhA6M8Ws7YX1TCkdByJbvagFsACWdWwBTWUv/FPIrjryB2NsKCqZXJ/J+gs";
 
 const paymentApp = document.getElementById("paymentApp");
 const modalScrim = document.getElementById("modalScrim");
@@ -653,6 +654,8 @@ function loadXenditComponentsSdk() {
     xenditComponentsSdkPromise = new Promise((resolve, reject) => {
       const script = document.createElement("script");
       script.src = xenditComponentsSdkUrl;
+      script.integrity = xenditComponentsSdkIntegrity;
+      script.crossOrigin = "anonymous";
       script.async = true;
       script.onload = resolve;
       script.onerror = () => reject(new Error("Unable to load secure card payment."));

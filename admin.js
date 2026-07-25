@@ -1626,15 +1626,15 @@ function categoryMarkup(category, index) {
       <div class="admin-grid three">
         <div class="admin-field">
           <label>Category id</label>
-          <input data-category-field="id" type="text" value="${category.id || ""}" />
+          <input data-category-field="id" type="text" value="${escapeHtml(category.id || "")}" />
         </div>
         <div class="admin-field">
           <label>Label</label>
-          <input data-category-field="label" type="text" value="${category.label || ""}" />
+          <input data-category-field="label" type="text" value="${escapeHtml(category.label || "")}" />
         </div>
         <div class="admin-field">
           <label>Description</label>
-          <input data-category-field="description" type="text" value="${category.description || ""}" />
+          <input data-category-field="description" type="text" value="${escapeHtml(category.description || "")}" />
         </div>
       </div>
     </article>
@@ -1666,11 +1666,11 @@ function productMarkup(product, index) {
       <div class="admin-grid three">
         <div class="admin-field">
           <label>Product id</label>
-          <input data-product-field="id" type="text" value="${product.id || ""}" />
+          <input data-product-field="id" type="text" value="${escapeHtml(product.id || "")}" />
         </div>
         <div class="admin-field">
           <label>Name</label>
-          <input data-product-field="name" type="text" value="${product.name || ""}" />
+          <input data-product-field="name" type="text" value="${escapeHtml(product.name || "")}" />
         </div>
         <div class="admin-field">
           <label>Category</label>
@@ -1698,19 +1698,19 @@ function productMarkup(product, index) {
         </div>
         <div class="admin-field">
           <label>Badge</label>
-          <input data-product-field="badge" type="text" value="${product.badge || ""}" />
+          <input data-product-field="badge" type="text" value="${escapeHtml(product.badge || "")}" />
         </div>
         <div class="admin-field">
           <label>SKU</label>
-          <input data-product-field="sku" type="text" value="${product.sku || ""}" />
+          <input data-product-field="sku" type="text" value="${escapeHtml(product.sku || "")}" />
         </div>
         <div class="admin-field">
           <label>Barcode</label>
-          <input data-product-field="barcode" type="text" value="${product.barcode || ""}" />
+          <input data-product-field="barcode" type="text" value="${escapeHtml(product.barcode || "")}" />
         </div>
         <div class="admin-field">
           <label>Product image</label>
-          <input class="admin-code-input" data-product-field="imagePath" type="text" value="${product.imagePath || ""}" />
+          <input class="admin-code-input" data-product-field="imagePath" type="text" value="${escapeHtml(product.imagePath || "")}" />
           ${imageUploadMarkup("product", index)}
         </div>
         <div class="admin-field">
@@ -1723,11 +1723,11 @@ function productMarkup(product, index) {
         ${mediaRangeControlsMarkup("data-product-field", product)}
         <div class="admin-field">
           <label>Min order</label>
-          <input data-product-field="minOrder" type="text" value="${product.minOrder || ""}" />
+          <input data-product-field="minOrder" type="text" value="${escapeHtml(product.minOrder || "")}" />
         </div>
         <div class="admin-field">
           <label>Shelf life</label>
-          <input data-product-field="shelfLife" type="text" value="${product.shelfLife || ""}" />
+          <input data-product-field="shelfLife" type="text" value="${escapeHtml(product.shelfLife || "")}" />
         </div>
         <div class="admin-field admin-image-preview-field">
           <label>Image preview</label>
@@ -1737,7 +1737,7 @@ function productMarkup(product, index) {
         </div>
         <div class="admin-field" style="grid-column: 1 / -1;">
           <label>Description</label>
-          <textarea data-product-field="description">${product.description || ""}</textarea>
+          <textarea data-product-field="description">${escapeHtml(product.description || "")}</textarea>
         </div>
       </div>
       </div>
@@ -2347,6 +2347,29 @@ adminMain?.addEventListener("change", (event) => {
 
 let mediaDrag = null;
 
+function syncDraggedMediaPreview(drag) {
+  if (!drag) return;
+  syncRangeOutputs(drag.editor || drag.frame);
+  if (drag.xRange.id === "storeLogoPositionXInput") {
+    syncLogoEditorPreview("store");
+    return;
+  }
+  if (drag.xRange.id === "footerLogoPositionXInput") {
+    syncLogoEditorPreview("footer");
+    return;
+  }
+  const image = drag.frame.querySelector("img");
+  if (!image) return;
+  const fitField = drag.editor?.querySelector('[data-story-field="imageFit"], [data-product-field="imageFit"]');
+  const scaleField = drag.editor?.querySelector('[data-story-field="imageScale"], [data-product-field="imageScale"]');
+  image.style.cssText = productPreviewStyle({
+    imageFit: fitField?.value,
+    imageOffsetX: drag.xRange.value,
+    imageOffsetY: drag.yRange.value,
+    imageScale: scaleField?.value
+  });
+}
+
 adminMain?.addEventListener("pointerdown", (event) => {
   const frame = event.target.closest(".admin-image-preview-frame, .admin-logo-preview");
   const image = frame?.querySelector("img");
@@ -2371,7 +2394,9 @@ adminMain?.addEventListener("pointerdown", (event) => {
     valueX: Number(xRange.value || 0),
     valueY: Number(yRange.value || 0),
     xRange,
-    yRange
+    yRange,
+    editor,
+    moved: false
   };
 });
 
@@ -2382,20 +2407,21 @@ adminMain?.addEventListener("pointermove", (event) => {
   const y = mediaDrag.valueY + ((event.clientY - mediaDrag.startY) / Math.max(rect.height, 1)) * 100;
   mediaDrag.xRange.value = String(Math.max(-100, Math.min(100, Math.round(x))));
   mediaDrag.yRange.value = String(Math.max(-100, Math.min(100, Math.round(y))));
-  mediaDrag.xRange.dispatchEvent(new Event("input", { bubbles: true }));
-  mediaDrag.yRange.dispatchEvent(new Event("input", { bubbles: true }));
+  mediaDrag.moved = true;
+  syncDraggedMediaPreview(mediaDrag);
 });
 
 function finishMediaDrag(event) {
   if (!mediaDrag || mediaDrag.pointerId !== event.pointerId) return;
-  mediaDrag.frame.classList.remove("is-dragging");
-  mediaDrag.xRange.dispatchEvent(new Event("change", { bubbles: true }));
-  mediaDrag.yRange.dispatchEvent(new Event("change", { bubbles: true }));
+  const completedDrag = mediaDrag;
+  completedDrag.frame.classList.remove("is-dragging");
   mediaDrag = null;
+  if (completedDrag.moved) markCatalogDirty();
 }
 
 adminMain?.addEventListener("pointerup", finishMediaDrag);
 adminMain?.addEventListener("pointercancel", finishMediaDrag);
+adminMain?.addEventListener("lostpointercapture", finishMediaDrag);
 document.getElementById("refreshStorefrontPreview")?.addEventListener("click", refreshStorefrontPreview);
 storefrontPreviewFrame?.addEventListener("load", () => {
   if (state.catalogDirty) {

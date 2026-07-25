@@ -15,6 +15,7 @@ const latestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
 const cartSessionKey = `bakeaholic-cart-session-${cartStateVersion}-${appMode}`;
 const cartSessionMaxAgeMs = 24 * 60 * 60 * 1000;
 const xenditComponentsSdkUrl = "https://cdn.jsdelivr.net/npm/xendit-components-web@0.0.24/sdk/dist/index.umd.js";
+const xenditComponentsSdkIntegrity = "sha384-f7WJhUhA6M8Ws7YX1TCkdByJbvagFsACWdWwBTWUv/FPIrjryB2NsKCqZXJ/J+gs";
 let xenditComponentsSdkPromise = null;
 
 const state = {
@@ -785,6 +786,8 @@ function loadXenditComponentsSdk() {
       }
       const script = document.createElement("script");
       script.src = xenditComponentsSdkUrl;
+      script.integrity = xenditComponentsSdkIntegrity;
+      script.crossOrigin = "anonymous";
       script.async = true;
       script.onload = resolve;
       script.onerror = () => reject(new Error("Unable to load Xendit card component."));
