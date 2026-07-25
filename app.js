@@ -583,11 +583,6 @@ function imageFit(item) {
 }
 
 function imagePosition(item) {
-  if (item && (item.imagePositionX !== undefined || item.imagePositionY !== undefined)) {
-    const x = Math.min(100, Math.max(0, Number(item.imagePositionX ?? 50) || 50));
-    const y = Math.min(100, Math.max(0, Number(item.imagePositionY ?? 50) || 50));
-    return `${x}% ${y}%`;
-  }
   switch (item.imagePosition) {
     case "top":
       return "center top";
@@ -602,9 +597,15 @@ function imagePosition(item) {
   }
 }
 
-function productImageStyle(item) {
+function mediaTransform(item) {
+  const x = Math.min(100, Math.max(-100, Number(item?.imageOffsetX ?? 0) || 0));
+  const y = Math.min(100, Math.max(-100, Number(item?.imageOffsetY ?? 0) || 0));
   const scale = Math.min(180, Math.max(50, Number(item?.imageScale ?? 100) || 100));
-  return `style="object-fit:${imageFit(item)};object-position:${imagePosition(item)};transform:scale(${scale / 100});transform-origin:${imagePosition(item)};"`;
+  return `translate(${x}%, ${y}%) scale(${scale / 100})`;
+}
+
+function productImageStyle(item) {
+  return `style="object-fit:${imageFit(item)};object-position:center;transform:${mediaTransform(item)};transform-origin:center;"`;
 }
 
 function renderCatalog() {
@@ -708,9 +709,9 @@ function openProductModal(itemId) {
   productModalImage.alt = item.name;
   productModalImage.className = "product-modal-image";
   productModalImage.style.objectFit = imageFit(item);
-  productModalImage.style.objectPosition = imagePosition(item);
-  productModalImage.style.transform = `scale(${Math.min(180, Math.max(50, Number(item.imageScale ?? 100) || 100)) / 100})`;
-  productModalImage.style.transformOrigin = imagePosition(item);
+  productModalImage.style.objectPosition = "center";
+  productModalImage.style.transform = mediaTransform(item);
+  productModalImage.style.transformOrigin = "center";
   productModalCategory.textContent = getCategoryLabel(item.category);
   productModalTitle.textContent = item.name;
   productModalBadge.textContent = item.badge || "";
@@ -1203,7 +1204,7 @@ function storySlideMarkup(slide, index) {
           ${points.map((point) => `<span data-story-icon="${escapeHtml(point.icon)}">${escapeHtml(point.label)}</span>`).join("")}
         </div>
       </div>
-      <img class="brand-story-image" src="${escapeHtml(versionedAsset(slide.imagePath))}" alt="${escapeHtml(slide.imageAlt || "Bakeaholic packaged snacks")}" style="object-fit:${slide.imageFit === "contain" ? "contain" : "cover"};object-position:${imagePosition(slide)};transform:scale(${Math.min(180, Math.max(50, Number(slide.imageScale ?? 100) || 100)) / 100});transform-origin:${imagePosition(slide)}" ${index === 0 ? "fetchpriority=\"high\"" : "loading=\"lazy\""} decoding="async" />
+      <img class="brand-story-image" src="${escapeHtml(versionedAsset(slide.imagePath))}" alt="${escapeHtml(slide.imageAlt || "Bakeaholic packaged snacks")}" style="object-fit:${slide.imageFit === "contain" ? "contain" : "cover"};object-position:center;transform:${mediaTransform(slide)};transform-origin:center" ${index === 0 ? "fetchpriority=\"high\"" : "loading=\"lazy\""} decoding="async" />
     </article>
   `;
 }
@@ -1399,16 +1400,16 @@ function applyCatalogPayload(payload) {
   if (storefrontLogo) {
     storefrontLogo.src = versionedAsset(state.store.logoPath || "/assets/bakeaholic-logo.jpg");
     storefrontLogo.alt = state.store.name || "Bakeaholic Bali";
-    storefrontLogo.style.transform = `scale(${Math.min(180, Math.max(50, Number(state.store.logoScale ?? 100) || 100)) / 100})`;
-    storefrontLogo.style.transformOrigin = `${Number(state.store.logoPositionX ?? 50)}% ${Number(state.store.logoPositionY ?? 50)}%`;
-    storefrontLogo.style.objectPosition = `${Number(state.store.logoPositionX ?? 50)}% ${Number(state.store.logoPositionY ?? 50)}%`;
+    storefrontLogo.style.transform = `translate(${Math.min(100, Math.max(-100, Number(state.store.logoOffsetX ?? 0) || 0))}%, ${Math.min(100, Math.max(-100, Number(state.store.logoOffsetY ?? 0) || 0))}%) scale(${Math.min(180, Math.max(50, Number(state.store.logoScale ?? 100) || 100)) / 100})`;
+    storefrontLogo.style.transformOrigin = "center";
+    storefrontLogo.style.objectPosition = "center";
   }
   if (footerLogo) {
     footerLogo.src = versionedAsset(state.store.footerLogoPath || state.store.logoPath || "/assets/bakeaholic-logo.jpg");
     footerLogo.alt = state.store.name || "Bakeaholic Bali";
-    footerLogo.style.transform = `scale(${Math.min(180, Math.max(50, Number(state.store.footerLogoScale ?? 100) || 100)) / 100})`;
-    footerLogo.style.transformOrigin = `${Number(state.store.footerLogoPositionX ?? 50)}% ${Number(state.store.footerLogoPositionY ?? 50)}%`;
-    footerLogo.style.objectPosition = `${Number(state.store.footerLogoPositionX ?? 50)}% ${Number(state.store.footerLogoPositionY ?? 50)}%`;
+    footerLogo.style.transform = `translate(${Math.min(100, Math.max(-100, Number(state.store.footerLogoOffsetX ?? 0) || 0))}%, ${Math.min(100, Math.max(-100, Number(state.store.footerLogoOffsetY ?? 0) || 0))}%) scale(${Math.min(180, Math.max(50, Number(state.store.footerLogoScale ?? 100) || 100)) / 100})`;
+    footerLogo.style.transformOrigin = "center";
+    footerLogo.style.objectPosition = "center";
   }
   if (footerTagline) footerTagline.textContent = state.store.footerTagline || "Bali's original packaged treats and wholesome snacks.";
   if (searchInput) searchInput.placeholder = state.store.searchPlaceholder || "Search products...";
@@ -1442,9 +1443,9 @@ function applyCatalogPayload(payload) {
     promoHeroImage.src = versionedAsset(promoItem.imagePath);
     promoHeroImage.alt = promoItem.name;
     promoHeroImage.style.objectFit = imageFit(promoItem);
-    promoHeroImage.style.objectPosition = imagePosition(promoItem);
-    promoHeroImage.style.transform = `scale(${Math.min(180, Math.max(50, Number(promoItem.imageScale ?? 100) || 100)) / 100})`;
-    promoHeroImage.style.transformOrigin = imagePosition(promoItem);
+    promoHeroImage.style.objectPosition = "center";
+    promoHeroImage.style.transform = mediaTransform(promoItem);
+    promoHeroImage.style.transformOrigin = "center";
   }
   if (promoHeroTitle) {
     promoHeroTitle.textContent = promoItem?.name || "Best seller ready to ship";
@@ -1566,8 +1567,8 @@ window.addEventListener("message", (event) => {
     imageFit: `${activeStory} .brand-story-image`,
     imagePosition: `${activeStory} .brand-story-image`,
     imageScale: `${activeStory} .brand-story-image`,
-    imagePositionX: `${activeStory} .brand-story-image`,
-    imagePositionY: `${activeStory} .brand-story-image`
+    imageOffsetX: `${activeStory} .brand-story-image`,
+    imageOffsetY: `${activeStory} .brand-story-image`
   };
   if (field.startsWith("point-label-") || field.startsWith("point-icon-")) {
     fieldSelectors[field] = `${activeStory} .brand-story-points span:nth-child(${pointIndex})`;
@@ -1584,8 +1585,8 @@ window.addEventListener("message", (event) => {
       imageFit: ".product-thumb",
       imagePosition: ".product-thumb",
       imageScale: ".product-thumb",
-      imagePositionX: ".product-thumb",
-      imagePositionY: ".product-thumb",
+      imageOffsetX: ".product-thumb",
+      imageOffsetY: ".product-thumb",
       badge: ".product-badge",
       price: ".product-bottom strong",
       rating: ".product-meta span:nth-child(1)",

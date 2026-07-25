@@ -495,8 +495,15 @@ function maskedWhatsappNumber(value = "") {
   return `${number.slice(0, 3)}***${number.slice(-3)}`;
 }
 
+function adminWhatsappNumbers() {
+  return [...new Set(String(process.env.WHATSAPP_ADMIN_NUMBER || "")
+    .split(/[,\n;]+/)
+    .map((value) => normalizePhoneNumber(value))
+    .filter(Boolean))];
+}
+
 async function runWhatsappTemplateDiagnostics() {
-  const recipient = String(process.env.WHATSAPP_ADMIN_NUMBER || "").trim();
+  const recipient = adminWhatsappNumbers()[0] || "";
   if (!recipient) {
     throw new Error("Admin WhatsApp number is not configured");
   }
@@ -1106,23 +1113,29 @@ function adminShippingWhatsappParameters(order) {
 }
 
 async function sendWhatsappAdminAlert(order, eventLabel = "") {
-  const adminNumber = String(process.env.WHATSAPP_ADMIN_NUMBER || "").trim();
+  const adminNumbers = adminWhatsappNumbers();
   const templateName = String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim();
-  if (!adminNumber || !templateName) {
+  if (!adminNumbers.length || !templateName) {
     throw new Error("Admin WhatsApp number or template name is missing");
   }
 
-  return sendWhatsappTemplateMessage(adminNumber, templateName, adminWhatsappParameters(order, eventLabel), {
-    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-    headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
-    headerDocumentFilename: `${order.id}-bakeaholic-receipt.pdf`,
-    quickReplyButtons: order.status === "paid"
-      ? [
-          { payload: `APPROVE ${order.id}` },
-          { payload: `CANCEL ${order.id}` }
-        ]
-      : []
-  });
+  const responses = await Promise.all(adminNumbers.map((adminNumber) => sendWhatsappTemplateMessage(
+    adminNumber,
+    templateName,
+    adminWhatsappParameters(order, eventLabel),
+    {
+      languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+      headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
+      headerDocumentFilename: `${order.id}-bakeaholic-receipt.pdf`,
+      quickReplyButtons: order.status === "paid"
+        ? [
+            { payload: `APPROVE ${order.id}` },
+            { payload: `CANCEL ${order.id}` }
+          ]
+        : []
+    }
+  )));
+  return { messages: responses.flatMap((response) => response?.messages || []) };
 }
 
 async function sendWhatsappPaymentReceipt(order) {
@@ -1435,17 +1448,18 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
   if (!templateName) {
     throw new Error(admin ? "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME is not configured" : "WHATSAPP_SHIPPING_TEMPLATE_NAME is not configured");
   }
-  const recipient = admin ? process.env.WHATSAPP_ADMIN_NUMBER : order.customer.phone;
+  const recipients = admin ? adminWhatsappNumbers() : [order.customer.phone];
   const parameters = admin ? adminShippingWhatsappParameters(order) : customerShippingWhatsappParameters(order);
-  return sendWhatsappTemplateMessage(recipient, templateName, parameters, {
-    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-    urlButtonParameters: [
-      {
-        index: "0",
-        text: publicDocumentButtonQuery(order)
-      }
-    ]
-  });
+  const responses = await Promise.all(recipients.map((recipient) => sendWhatsappTemplateMessage(recipient, templateName, parameters, {
+      languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+      urlButtonParameters: [
+        {
+          index: "0",
+          text: publicDocumentButtonQuery(order)
+        }
+      ]
+    })));
+  return { messages: responses.flatMap((response) => response?.messages || []) };
 }
 
 async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = false } = {}) {
@@ -1614,9 +1628,8 @@ function incomingWhatsappMessages(payload) {
 }
 
 function isConfiguredAdminWhatsapp(from = "") {
-  const adminNumber = formatIndonesianPhone(process.env.WHATSAPP_ADMIN_NUMBER || "");
   const sender = formatIndonesianPhone(from);
-  return Boolean(adminNumber && sender && adminNumber === sender);
+  return Boolean(sender && adminWhatsappNumbers().some((number) => formatIndonesianPhone(number) === sender));
 }
 
 function parseAdminApproveCommand(text = "") {
@@ -3306,6 +3319,9 @@ function normalizeBrandStorySlides(brandStoryInput) {
         imageAlt: String(slide?.imageAlt || fallback.imageAlt).trim(),
         imageFit: slide?.imageFit === "contain" ? "contain" : "cover",
         imagePosition: ["center", "top", "bottom", "left", "right"].includes(slide?.imagePosition) ? slide.imagePosition : "center",
+        imageScale: Math.min(180, Math.max(50, Number(slide?.imageScale ?? 100) || 100)),
+        imageOffsetX: Math.min(100, Math.max(-100, Number(slide?.imageOffsetX ?? 0) || 0)),
+        imageOffsetY: Math.min(100, Math.max(-100, Number(slide?.imageOffsetY ?? 0) || 0)),
         points: (Array.isArray(slide?.points) ? slide.points : fallback.points)
           .map((point, pointIndex) => normalizeStoryPoint(point, fallback.points[pointIndex]?.icon || "leaf"))
           .filter((point) => point.label)
@@ -3372,6 +3388,10 @@ function sanitizeCatalog(nextCatalog) {
       minOrder: String(item.minOrder || "").trim(),
       shelfLife: String(item.shelfLife || "").trim(),
       imagePath: String(item.imagePath || "").trim(),
+      imageFit: item.imageFit === "cover" ? "cover" : "contain",
+      imageScale: Math.min(180, Math.max(50, Number(item.imageScale ?? 100) || 100)),
+      imageOffsetX: Math.min(100, Math.max(-100, Number(item.imageOffsetX ?? 0) || 0)),
+      imageOffsetY: Math.min(100, Math.max(-100, Number(item.imageOffsetY ?? 0) || 0)),
       stock: Number(item.stock),
       lengthCm: Number(item.lengthCm) > 0 ? Number(item.lengthCm) : undefined,
       widthCm: Number(item.widthCm) > 0 ? Number(item.widthCm) : undefined,

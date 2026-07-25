@@ -6,7 +6,7 @@
     <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
     <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
     <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
-    <link rel="stylesheet" href="styles.css?v=20260725-media-controls-v13" />
+    <link rel="stylesheet" href="styles.css?v=20260725-admin-reports-v15" />
   </head>
   <body>
     <div class="admin-app-shell">
@@ -41,6 +41,7 @@
             </div>
           </div>
           <button class="admin-nav-button" type="button" data-admin-target="orders">Orders</button>
+          <button class="admin-nav-button" type="button" data-admin-target="reports">Reports</button>
           <button class="admin-nav-button" type="button" data-admin-target="operations-settings">Operations settings</button>
           <button class="admin-nav-button" type="button" data-admin-target="integrations">Integrations</button>
           <button class="admin-nav-button" type="button" data-admin-target="documentation">Documentation</button>
@@ -64,6 +65,7 @@
               <option value="store">Storefront</option>
               <option value="promo">Promo Highlights</option>
               <option value="orders">Orders</option>
+              <option value="reports">Reports</option>
               <option value="operations-settings">Operations settings</option>
               <option value="discounts">Storefront · Discounts</option>
               <option value="story">Storefront · Story Carousel</option>
@@ -245,8 +247,8 @@
               <div class="admin-logo-preview"><img id="storeLogoPreview" src="/assets/bakeaholic-logo.jpg" alt="Store logo preview" /></div>
               <div class="admin-media-controls">
                 <label><span>Logo size <output data-range-output-for="storeLogoScaleInput">100%</output></span><input id="storeLogoScaleInput" type="range" min="50" max="180" step="1" /></label>
-                <label><span>Left ↔ Right <output data-range-output-for="storeLogoPositionXInput">50%</output></span><input id="storeLogoPositionXInput" type="range" min="0" max="100" step="1" /></label>
-                <label><span>Up ↕ Down <output data-range-output-for="storeLogoPositionYInput">50%</output></span><input id="storeLogoPositionYInput" type="range" min="0" max="100" step="1" /></label>
+                <label><span>Left ↔ Right <output data-range-output-for="storeLogoPositionXInput">0%</output></span><input id="storeLogoPositionXInput" type="range" min="-100" max="100" step="1" /></label>
+                <label><span>Up ↕ Down <output data-range-output-for="storeLogoPositionYInput">0%</output></span><input id="storeLogoPositionYInput" type="range" min="-100" max="100" step="1" /></label>
               </div>
             </div>
             <div class="admin-field">
@@ -264,8 +266,8 @@
               <div class="admin-logo-preview"><img id="footerLogoPreview" src="/assets/bakeaholic-logo.jpg" alt="Footer logo preview" /></div>
               <div class="admin-media-controls">
                 <label><span>Logo size <output data-range-output-for="footerLogoScaleInput">100%</output></span><input id="footerLogoScaleInput" type="range" min="50" max="180" step="1" /></label>
-                <label><span>Left ↔ Right <output data-range-output-for="footerLogoPositionXInput">50%</output></span><input id="footerLogoPositionXInput" type="range" min="0" max="100" step="1" /></label>
-                <label><span>Up ↕ Down <output data-range-output-for="footerLogoPositionYInput">50%</output></span><input id="footerLogoPositionYInput" type="range" min="0" max="100" step="1" /></label>
+                <label><span>Left ↔ Right <output data-range-output-for="footerLogoPositionXInput">0%</output></span><input id="footerLogoPositionXInput" type="range" min="-100" max="100" step="1" /></label>
+                <label><span>Up ↕ Down <output data-range-output-for="footerLogoPositionYInput">0%</output></span><input id="footerLogoPositionYInput" type="range" min="-100" max="100" step="1" /></label>
               </div>
             </div>
             <div class="admin-field"><label for="footerTaglineInput">Footer tagline</label><textarea id="footerTaglineInput"></textarea></div>
@@ -433,11 +435,57 @@
           <div class="admin-section-head">
             <div>
               <h2>Orders</h2>
-              <p class="helper-text">Paid orders wait here until staff prepares, packages, prints the invoice, and approves delivery.</p>
+              <p class="helper-text">Paid orders wait here until staff prepares and packages them. Use “Open &amp; print invoice” on the order, print from the invoice page, place it inside the package, then approve delivery.</p>
             </div>
             <button id="refreshOrdersButton" class="admin-button secondary" type="button">Refresh orders</button>
           </div>
           <div id="adminOrderList" class="admin-order-list"></div>
+        </section>
+
+        <section class="admin-panel admin-reports-panel" data-admin-section="reports" hidden>
+          <div class="admin-section-head">
+            <div>
+              <span class="admin-card-kicker">Commerce intelligence</span>
+              <h2>Reports</h2>
+              <p class="helper-text">Sales performance, order outcomes, best sellers, and customer purchasing locations from your order database.</p>
+            </div>
+            <div class="admin-actions">
+              <label class="admin-report-period">Period
+                <select id="reportPeriodSelect">
+                  <option value="7">Last 7 days</option>
+                  <option value="30" selected>Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                  <option value="all">All time</option>
+                </select>
+              </label>
+              <button id="exportCustomersButton" class="admin-button secondary" type="button">Export buyers CSV</button>
+            </div>
+          </div>
+          <div class="admin-report-kpis">
+            <article><span>Net sales</span><strong id="reportNetSales">—</strong><small id="reportPaidCount">0 paid orders</small></article>
+            <article><span>Average order</span><strong id="reportAverageOrder">—</strong><small>Paid and fulfilled orders</small></article>
+            <article><span>Cancelled</span><strong id="reportCancelledCount">—</strong><small id="reportCancelledValue">—</small></article>
+            <article><span>Pending</span><strong id="reportPendingCount">—</strong><small>Awaiting payment or action</small></article>
+          </div>
+          <div class="admin-report-grid">
+            <article class="admin-report-card">
+              <div class="admin-card-heading"><div><span class="admin-card-kicker">Products</span><h3>Top sellers</h3></div></div>
+              <div id="reportTopSellers" class="admin-report-list"></div>
+            </article>
+            <article class="admin-report-card">
+              <div class="admin-card-heading"><div><span class="admin-card-kicker">Order outcomes</span><h3>Status mix</h3></div></div>
+              <div id="reportStatusMix" class="admin-report-list"></div>
+            </article>
+          </div>
+          <article class="admin-report-card admin-report-wide">
+            <div class="admin-card-heading"><div><span class="admin-card-kicker">Customer database</span><h3>Buyers and purchasing locations</h3><p>Customers are grouped by phone number. Location is derived from their most recent delivery address.</p></div></div>
+            <div class="admin-table-scroll">
+              <table class="admin-report-table">
+                <thead><tr><th>Customer</th><th>Phone</th><th>Location</th><th>Orders</th><th>Total spent</th><th>Last purchase</th></tr></thead>
+                <tbody id="reportBuyerTable"></tbody>
+              </table>
+            </div>
+          </article>
         </section>
 
         <section class="admin-panel" data-admin-section="discounts" hidden>
@@ -548,7 +596,7 @@
                   <div class="admin-field"><label for="whatsappAppIdInput">Meta app ID</label><input id="whatsappAppIdInput" type="text" autocomplete="off" /></div>
                   <div class="admin-field"><label for="whatsappAppSecretInput">Meta app secret</label><input id="whatsappAppSecretInput" type="password" autocomplete="off" /></div>
                   <div class="admin-field"><label for="whatsappGraphVersionInput">Graph version</label><input id="whatsappGraphVersionInput" type="text" placeholder="v22.0" /></div>
-                  <div class="admin-field"><label for="whatsappAdminNumberInput">Admin number</label><input id="whatsappAdminNumberInput" type="text" placeholder="62812..." autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappAdminNumberInput">Staff approval numbers</label><input id="whatsappAdminNumberInput" type="text" placeholder="62812..., 62813..." autocomplete="off" /><small>Comma-separated WhatsApp numbers. Every listed staff member receives order alerts and can approve or cancel.</small></div>
                   <div class="admin-field"><label for="whatsappTemplateLanguageInput">Template language</label><input id="whatsappTemplateLanguageInput" type="text" placeholder="en_US" /></div>
                 </div>
               </div>
@@ -568,7 +616,7 @@
               <div class="admin-provider-actions">
                 <button class="admin-button secondary" id="testWhatsappTemplatesButton" type="button">Run template diagnostics</button>
                 <button class="admin-button secondary" id="inspectWhatsappTemplatesButton" type="button">Compare with Meta schemas</button>
-                <span>Diagnostics send synthetic messages only to the configured admin number. No order, stock, delivery or payment is created.</span>
+                <span>Diagnostics send synthetic messages only to the first configured staff number. No order, stock, delivery or payment is created.</span>
               </div>
               <pre class="helper-text" id="whatsappTemplateTestResults" hidden></pre>
             </article>
@@ -755,6 +803,6 @@ node --test server.test.js</code></div>
       </main>
     </div>
 
-    <script src="admin.js?v=20260725-media-controls-v13"></script>
+    <script src="admin.js?v=20260725-admin-reports-v16"></script>
   </body>
 </html>

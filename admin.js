@@ -41,6 +41,8 @@ const categoryList = document.getElementById("categoryList");
 const productList = document.getElementById("productList");
 const adminOrderList = document.getElementById("adminOrderList");
 const refreshOrdersButton = document.getElementById("refreshOrdersButton");
+const reportPeriodSelect = document.getElementById("reportPeriodSelect");
+const exportCustomersButton = document.getElementById("exportCustomersButton");
 const voucherList = document.getElementById("voucherList");
 const addVoucherButton = document.getElementById("addVoucherButton");
 const saveVouchersButton = document.getElementById("saveVouchersButton");
@@ -63,6 +65,7 @@ const sectionHeadings = {
   "privacy-page": ["Pages", "Privacy Policy"],
   promo: ["Storefront", "Promo spotlight"],
   orders: ["Operations", "Orders and fulfilment"],
+  reports: ["Commerce intelligence", "Sales and customer reports"],
   discounts: ["Commerce", "Discount codes"],
   story: ["Homepage", "Story carousel"],
   categories: ["Catalog", "Product categories"],
@@ -75,15 +78,15 @@ const storeFields = {
   name: document.getElementById("storeName"),
   logoPath: document.getElementById("storeLogoPathInput"),
   logoScale: document.getElementById("storeLogoScaleInput"),
-  logoPositionX: document.getElementById("storeLogoPositionXInput"),
-  logoPositionY: document.getElementById("storeLogoPositionYInput"),
+  logoOffsetX: document.getElementById("storeLogoPositionXInput"),
+  logoOffsetY: document.getElementById("storeLogoPositionYInput"),
   orderWhatsapp: document.getElementById("orderWhatsapp"),
   eyebrow: document.getElementById("storeEyebrowInput"),
   perkLabel: document.getElementById("perkLabelInput"),
   footerLogoPath: document.getElementById("footerLogoPathInput"),
   footerLogoScale: document.getElementById("footerLogoScaleInput"),
-  footerLogoPositionX: document.getElementById("footerLogoPositionXInput"),
-  footerLogoPositionY: document.getElementById("footerLogoPositionYInput"),
+  footerLogoOffsetX: document.getElementById("footerLogoPositionXInput"),
+  footerLogoOffsetY: document.getElementById("footerLogoPositionYInput"),
   footerTagline: document.getElementById("footerTaglineInput"),
   footerContactLabel: document.getElementById("footerContactLabelInput"),
   termsLabel: document.getElementById("termsLabelInput"),
@@ -158,14 +161,14 @@ const storeFields = {
   privacyIntro: document.getElementById("privacyIntroInput"),
   privacyPoints: document.getElementById("privacyPointsInput")
 };
-const numericStoreFields = new Set(["deliveryFee", "taxRate", "kitchenLat", "kitchenLng", "logoScale", "logoPositionX", "logoPositionY", "footerLogoScale", "footerLogoPositionX", "footerLogoPositionY"]);
+const numericStoreFields = new Set(["deliveryFee", "taxRate", "kitchenLat", "kitchenLng", "logoScale", "logoOffsetX", "logoOffsetY", "footerLogoScale", "footerLogoOffsetX", "footerLogoOffsetY"]);
 const storeFieldDefaults = {
   logoScale: 100,
-  logoPositionX: 50,
-  logoPositionY: 50,
+  logoOffsetX: 0,
+  logoOffsetY: 0,
   footerLogoScale: 100,
-  footerLogoPositionX: 50,
-  footerLogoPositionY: 50,
+  footerLogoOffsetX: 0,
+  footerLogoOffsetY: 0,
   footerTagline: "Bali's original packaged treats and wholesome snacks.",
   footerContactLabel: "CONTACT US",
   termsLabel: "Terms and Conditions",
@@ -428,6 +431,9 @@ function showAdminSection(sectionName) {
   if (sectionName === "orders") {
     loadOrders();
   }
+  if (sectionName === "reports") {
+    renderReports();
+  }
   if (sectionName === "dashboard") {
     renderDashboard();
   }
@@ -452,13 +458,13 @@ function updatePublishState() {
   saveCatalogButton.disabled = false;
 }
 
-function markCatalogDirty() {
+function markCatalogDirty(syncPreview = true) {
   if (!state.catalogDirty) {
     state.catalogDirty = true;
     updatePublishState();
     setStatus("Draft preview updated. Publish when you are ready.");
   }
-  scheduleDraftPreview();
+  if (syncPreview) scheduleDraftPreview();
 }
 
 function refreshStorefrontPreview() {
@@ -800,13 +806,13 @@ function clampedMediaValue(value, fallback, min, max) {
 
 function mediaRangeControlsMarkup(fieldAttribute, item = {}) {
   const scale = clampedMediaValue(item.imageScale, 100, 50, 180);
-  const positionX = clampedMediaValue(item.imagePositionX, 50, 0, 100);
-  const positionY = clampedMediaValue(item.imagePositionY, 50, 0, 100);
+  const positionX = clampedMediaValue(item.imageOffsetX, 0, -100, 100);
+  const positionY = clampedMediaValue(item.imageOffsetY, 0, -100, 100);
   return `
     <div class="admin-media-controls admin-grid-wide">
       <label><span>Image size <output>${scale}%</output></span><input ${fieldAttribute}="imageScale" type="range" min="50" max="180" step="1" value="${scale}" /></label>
-      <label><span>Left ↔ Right <output>${positionX}%</output></span><input ${fieldAttribute}="imagePositionX" type="range" min="0" max="100" step="1" value="${positionX}" /></label>
-      <label><span>Up ↕ Down <output>${positionY}%</output></span><input ${fieldAttribute}="imagePositionY" type="range" min="0" max="100" step="1" value="${positionY}" /></label>
+      <label><span>Left ↔ Right <output>${positionX}%</output></span><input ${fieldAttribute}="imageOffsetX" type="range" min="-100" max="100" step="1" value="${positionX}" /></label>
+      <label><span>Up ↕ Down <output>${positionY}%</output></span><input ${fieldAttribute}="imageOffsetY" type="range" min="-100" max="100" step="1" value="${positionY}" /></label>
     </div>
   `;
 }
@@ -824,11 +830,11 @@ function syncLogoEditorPreview(type) {
   const preview = document.getElementById(isFooter ? "footerLogoPreview" : "storeLogoPreview");
   if (!preview) return;
   const scale = clampedMediaValue(storeFields[isFooter ? "footerLogoScale" : "logoScale"]?.value, 100, 50, 180);
-  const x = clampedMediaValue(storeFields[isFooter ? "footerLogoPositionX" : "logoPositionX"]?.value, 50, 0, 100);
-  const y = clampedMediaValue(storeFields[isFooter ? "footerLogoPositionY" : "logoPositionY"]?.value, 50, 0, 100);
-  preview.style.transform = `scale(${scale / 100})`;
-  preview.style.transformOrigin = `${x}% ${y}%`;
-  preview.style.objectPosition = `${x}% ${y}%`;
+  const x = clampedMediaValue(storeFields[isFooter ? "footerLogoOffsetX" : "logoOffsetX"]?.value, 0, -100, 100);
+  const y = clampedMediaValue(storeFields[isFooter ? "footerLogoOffsetY" : "logoOffsetY"]?.value, 0, -100, 100);
+  preview.style.transform = `translate(${x}%, ${y}%) scale(${scale / 100})`;
+  preview.style.transformOrigin = "center";
+  preview.style.objectPosition = "center";
 }
 
 function kitchenLocationFromFields() {
@@ -1100,7 +1106,7 @@ function renderAdminOrders() {
           </div>
         </div>
         <div class="admin-order-actions">
-          <a class="admin-button secondary" href="${escapeHtml(order.documentUrl || "#")}" target="_blank" rel="noreferrer">Print invoice</a>
+          <a class="admin-button secondary" href="${escapeHtml(order.documentUrl || "#")}" target="_blank" rel="noreferrer">Open &amp; print invoice</a>
           <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">WhatsApp handoff</a>
           ${deliveryActions}
         </div>
@@ -1110,6 +1116,114 @@ function renderAdminOrders() {
       </article>
     `;
   }).join("");
+}
+
+function orderDate(order) {
+  const value = order.createdAt || order.updatedAt || order.payment?.paidAt || order.paidAt;
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+function reportOrders() {
+  const period = reportPeriodSelect?.value || "30";
+  if (period === "all") return [...state.orders];
+  const cutoff = Date.now() - Number(period) * 86400000;
+  return state.orders.filter((order) => (orderDate(order)?.getTime() || 0) >= cutoff);
+}
+
+function buyerLocation(order) {
+  const address = String(order.fulfillment?.address || order.customer?.address || "").trim();
+  if (!address) return "Not recorded";
+  const parts = address.split(",").map((part) => part.trim()).filter(Boolean);
+  return parts.slice(Math.max(0, parts.length - 3)).join(", ");
+}
+
+function buildBuyerRows(orders) {
+  const buyers = new Map();
+  orders.forEach((order) => {
+    const phone = String(order.customer?.phone || "").trim();
+    const email = String(order.customer?.email || "").trim().toLowerCase();
+    const key = phone || email || `${order.customer?.name || "Guest"}-${order.id}`;
+    const current = buyers.get(key) || {
+      name: order.customer?.name || "Guest",
+      phone,
+      email,
+      location: buyerLocation(order),
+      orders: 0,
+      spent: 0,
+      lastDate: null
+    };
+    current.orders += 1;
+    if (!["cancelled", "expired", "payment_failed", "awaiting_payment"].includes(order.status)) {
+      current.spent += Number(order.pricing?.total || 0);
+    }
+    const date = orderDate(order);
+    if (date && (!current.lastDate || date > current.lastDate)) {
+      current.lastDate = date;
+      current.location = buyerLocation(order);
+      current.name = order.customer?.name || current.name;
+    }
+    buyers.set(key, current);
+  });
+  return [...buyers.values()].sort((a, b) => b.spent - a.spent);
+}
+
+function renderReports() {
+  if (!document.getElementById("reportNetSales")) return;
+  const orders = reportOrders();
+  const saleStatuses = new Set(["paid", "preparing", "on_delivery", "shipped", "delivered", "complete"]);
+  const paidOrders = orders.filter((order) => saleStatuses.has(order.status));
+  const cancelled = orders.filter((order) => order.status === "cancelled");
+  const pending = orders.filter((order) => ["awaiting_payment", "paid", "preparing"].includes(order.status));
+  const netSales = paidOrders.reduce((sum, order) => sum + Number(order.pricing?.total || 0), 0);
+  const cancelledValue = cancelled.reduce((sum, order) => sum + Number(order.pricing?.total || 0), 0);
+  document.getElementById("reportNetSales").textContent = formatRupiah.format(netSales);
+  document.getElementById("reportPaidCount").textContent = `${paidOrders.length} paid order${paidOrders.length === 1 ? "" : "s"}`;
+  document.getElementById("reportAverageOrder").textContent = formatRupiah.format(paidOrders.length ? netSales / paidOrders.length : 0);
+  document.getElementById("reportCancelledCount").textContent = String(cancelled.length);
+  document.getElementById("reportCancelledValue").textContent = `${formatRupiah.format(cancelledValue)} order value`;
+  document.getElementById("reportPendingCount").textContent = String(pending.length);
+
+  const productTotals = new Map();
+  paidOrders.forEach((order) => {
+    (order.lineItems || []).forEach((entry) => {
+      const key = entry.itemId || entry.item?.id || entry.item?.name || "Unknown product";
+      const current = productTotals.get(key) || { name: entry.item?.name || key, quantity: 0, revenue: 0 };
+      current.quantity += Number(entry.quantity || 0);
+      current.revenue += Number(entry.lineTotal || 0);
+      productTotals.set(key, current);
+    });
+  });
+  const products = [...productTotals.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 8);
+  const maxQuantity = Math.max(1, ...products.map((item) => item.quantity));
+  document.getElementById("reportTopSellers").innerHTML = products.length
+    ? products.map((item, index) => `<div class="admin-report-row"><span class="admin-report-rank">${index + 1}</span><div><strong>${escapeHtml(item.name)}</strong><span class="admin-report-bar"><i style="width:${Math.max(8, item.quantity / maxQuantity * 100)}%"></i></span><small>${item.quantity} sold · ${formatRupiah.format(item.revenue)}</small></div></div>`).join("")
+    : '<div class="admin-dashboard-empty">No paid product sales in this period.</div>';
+
+  const statusCounts = new Map();
+  orders.forEach((order) => statusCounts.set(statusLabel(order.status), (statusCounts.get(statusLabel(order.status)) || 0) + 1));
+  const statuses = [...statusCounts.entries()].sort((a, b) => b[1] - a[1]);
+  const maxStatus = Math.max(1, ...statuses.map((entry) => entry[1]));
+  document.getElementById("reportStatusMix").innerHTML = statuses.length
+    ? statuses.map(([label, count]) => `<div class="admin-report-row is-status"><div><strong>${escapeHtml(label)}</strong><span class="admin-report-bar"><i style="width:${Math.max(8, count / maxStatus * 100)}%"></i></span><small>${count} order${count === 1 ? "" : "s"}</small></div></div>`).join("")
+    : '<div class="admin-dashboard-empty">No orders in this period.</div>';
+
+  const buyers = buildBuyerRows(orders);
+  document.getElementById("reportBuyerTable").innerHTML = buyers.length
+    ? buyers.map((buyer) => `<tr><td><strong>${escapeHtml(buyer.name)}</strong>${buyer.email ? `<small>${escapeHtml(buyer.email)}</small>` : ""}</td><td>${escapeHtml(buyer.phone || "—")}</td><td>${escapeHtml(buyer.location)}</td><td>${buyer.orders}</td><td>${formatRupiah.format(buyer.spent)}</td><td>${buyer.lastDate ? buyer.lastDate.toLocaleDateString("en-GB") : "—"}</td></tr>`).join("")
+    : '<tr><td colspan="6">No buyers in this period.</td></tr>';
+}
+
+function exportBuyerCsv() {
+  const rows = [["Customer", "Email", "Phone", "Location", "Orders", "Total spent", "Last purchase"], ...buildBuyerRows(reportOrders()).map((buyer) => [
+    buyer.name, buyer.email, buyer.phone, buyer.location, buyer.orders, buyer.spent, buyer.lastDate?.toISOString() || ""
+  ])];
+  const csv = rows.map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  link.download = `bakeaholic-buyers-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 function defaultBrandStory() {
@@ -1305,7 +1419,7 @@ function renderBrandStory() {
   const slides = normalizeBrandStorySlides(story);
   brandStorySlideList.innerHTML = slides.map((slide, index) => storySlideMarkup(slide, index)).join("");
   brandStorySlideList.querySelectorAll("[data-story-slide-index]").forEach((card) => {
-    card.querySelectorAll('[data-story-field="imagePath"], [data-story-field="imageFit"], [data-story-field="imagePositionX"], [data-story-field="imagePositionY"], [data-story-field="imageScale"]').forEach((field) => {
+    card.querySelectorAll('[data-story-field="imagePath"], [data-story-field="imageFit"], [data-story-field="imageOffsetX"], [data-story-field="imageOffsetY"], [data-story-field="imageScale"]').forEach((field) => {
       field.addEventListener("input", () => syncBrandStoryPreview(card));
       field.addEventListener("change", () => syncBrandStoryPreview(card));
     });
@@ -1395,10 +1509,10 @@ function normalizeImagePosition(value) {
 }
 
 function productPreviewStyle(product) {
-  const x = clampedMediaValue(product.imagePositionX, 50, 0, 100);
-  const y = clampedMediaValue(product.imagePositionY, 50, 0, 100);
+  const x = clampedMediaValue(product.imageOffsetX, 0, -100, 100);
+  const y = clampedMediaValue(product.imageOffsetY, 0, -100, 100);
   const scale = clampedMediaValue(product.imageScale, 100, 50, 180);
-  return `object-fit: ${normalizeImageFit(product.imageFit)}; object-position: ${x}% ${y}%; transform: scale(${scale / 100}); transform-origin: ${x}% ${y}%;`;
+  return `object-fit: ${normalizeImageFit(product.imageFit)}; object-position: center; transform: translate(${x}%, ${y}%) scale(${scale / 100}); transform-origin: center;`;
 }
 
 function categoryMarkup(category, index) {
@@ -1563,16 +1677,16 @@ function renderProducts() {
     const syncPreview = () => {
       const pathField = card.querySelector('[data-product-field="imagePath"]');
       const fitField = card.querySelector('[data-product-field="imageFit"]');
-      const positionXField = card.querySelector('[data-product-field="imagePositionX"]');
-      const positionYField = card.querySelector('[data-product-field="imagePositionY"]');
+      const positionXField = card.querySelector('[data-product-field="imageOffsetX"]');
+      const positionYField = card.querySelector('[data-product-field="imageOffsetY"]');
       const scaleField = card.querySelector('[data-product-field="imageScale"]');
       const preview = card.querySelector("[data-product-preview]");
       const emptyState = card.querySelector("[data-product-preview-empty]");
       const imagePath = pathField?.value.trim() || "";
-      const x = clampedMediaValue(positionXField?.value, 50, 0, 100);
-      const y = clampedMediaValue(positionYField?.value, 50, 0, 100);
+      const x = clampedMediaValue(positionXField?.value, 0, -100, 100);
+      const y = clampedMediaValue(positionYField?.value, 0, -100, 100);
       const scale = clampedMediaValue(scaleField?.value, 100, 50, 180);
-      const previewStyle = `object-fit: ${normalizeImageFit(fitField?.value)}; object-position: ${x}% ${y}%; transform: scale(${scale / 100}); transform-origin: ${x}% ${y}%;`;
+      const previewStyle = `object-fit: ${normalizeImageFit(fitField?.value)}; object-position: center; transform: translate(${x}%, ${y}%) scale(${scale / 100}); transform-origin: center;`;
 
       if (imagePath) {
         if (preview) {
@@ -1586,7 +1700,7 @@ function renderProducts() {
       }
     };
 
-    card.querySelectorAll('[data-product-field="imagePath"], [data-product-field="imageFit"], [data-product-field="imagePositionX"], [data-product-field="imagePositionY"], [data-product-field="imageScale"]').forEach((field) => {
+    card.querySelectorAll('[data-product-field="imagePath"], [data-product-field="imageFit"], [data-product-field="imageOffsetX"], [data-product-field="imageOffsetY"], [data-product-field="imageScale"]').forEach((field) => {
       field.addEventListener("input", syncPreview);
       field.addEventListener("change", syncPreview);
     });
@@ -1892,6 +2006,7 @@ async function loadOrders() {
     state.orders = Array.isArray(response.orders) ? response.orders : [];
     renderAdminOrders();
     renderDashboard();
+    renderReports();
   } catch (error) {
     adminOrderList.innerHTML = `
       <div class="empty-state">
@@ -2015,6 +2130,7 @@ async function bootstrap() {
   renderAll();
   renderIntegrations(integrations);
   renderAdminOrders();
+  renderReports();
   restoreLiveTestChecklist();
   updatePublishState();
   await initializeKitchenMap(publicConfig.googleMapsApiKey).catch(() => {
@@ -2040,6 +2156,8 @@ saveVouchersButton?.addEventListener("click", saveVouchers);
 addVoucherButton?.addEventListener("click", addVoucher);
 adminLogoutButton.addEventListener("click", logoutAdmin);
 refreshOrdersButton?.addEventListener("click", loadOrders);
+reportPeriodSelect?.addEventListener("change", renderReports);
+exportCustomersButton?.addEventListener("click", exportBuyerCsv);
 adminOrderList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-approve-delivery]");
   if (button) {
@@ -2081,7 +2199,8 @@ document.querySelectorAll("[data-dashboard-target]").forEach((button) => {
   button.addEventListener("click", () => showAdminSection(button.dataset.dashboardTarget));
 });
 adminMain?.addEventListener("input", (event) => {
-  if (event.target.matches('input[type="range"]')) {
+  const isMediaRange = event.target.matches('.admin-media-controls input[type="range"]');
+  if (isMediaRange) {
     syncRangeOutputs(event.target.closest(".admin-media-controls") || document);
   }
   if (event.target === storeFields.logoPath) {
@@ -2092,15 +2211,15 @@ adminMain?.addEventListener("input", (event) => {
     const footerLogoPreview = document.getElementById("footerLogoPreview");
     if (footerLogoPreview) footerLogoPreview.src = event.target.value.trim() || storeFields.logoPath.value || "/assets/bakeaholic-logo.jpg";
   }
-  if ([storeFields.logoScale, storeFields.logoPositionX, storeFields.logoPositionY].includes(event.target)) {
+  if ([storeFields.logoScale, storeFields.logoOffsetX, storeFields.logoOffsetY].includes(event.target)) {
     syncLogoEditorPreview("store");
   }
-  if ([storeFields.footerLogoScale, storeFields.footerLogoPositionX, storeFields.footerLogoPositionY].includes(event.target)) {
+  if ([storeFields.footerLogoScale, storeFields.footerLogoOffsetX, storeFields.footerLogoOffsetY].includes(event.target)) {
     syncLogoEditorPreview("footer");
   }
   const section = event.target.closest("[data-admin-section]");
   if (section && catalogActionSections.has(section.dataset.adminSection)) {
-    markCatalogDirty();
+    markCatalogDirty(!isMediaRange);
   }
 });
 adminMain?.addEventListener("focusin", (event) => {
@@ -2114,6 +2233,58 @@ adminMain?.addEventListener("change", (event) => {
     markCatalogDirty();
   }
 });
+
+let mediaDrag = null;
+
+adminMain?.addEventListener("pointerdown", (event) => {
+  const frame = event.target.closest(".admin-image-preview-frame, .admin-logo-preview");
+  const image = frame?.querySelector("img");
+  if (!frame || !image) return;
+  const localField = frame.closest(".admin-field");
+  const editor = localField?.querySelector(".admin-media-controls")
+    ? localField
+    : frame.closest("[data-story-slide-index], [data-product-index], [data-admin-section]");
+  const controls = editor?.querySelector(".admin-media-controls");
+  const ranges = controls ? [...controls.querySelectorAll('input[type="range"]')] : [];
+  const xRange = ranges.find((range) => /OffsetX|PositionX/.test(range.dataset.storyField || range.dataset.productField || range.id));
+  const yRange = ranges.find((range) => /OffsetY|PositionY/.test(range.dataset.storyField || range.dataset.productField || range.id));
+  if (!xRange || !yRange) return;
+  event.preventDefault();
+  frame.setPointerCapture(event.pointerId);
+  frame.classList.add("is-dragging");
+  mediaDrag = {
+    frame,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    valueX: Number(xRange.value || 0),
+    valueY: Number(yRange.value || 0),
+    xRange,
+    yRange
+  };
+});
+
+adminMain?.addEventListener("pointermove", (event) => {
+  if (!mediaDrag || mediaDrag.pointerId !== event.pointerId) return;
+  const rect = mediaDrag.frame.getBoundingClientRect();
+  const x = mediaDrag.valueX + ((event.clientX - mediaDrag.startX) / Math.max(rect.width, 1)) * 100;
+  const y = mediaDrag.valueY + ((event.clientY - mediaDrag.startY) / Math.max(rect.height, 1)) * 100;
+  mediaDrag.xRange.value = String(Math.max(-100, Math.min(100, Math.round(x))));
+  mediaDrag.yRange.value = String(Math.max(-100, Math.min(100, Math.round(y))));
+  mediaDrag.xRange.dispatchEvent(new Event("input", { bubbles: true }));
+  mediaDrag.yRange.dispatchEvent(new Event("input", { bubbles: true }));
+});
+
+function finishMediaDrag(event) {
+  if (!mediaDrag || mediaDrag.pointerId !== event.pointerId) return;
+  mediaDrag.frame.classList.remove("is-dragging");
+  mediaDrag.xRange.dispatchEvent(new Event("change", { bubbles: true }));
+  mediaDrag.yRange.dispatchEvent(new Event("change", { bubbles: true }));
+  mediaDrag = null;
+}
+
+adminMain?.addEventListener("pointerup", finishMediaDrag);
+adminMain?.addEventListener("pointercancel", finishMediaDrag);
 document.getElementById("refreshStorefrontPreview")?.addEventListener("click", refreshStorefrontPreview);
 storefrontPreviewFrame?.addEventListener("load", () => {
   if (state.catalogDirty) {
