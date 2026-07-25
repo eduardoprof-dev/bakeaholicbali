@@ -820,25 +820,30 @@ function mediaRangeControlsMarkup(fieldAttribute, item = {}) {
   const scale = clampedMediaValue(item.imageScale, 100, 50, 180);
   const positionX = clampedMediaValue(item.imageOffsetX, 0, -100, 100);
   const positionY = clampedMediaValue(item.imageOffsetY, 0, -100, 100);
+  const frameX = clampedMediaValue(item.frameOffsetX, 0, -30, 30);
+  const frameY = clampedMediaValue(item.frameOffsetY, 0, -30, 30);
   return `
     <div class="admin-media-controls admin-grid-wide">
-      <div class="admin-media-control-heading">
-        <div>
-          <strong>Adjust inside the frame</strong>
-          <span>Drag the image in its preview, use the arrows for precise movement, or reset it.</span>
+      <div class="admin-media-control-group">
+        <div class="admin-media-control-heading">
+          <div>
+            <strong>1. Frame position on the webpage</strong>
+            <span>Moves the complete allocated picture frame. It does not crop the picture.</span>
+          </div>
         </div>
-        <button class="admin-button secondary compact" type="button" data-media-reset>Reset</button>
+        <label><span>Frame left ↔ right <output>${frameX}%</output></span><input ${fieldAttribute}="frameOffsetX" type="range" min="-30" max="30" step="1" value="${frameX}" /></label>
+        <label><span>Frame up ↕ down <output>${frameY}%</output></span><input ${fieldAttribute}="frameOffsetY" type="range" min="-30" max="30" step="1" value="${frameY}" /></label>
       </div>
-      <label><span>Image size <output>${scale}%</output></span><input ${fieldAttribute}="imageScale" type="range" min="50" max="180" step="1" value="${scale}" /></label>
-      <label><span>Left ↔ Right <output>${positionX}%</output></span><input ${fieldAttribute}="imageOffsetX" type="range" min="-100" max="100" step="1" value="${positionX}" /></label>
-      <label><span>Up ↕ Down <output>${positionY}%</output></span><input ${fieldAttribute}="imageOffsetY" type="range" min="-100" max="100" step="1" value="${positionY}" /></label>
-      <div class="admin-media-nudge" aria-label="Move image inside frame">
-        <button type="button" data-media-nudge-y="-5" aria-label="Move image up">↑</button>
-        <div>
-          <button type="button" data-media-nudge-x="-5" aria-label="Move image left">←</button>
-          <button type="button" data-media-nudge-x="5" aria-label="Move image right">→</button>
+      <div class="admin-media-control-group">
+        <div class="admin-media-control-heading">
+          <div>
+            <strong>2. Picture crop inside the frame</strong>
+            <span>Zoom and reposition only the picture. You can also drag directly inside the preview.</span>
+          </div>
         </div>
-        <button type="button" data-media-nudge-y="5" aria-label="Move image down">↓</button>
+        <label><span>Picture zoom <output>${scale}%</output></span><input ${fieldAttribute}="imageScale" type="range" min="50" max="180" step="1" value="${scale}" /></label>
+        <label><span>Picture left ↔ right <output>${positionX}%</output></span><input ${fieldAttribute}="imageOffsetX" type="range" min="-100" max="100" step="1" value="${positionX}" /></label>
+        <label><span>Picture up ↕ down <output>${positionY}%</output></span><input ${fieldAttribute}="imageOffsetY" type="range" min="-100" max="100" step="1" value="${positionY}" /></label>
       </div>
     </div>
   `;
@@ -1341,11 +1346,101 @@ function downloadReportPdf() {
 }
 
 function printReportA4() {
-  const finishPrinting = () => document.body.classList.remove("is-printing-report");
-  document.body.classList.add("is-printing-report");
-  window.addEventListener("afterprint", finishPrinting, { once: true });
-  window.print();
-  window.setTimeout(finishPrinting, 30 * 1000);
+  const lines = reportTextLines();
+  const reportWindow = window.open("", "bakeaholic-a4-report", "width=960,height=1100");
+  if (!reportWindow) {
+    setStatus("The print window was blocked. Allow pop-ups for this admin page, then try again.");
+    return;
+  }
+  const title = lines.shift() || "BAKEAHOLIC BALI — SALES REPORT";
+  const summaryEnd = lines.indexOf("TOP SELLERS");
+  const summary = lines.slice(0, Math.max(0, summaryEnd));
+  const detail = lines.slice(Math.max(0, summaryEnd));
+  reportWindow.document.open();
+  reportWindow.document.write(`<!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(title)}</title>
+        <style>
+          @page { size: A4 portrait; margin: 14mm; }
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            color: #302018;
+            background: #fff;
+            font: 12px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          }
+          main { width: 100%; }
+          header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 24px;
+            padding-bottom: 14px;
+            border-bottom: 2px solid #754525;
+          }
+          h1 { margin: 0; font-size: 22px; line-height: 1.15; letter-spacing: .02em; }
+          .brand { color: #754525; font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+          .summary {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 18px;
+            margin: 18px 0 22px;
+            padding: 14px 16px;
+            border: 1px solid #e4d6cc;
+            border-radius: 10px;
+            background: #fbf7f3;
+          }
+          .summary p { margin: 0; }
+          pre {
+            margin: 0;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            color: #302018;
+            font: 11px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          footer {
+            margin-top: 24px;
+            padding-top: 10px;
+            border-top: 1px solid #e4d6cc;
+            color: #836d60;
+            font-size: 9px;
+          }
+          @media screen {
+            body { padding: 24px; background: #eee8e3; }
+            main {
+              width: 210mm;
+              min-height: 297mm;
+              margin: 0 auto;
+              padding: 14mm;
+              background: #fff;
+              box-shadow: 0 18px 55px rgba(63, 36, 20, .15);
+            }
+          }
+          @media print {
+            .screen-note { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <main>
+          <header>
+            <div>
+              <div class="brand">Bakeaholic Bali</div>
+              <h1>${escapeHtml(title.replace("BAKEAHOLIC BALI — ", ""))}</h1>
+            </div>
+            <div class="screen-note">A4 report</div>
+          </header>
+          <section class="summary">${summary.filter(Boolean).map((line) => `<p>${escapeHtml(line)}</p>`).join("")}</section>
+          <pre>${escapeHtml(detail.join("\n"))}</pre>
+          <footer>Generated by Bakeaholic Admin · ${escapeHtml(reportPeriodLabel())}</footer>
+        </main>
+      </body>
+    </html>`);
+  reportWindow.document.close();
+  reportWindow.focus();
+  window.setTimeout(() => reportWindow.print(), 250);
 }
 
 function defaultBrandStory() {
@@ -1503,7 +1598,7 @@ function storySlideMarkup(slide, index) {
         ${mediaRangeControlsMarkup("data-story-field", slide)}
         <div class="admin-field admin-image-preview-field">
           <label>Slide image preview</label>
-          <div class="admin-image-preview-frame wide">
+          <div class="admin-image-preview-frame wide" style="${mediaFramePreviewStyle(slide)}">
             <img class="admin-image-preview" data-story-preview src="${escapeHtml(slide.imagePath || defaultBrandStory().imagePath)}" alt="Homepage carousel preview" style="${productPreviewStyle(slide)}" />
           </div>
         </div>
@@ -1529,8 +1624,11 @@ function syncBrandStoryPreview(card) {
   card.querySelectorAll("[data-story-field]").forEach((field) => {
     draft[field.dataset.storyField] = field.value;
   });
+  const frame = card.querySelector(".admin-image-preview-frame");
+  if (frame) frame.style.cssText = mediaFramePreviewStyle(draft);
   preview.style.cssText = productPreviewStyle(draft);
   syncRangeOutputs(card);
+  sendMediaPreview("story", Number(card.dataset.storySlideIndex || 0), "", draft);
 }
 
 function renderBrandStory() {
@@ -1541,7 +1639,7 @@ function renderBrandStory() {
   const slides = normalizeBrandStorySlides(story);
   brandStorySlideList.innerHTML = slides.map((slide, index) => storySlideMarkup(slide, index)).join("");
   brandStorySlideList.querySelectorAll("[data-story-slide-index]").forEach((card) => {
-    card.querySelectorAll('[data-story-field="imagePath"], [data-story-field="imageFit"], [data-story-field="imageOffsetX"], [data-story-field="imageOffsetY"], [data-story-field="imageScale"]').forEach((field) => {
+    card.querySelectorAll('[data-story-field="imagePath"], [data-story-field="imageFit"], [data-story-field="imageOffsetX"], [data-story-field="imageOffsetY"], [data-story-field="imageScale"], [data-story-field="frameOffsetX"], [data-story-field="frameOffsetY"]').forEach((field) => {
       field.addEventListener("input", () => syncBrandStoryPreview(card));
       field.addEventListener("change", () => syncBrandStoryPreview(card));
     });
@@ -1635,6 +1733,52 @@ function productPreviewStyle(product) {
   const y = clampedMediaValue(product.imageOffsetY, 0, -100, 100);
   const scale = clampedMediaValue(product.imageScale, 100, 50, 180);
   return `object-fit: ${normalizeImageFit(product.imageFit)}; object-position: center; transform: translate(${x}%, ${y}%) scale(${scale / 100}); transform-origin: center;`;
+}
+
+function mediaFramePreviewStyle(item) {
+  const x = clampedMediaValue(item.frameOffsetX, 0, -30, 30);
+  const y = clampedMediaValue(item.frameOffsetY, 0, -30, 30);
+  return `transform: translate(${x}%, ${y}%); transform-origin: center;`;
+}
+
+function sendMediaPreview(itemType, itemIndex, itemId, item) {
+  const media = {
+    imageFit: normalizeImageFit(item.imageFit),
+    imageScale: clampedMediaValue(item.imageScale, 100, 50, 180),
+    imageOffsetX: clampedMediaValue(item.imageOffsetX, 0, -100, 100),
+    imageOffsetY: clampedMediaValue(item.imageOffsetY, 0, -100, 100),
+    frameOffsetX: clampedMediaValue(item.frameOffsetX, 0, -30, 30),
+    frameOffsetY: clampedMediaValue(item.frameOffsetY, 0, -30, 30)
+  };
+  const doc = storefrontPreviewFrame?.contentDocument;
+  let frame = null;
+  let image = null;
+  if (doc && itemType === "story") {
+    const slide = doc.querySelector(`.brand-story-slide:nth-child(${Number(itemIndex) + 1})`);
+    frame = slide?.querySelector(".brand-story-media-frame");
+    image = slide?.querySelector(".brand-story-image");
+  } else if (doc && itemType === "product") {
+    const cards = [...doc.querySelectorAll(".product-card")];
+    const product = cards.find((card) => card.dataset.productId === itemId) || cards[Number(itemIndex)];
+    frame = product?.querySelector(".product-thumb-wrap");
+    image = product?.querySelector(".product-thumb");
+  }
+  if (frame && image) {
+    frame.style.transform = `translate(${media.frameOffsetX}%, ${media.frameOffsetY}%)`;
+    frame.style.transformOrigin = "center";
+    image.style.objectFit = media.imageFit;
+    image.style.objectPosition = "center";
+    image.style.transform = `translate(${media.imageOffsetX}%, ${media.imageOffsetY}%) scale(${media.imageScale / 100})`;
+    image.style.transformOrigin = "center";
+    return;
+  }
+  storefrontPreviewFrame?.contentWindow?.postMessage({
+    type: "bakeaholic:media-preview",
+    itemType,
+    itemIndex,
+    itemId,
+    media
+  }, window.location.origin);
 }
 
 function categoryMarkup(category, index) {
@@ -1748,7 +1892,7 @@ function productMarkup(product, index) {
         </div>
         <div class="admin-field admin-image-preview-field">
           <label>Image preview</label>
-          <div class="admin-image-preview-frame">
+          <div class="admin-image-preview-frame" style="${mediaFramePreviewStyle(product)}">
             ${product.imagePath ? `<img class="admin-image-preview" data-product-preview src="${escapeHtml(product.imagePath)}" alt="${escapeHtml(product.name || "Product preview")}" style="${productPreviewStyle(product)}" />` : `<div class="admin-image-preview-empty" data-product-preview-empty>No image yet</div>`}
           </div>
         </div>
@@ -1802,13 +1946,27 @@ function renderProducts() {
       const positionXField = card.querySelector('[data-product-field="imageOffsetX"]');
       const positionYField = card.querySelector('[data-product-field="imageOffsetY"]');
       const scaleField = card.querySelector('[data-product-field="imageScale"]');
+      const frameXField = card.querySelector('[data-product-field="frameOffsetX"]');
+      const frameYField = card.querySelector('[data-product-field="frameOffsetY"]');
       const preview = card.querySelector("[data-product-preview]");
+      const frame = card.querySelector(".admin-image-preview-frame");
       const emptyState = card.querySelector("[data-product-preview-empty]");
       const imagePath = pathField?.value.trim() || "";
       const x = clampedMediaValue(positionXField?.value, 0, -100, 100);
       const y = clampedMediaValue(positionYField?.value, 0, -100, 100);
       const scale = clampedMediaValue(scaleField?.value, 100, 50, 180);
       const previewStyle = `object-fit: ${normalizeImageFit(fitField?.value)}; object-position: center; transform: translate(${x}%, ${y}%) scale(${scale / 100}); transform-origin: center;`;
+      const mediaDraft = {
+        imageFit: fitField?.value,
+        imageOffsetX: x,
+        imageOffsetY: y,
+        imageScale: scale,
+        frameOffsetX: frameXField?.value,
+        frameOffsetY: frameYField?.value
+      };
+      if (frame) {
+        frame.style.cssText = mediaFramePreviewStyle(mediaDraft);
+      }
 
       if (imagePath) {
         if (preview) {
@@ -1820,9 +1978,15 @@ function renderProducts() {
       } else if (preview) {
         preview.outerHTML = '<div class="admin-image-preview-empty" data-product-preview-empty>No image yet</div>';
       }
+      sendMediaPreview(
+        "product",
+        Number(card.dataset.productIndex || 0),
+        card.querySelector('[data-product-field="id"]')?.value || "",
+        mediaDraft
+      );
     };
 
-    card.querySelectorAll('[data-product-field="imagePath"], [data-product-field="imageFit"], [data-product-field="imageOffsetX"], [data-product-field="imageOffsetY"], [data-product-field="imageScale"]').forEach((field) => {
+    card.querySelectorAll('[data-product-field="imagePath"], [data-product-field="imageFit"], [data-product-field="imageOffsetX"], [data-product-field="imageOffsetY"], [data-product-field="imageScale"], [data-product-field="frameOffsetX"], [data-product-field="frameOffsetY"]').forEach((field) => {
       field.addEventListener("input", syncPreview);
       field.addEventListener("change", syncPreview);
     });
@@ -2397,8 +2561,13 @@ adminMain?.addEventListener("pointerdown", (event) => {
     : frame.closest("[data-story-slide-index], [data-product-index], [data-admin-section]");
   const controls = editor?.querySelector(".admin-media-controls");
   const ranges = controls ? [...controls.querySelectorAll('input[type="range"]')] : [];
-  const xRange = ranges.find((range) => /OffsetX|PositionX/.test(range.dataset.storyField || range.dataset.productField || range.id));
-  const yRange = ranges.find((range) => /OffsetY|PositionY/.test(range.dataset.storyField || range.dataset.productField || range.id));
+  const fieldName = (range) => range.dataset.storyField || range.dataset.productField || range.id;
+  const xRange = ranges.find((range) => frame.classList.contains("admin-logo-preview")
+    ? /PositionX/.test(fieldName(range))
+    : fieldName(range) === "imageOffsetX");
+  const yRange = ranges.find((range) => frame.classList.contains("admin-logo-preview")
+    ? /PositionY/.test(fieldName(range))
+    : fieldName(range) === "imageOffsetY");
   if (!xRange || !yRange) return;
   event.preventDefault();
   frame.setPointerCapture(event.pointerId);
@@ -2439,28 +2608,6 @@ function finishMediaDrag(event) {
 adminMain?.addEventListener("pointerup", finishMediaDrag);
 adminMain?.addEventListener("pointercancel", finishMediaDrag);
 adminMain?.addEventListener("lostpointercapture", finishMediaDrag);
-adminMain?.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-media-nudge-x], [data-media-nudge-y], [data-media-reset]");
-  if (!button) return;
-  const editor = button.closest("[data-story-slide-index], [data-product-index]");
-  const frame = editor?.querySelector(".admin-image-preview-frame");
-  const controls = editor?.querySelector(".admin-media-controls");
-  const ranges = controls ? [...controls.querySelectorAll('input[type="range"]')] : [];
-  const xRange = ranges.find((range) => /OffsetX/.test(range.dataset.storyField || range.dataset.productField || ""));
-  const yRange = ranges.find((range) => /OffsetY/.test(range.dataset.storyField || range.dataset.productField || ""));
-  const scaleRange = ranges.find((range) => /Scale/.test(range.dataset.storyField || range.dataset.productField || ""));
-  if (!frame || !xRange || !yRange || !scaleRange) return;
-  if (button.hasAttribute("data-media-reset")) {
-    xRange.value = "0";
-    yRange.value = "0";
-    scaleRange.value = "100";
-  } else {
-    xRange.value = String(Math.max(-100, Math.min(100, Number(xRange.value) + Number(button.dataset.mediaNudgeX || 0))));
-    yRange.value = String(Math.max(-100, Math.min(100, Number(yRange.value) + Number(button.dataset.mediaNudgeY || 0))));
-  }
-  syncDraggedMediaPreview({ frame, editor, xRange, yRange });
-  markCatalogDirty();
-});
 document.getElementById("refreshStorefrontPreview")?.addEventListener("click", refreshStorefrontPreview);
 storefrontPreviewFrame?.addEventListener("load", () => {
   if (state.catalogDirty) {

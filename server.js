@@ -3359,6 +3359,8 @@ function normalizeBrandStorySlides(brandStoryInput) {
         imageScale: Math.min(180, Math.max(50, Number(slide?.imageScale ?? 100) || 100)),
         imageOffsetX: Math.min(100, Math.max(-100, Number(slide?.imageOffsetX ?? 0) || 0)),
         imageOffsetY: Math.min(100, Math.max(-100, Number(slide?.imageOffsetY ?? 0) || 0)),
+        frameOffsetX: Math.min(30, Math.max(-30, Number(slide?.frameOffsetX ?? 0) || 0)),
+        frameOffsetY: Math.min(30, Math.max(-30, Number(slide?.frameOffsetY ?? 0) || 0)),
         points: (Array.isArray(slide?.points) ? slide.points : fallback.points)
           .map((point, pointIndex) => normalizeStoryPoint(point, fallback.points[pointIndex]?.icon || "leaf"))
           .filter((point) => point.label)
@@ -3429,6 +3431,8 @@ function sanitizeCatalog(nextCatalog) {
       imageScale: Math.min(180, Math.max(50, Number(item.imageScale ?? 100) || 100)),
       imageOffsetX: Math.min(100, Math.max(-100, Number(item.imageOffsetX ?? 0) || 0)),
       imageOffsetY: Math.min(100, Math.max(-100, Number(item.imageOffsetY ?? 0) || 0)),
+      frameOffsetX: Math.min(30, Math.max(-30, Number(item.frameOffsetX ?? 0) || 0)),
+      frameOffsetY: Math.min(30, Math.max(-30, Number(item.frameOffsetY ?? 0) || 0)),
       stock: Number(item.stock),
       lengthCm: Number(item.lengthCm) > 0 ? Number(item.lengthCm) : undefined,
       widthCm: Number(item.widthCm) > 0 ? Number(item.widthCm) : undefined,
