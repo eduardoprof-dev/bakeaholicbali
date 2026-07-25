@@ -1203,7 +1203,9 @@ body::before {
 }
 
 @media (max-width: 1180px) {
-  .admin-main.is-storefront-studio {
+  .admin-main.is-storefront-studio,
+  .admin-main.is-storefront-studio.is-mobile-preview,
+  .admin-main.is-storefront-studio.is-desktop-preview {
     grid-template-columns: minmax(0, 1fr);
   }
 

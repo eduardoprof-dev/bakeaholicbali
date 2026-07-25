@@ -2400,6 +2400,8 @@ const SESSION_SECRET = process.env.SESSION_SECRET
   || crypto.randomBytes(32).toString("hex");
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
 const rateLimitBuckets = new Map();
+const MAX_RATE_LIMIT_BUCKETS = 10000;
+let lastRateLimitSweepAt = 0;
 
 function defaultSecurityHeaders(cacheControl = "no-store") {
   return {
@@ -2410,7 +2412,7 @@ function defaultSecurityHeaders(cacheControl = "no-store") {
       "object-src 'none'",
       "frame-ancestors 'self'",
       "form-action 'self'",
-      "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://maps.googleapis.com https://*.xendit.co",
+      "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net https://maps.googleapis.com https://*.xendit.co",
       "style-src 'self' 'unsafe-inline' https://unpkg.com https://maps.googleapis.com",
       "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://maps.googleapis.com https://maps.gstatic.com https://*.xendit.co https://api.qrserver.com https://biteship.com",
       "font-src 'self' data: https://fonts.gstatic.com",
@@ -2524,8 +2526,6 @@ const publicStaticFiles = new Set([
   "app.js",
   "cart.html",
   "cart.js",
-  "home-visual-directions.css",
-  "home-visual-directions.html",
   "index.html",
   "invoice.html",
   "invoice.js",
@@ -2794,12 +2794,26 @@ function requireAdminSession(request, response) {
 }
 
 function requestIpAddress(request) {
+  const cloudflareIp = String(request.headers["cf-connecting-ip"] || "").trim();
   const forwarded = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  return forwarded || request.socket.remoteAddress || "unknown";
+  const candidate = cloudflareIp || forwarded || request.socket.remoteAddress || "unknown";
+  return candidate.slice(0, 128);
 }
 
 function checkRateLimit(key, limit, windowMs) {
   const now = Date.now();
+  if (now - lastRateLimitSweepAt > 60 * 1000 || rateLimitBuckets.size >= MAX_RATE_LIMIT_BUCKETS) {
+    const oldestRelevantTime = now - Math.max(windowMs, 15 * 60 * 1000);
+    rateLimitBuckets.forEach((events, bucketKey) => {
+      if (!events.some((entry) => entry >= oldestRelevantTime)) {
+        rateLimitBuckets.delete(bucketKey);
+      }
+    });
+    lastRateLimitSweepAt = now;
+  }
+  if (!rateLimitBuckets.has(key) && rateLimitBuckets.size >= MAX_RATE_LIMIT_BUCKETS) {
+    return false;
+  }
   const bucket = rateLimitBuckets.get(key) || [];
   const freshEvents = bucket.filter((entry) => now - entry < windowMs);
   freshEvents.push(now);
@@ -2837,17 +2851,37 @@ function parseBody(request) {
 function parseRawBody(request, maxLength = 1e6) {
   return new Promise((resolve, reject) => {
     let raw = "";
+    let rejected = false;
     request.on("data", (chunk) => {
+      if (rejected) return;
       raw += chunk;
       if (raw.length > maxLength) {
+        rejected = true;
+        raw = "";
         reject(new Error("Request body too large"));
       }
     });
     request.on("end", () => {
+      if (rejected) return;
       resolve(raw);
     });
     request.on("error", reject);
   });
+}
+
+function isSupportedImageBuffer(buffer, extension) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return false;
+  if (extension === "jpg") {
+    return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  if (extension === "png") {
+    return buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  }
+  if (extension === "webp") {
+    return buffer.subarray(0, 4).toString("ascii") === "RIFF"
+      && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+  }
+  return false;
 }
 
 function getAppMode(requestUrl, request) {
@@ -6233,10 +6267,7 @@ function handleApi(requestUrl, request, response) {
             reason: headerValidation.reason
           });
           sendJson(response, 403, {
-            error: "Invalid Biteship webhook header",
-            expectedHeader: headerValidation.headerName || "not configured",
-            headerPresent: headerValidation.headerPresent,
-            reason: headerValidation.reason
+            error: "Invalid Biteship webhook authentication"
           });
           return;
         }
@@ -6720,6 +6751,7 @@ function handleApi(requestUrl, request, response) {
       const extension = match[1] === "jpeg" ? "jpg" : match[1];
       const buffer = Buffer.from(match[2], "base64");
       if (!buffer.length || buffer.length > 6 * 1024 * 1024) throw new Error("Image must be smaller than 6 MB.");
+      if (!isSupportedImageBuffer(buffer, extension)) throw new Error("The uploaded file content does not match its image type.");
       const originalName = String(body.name || "image");
       const base = path.basename(originalName, path.extname(originalName)).replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "image";
       const filename = `${Date.now()}-${base}.${extension}`;
@@ -7275,6 +7307,7 @@ module.exports = {
   sendWhatsappTemplateMessage,
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
+  isSupportedImageBuffer,
   whatsappTemplateTestOrder,
   xenditPaymentAmount,
   xenditRefundRequestBody,

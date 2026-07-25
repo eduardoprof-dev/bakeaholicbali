@@ -13,6 +13,7 @@ const {
   defaultSecurityHeaders,
   hasBiteshipShipmentForMessaging,
   isSuccessfulXenditPaymentEvent,
+  isSupportedImageBuffer,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,
   parsePublicOrderReference,
@@ -267,10 +268,23 @@ test("responses enforce transport and browser security boundaries", () => {
   assert.match(headers["Content-Security-Policy"], /default-src 'self'/);
   assert.match(headers["Content-Security-Policy"], /object-src 'none'/);
   assert.match(headers["Content-Security-Policy"], /frame-ancestors 'self'/);
+  assert.doesNotMatch(headers["Content-Security-Policy"], /script-src[^;]*'unsafe-inline'/);
   assert.match(headers["Content-Security-Policy"], /frame-src 'self'/);
   assert.match(headers["Content-Security-Policy"], /checkout\.xendit\.co/);
   assert.match(headers["Content-Security-Policy"], /maps\.googleapis\.com/);
   assert.match(headers["Content-Security-Policy"], /api\.qrserver\.com/);
+});
+
+test("admin image uploads verify file signatures instead of trusting MIME labels", () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  const webp = Buffer.from("RIFF0000WEBP", "ascii");
+  const fake = Buffer.from("not-an-image", "ascii");
+  assert.equal(isSupportedImageBuffer(jpeg, "jpg"), true);
+  assert.equal(isSupportedImageBuffer(png, "png"), true);
+  assert.equal(isSupportedImageBuffer(webp, "webp"), true);
+  assert.equal(isSupportedImageBuffer(fake, "png"), false);
+  assert.equal(isSupportedImageBuffer(png, "jpg"), false);
 });
 
 test("live checkout offers the activated Xendit Invoice bank channels", () => {
