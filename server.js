@@ -4715,8 +4715,10 @@ async function createPaymentForOrder(order) {
   }
 
   if (order.payment?.kind === "qris") {
-    const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));
-    return applyXenditPaymentRequestToPayment(order.payment, paymentRequest);
+    // A hosted Invoice keeps the method restricted to QRIS and lets Xendit
+    // return the customer to our order page after payment.
+    const invoice = await createXenditInvoice(enrichOrder(order));
+    return applyXenditInvoiceToPayment(order.payment, invoice);
   }
 
   const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));

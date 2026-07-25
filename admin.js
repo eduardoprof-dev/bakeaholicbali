@@ -822,9 +822,24 @@ function mediaRangeControlsMarkup(fieldAttribute, item = {}) {
   const positionY = clampedMediaValue(item.imageOffsetY, 0, -100, 100);
   return `
     <div class="admin-media-controls admin-grid-wide">
+      <div class="admin-media-control-heading">
+        <div>
+          <strong>Adjust inside the frame</strong>
+          <span>Drag the image in its preview, use the arrows for precise movement, or reset it.</span>
+        </div>
+        <button class="admin-button secondary compact" type="button" data-media-reset>Reset</button>
+      </div>
       <label><span>Image size <output>${scale}%</output></span><input ${fieldAttribute}="imageScale" type="range" min="50" max="180" step="1" value="${scale}" /></label>
       <label><span>Left ↔ Right <output>${positionX}%</output></span><input ${fieldAttribute}="imageOffsetX" type="range" min="-100" max="100" step="1" value="${positionX}" /></label>
       <label><span>Up ↕ Down <output>${positionY}%</output></span><input ${fieldAttribute}="imageOffsetY" type="range" min="-100" max="100" step="1" value="${positionY}" /></label>
+      <div class="admin-media-nudge" aria-label="Move image inside frame">
+        <button type="button" data-media-nudge-y="-5" aria-label="Move image up">↑</button>
+        <div>
+          <button type="button" data-media-nudge-x="-5" aria-label="Move image left">←</button>
+          <button type="button" data-media-nudge-x="5" aria-label="Move image right">→</button>
+        </div>
+        <button type="button" data-media-nudge-y="5" aria-label="Move image down">↓</button>
+      </div>
     </div>
   `;
 }
@@ -1326,9 +1341,11 @@ function downloadReportPdf() {
 }
 
 function printReportA4() {
+  const finishPrinting = () => document.body.classList.remove("is-printing-report");
   document.body.classList.add("is-printing-report");
+  window.addEventListener("afterprint", finishPrinting, { once: true });
   window.print();
-  window.setTimeout(() => document.body.classList.remove("is-printing-report"), 500);
+  window.setTimeout(finishPrinting, 30 * 1000);
 }
 
 function defaultBrandStory() {
@@ -2422,6 +2439,28 @@ function finishMediaDrag(event) {
 adminMain?.addEventListener("pointerup", finishMediaDrag);
 adminMain?.addEventListener("pointercancel", finishMediaDrag);
 adminMain?.addEventListener("lostpointercapture", finishMediaDrag);
+adminMain?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-media-nudge-x], [data-media-nudge-y], [data-media-reset]");
+  if (!button) return;
+  const editor = button.closest("[data-story-slide-index], [data-product-index]");
+  const frame = editor?.querySelector(".admin-image-preview-frame");
+  const controls = editor?.querySelector(".admin-media-controls");
+  const ranges = controls ? [...controls.querySelectorAll('input[type="range"]')] : [];
+  const xRange = ranges.find((range) => /OffsetX/.test(range.dataset.storyField || range.dataset.productField || ""));
+  const yRange = ranges.find((range) => /OffsetY/.test(range.dataset.storyField || range.dataset.productField || ""));
+  const scaleRange = ranges.find((range) => /Scale/.test(range.dataset.storyField || range.dataset.productField || ""));
+  if (!frame || !xRange || !yRange || !scaleRange) return;
+  if (button.hasAttribute("data-media-reset")) {
+    xRange.value = "0";
+    yRange.value = "0";
+    scaleRange.value = "100";
+  } else {
+    xRange.value = String(Math.max(-100, Math.min(100, Number(xRange.value) + Number(button.dataset.mediaNudgeX || 0))));
+    yRange.value = String(Math.max(-100, Math.min(100, Number(yRange.value) + Number(button.dataset.mediaNudgeY || 0))));
+  }
+  syncDraggedMediaPreview({ frame, editor, xRange, yRange });
+  markCatalogDirty();
+});
 document.getElementById("refreshStorefrontPreview")?.addEventListener("click", refreshStorefrontPreview);
 storefrontPreviewFrame?.addEventListener("load", () => {
   if (state.catalogDirty) {

@@ -1039,7 +1039,7 @@ body::before {
     display: none !important;
   }
 
-  body.is-printing-report .admin-shell {
+  body.is-printing-report > .admin-app-shell {
     display: block !important;
   }
 
@@ -1800,6 +1800,52 @@ body::before {
 .admin-media-controls input[type="range"] {
   width:100%;
   accent-color:#74462d;
+}
+
+.admin-media-control-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-media-control-heading div {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-media-control-heading span {
+  color: var(--muted);
+  font-size: .8rem;
+}
+
+.admin-media-nudge {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+}
+
+.admin-media-nudge div {
+  display: flex;
+  gap: 34px;
+}
+
+.admin-media-nudge button {
+  width: 36px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fffaf2;
+  color: var(--brown);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-media-nudge button:hover {
+  background: #f4e7da;
 }
 
 .admin-image-preview-frame { overflow:hidden; }

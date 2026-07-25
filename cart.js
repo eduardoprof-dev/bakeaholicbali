@@ -534,6 +534,22 @@ function nativePaymentMarkup(order) {
   const componentsSdkKey = xenditComponentsKeyForOrder(order);
 
   if (payment.kind === "qris") {
+    if (paymentUrl) {
+      return `
+        <div class="checkout-native-payment checkout-native-qris">
+          <div class="checkout-native-head">
+            <div>
+              <strong>QRIS secure payment</strong>
+              <span>Xendit will return you here automatically after payment.</span>
+            </div>
+            <span class="payment-countdown">${formatRemainingTime(paymentExpiryAt(order))}</span>
+          </div>
+          <button class="primary-button full-width checkout-payment-status-button" type="button" data-card-payment-url="${escapeHtml(paymentUrl)}">
+            Continue to QRIS payment
+          </button>
+        </div>
+      `;
+    }
     const qrSource = qrImageSource(presentValue || payment.qrCodeData || "");
     return `
       <div class="checkout-native-payment checkout-native-qris">
@@ -756,8 +772,7 @@ function bindCheckoutPaymentPanel(order) {
 
   checkoutXenditPanel.querySelectorAll("[data-card-payment-url]").forEach((button) => {
     button.addEventListener("click", () => {
-      window.open(button.dataset.cardPaymentUrl, "_blank", "noopener,noreferrer");
-      setCheckoutMessage("Secure card payment opened in Xendit.", "success");
+      window.location.assign(button.dataset.cardPaymentUrl);
     });
   });
 
