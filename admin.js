@@ -43,6 +43,8 @@ const adminOrderList = document.getElementById("adminOrderList");
 const refreshOrdersButton = document.getElementById("refreshOrdersButton");
 const reportPeriodSelect = document.getElementById("reportPeriodSelect");
 const exportCustomersButton = document.getElementById("exportCustomersButton");
+const downloadReportPdfButton = document.getElementById("downloadReportPdfButton");
+const printReportButton = document.getElementById("printReportButton");
 const voucherList = document.getElementById("voucherList");
 const addVoucherButton = document.getElementById("addVoucherButton");
 const saveVouchersButton = document.getElementById("saveVouchersButton");
@@ -304,6 +306,8 @@ const integrationFields = {
   whatsappPaymentExpiredTemplateName: document.getElementById("whatsappPaymentExpiredTemplateNameInput"),
   whatsappShippingTemplateName: document.getElementById("whatsappShippingTemplateNameInput"),
   whatsappAdminNumber: document.getElementById("whatsappAdminNumberInput"),
+  whatsappAdminNumber2: document.getElementById("whatsappAdminNumber2Input"),
+  whatsappAdminNumber3: document.getElementById("whatsappAdminNumber3Input"),
   whatsappAdminTemplateName: document.getElementById("whatsappAdminTemplateNameInput"),
   whatsappAdminShippingTemplateName: document.getElementById("whatsappAdminShippingTemplateNameInput"),
   whatsappTemplateLanguage: document.getElementById("whatsappTemplateLanguageInput")
@@ -747,13 +751,21 @@ function resetLiveTestChecklist() {
 }
 
 function renderIntegrations(integrations) {
+  const adminNumbers = String(integrations?.whatsappAdminNumber || "")
+    .split(/[,\n;]+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .slice(0, 3);
   Object.entries(integrationFields).forEach(([key, field]) => {
     if (secretIntegrationKeys.has(key)) {
       field.value = "";
       field.placeholder = integrations?.[key] ? "Saved. Leave blank to keep current value." : "";
       return;
     }
-    field.value = integrations?.[key] || "";
+    if (key === "whatsappAdminNumber") field.value = adminNumbers[0] || "";
+    else if (key === "whatsappAdminNumber2") field.value = adminNumbers[1] || "";
+    else if (key === "whatsappAdminNumber3") field.value = adminNumbers[2] || "";
+    else field.value = integrations?.[key] || "";
   });
   const providerStates = {
     googleMaps: {
@@ -1224,6 +1236,99 @@ function exportBuyerCsv() {
   link.download = `bakeaholic-buyers-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function reportPeriodLabel() {
+  return reportPeriodSelect?.selectedOptions?.[0]?.textContent?.trim() || "All time";
+}
+
+function reportTextLines() {
+  const orders = reportOrders();
+  const saleStatuses = new Set(["paid", "preparing", "on_delivery", "shipped", "delivered", "complete"]);
+  const paidOrders = orders.filter((order) => saleStatuses.has(order.status));
+  const cancelled = orders.filter((order) => order.status === "cancelled");
+  const pending = orders.filter((order) => ["awaiting_payment", "paid", "preparing"].includes(order.status));
+  const netSales = paidOrders.reduce((sum, order) => sum + Number(order.pricing?.total || 0), 0);
+  const productTotals = new Map();
+  paidOrders.forEach((order) => (order.lineItems || []).forEach((entry) => {
+    const key = entry.itemId || entry.item?.id || entry.item?.name || "Unknown product";
+    const current = productTotals.get(key) || { name: entry.item?.name || key, quantity: 0, revenue: 0 };
+    current.quantity += Number(entry.quantity || 0);
+    current.revenue += Number(entry.lineTotal || 0);
+    productTotals.set(key, current);
+  }));
+  const lines = [
+    "BAKEAHOLIC BALI — SALES REPORT",
+    `Period: ${reportPeriodLabel()}`,
+    `Generated: ${new Date().toLocaleString("en-GB")}`,
+    "",
+    `Net sales: ${formatRupiah.format(netSales)}`,
+    `Paid orders: ${paidOrders.length}`,
+    `Average order: ${formatRupiah.format(paidOrders.length ? netSales / paidOrders.length : 0)}`,
+    `Cancelled: ${cancelled.length}`,
+    `Pending: ${pending.length}`,
+    "",
+    "TOP SELLERS"
+  ];
+  [...productTotals.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 12)
+    .forEach((item, index) => lines.push(`${index + 1}. ${item.name} — ${item.quantity} sold — ${formatRupiah.format(item.revenue)}`));
+  lines.push("", "BUYERS");
+  buildBuyerRows(orders).forEach((buyer) => lines.push(
+    `${buyer.name} | ${buyer.phone || "—"} | ${buyer.location} | ${buyer.orders} orders | ${formatRupiah.format(buyer.spent)}`
+  ));
+  return lines;
+}
+
+function pdfEscape(value) {
+  return String(value).replace(/[^\x20-\x7E]/g, "-").replace(/([\\()])/g, "\\$1");
+}
+
+function createSimplePdf(lines) {
+  const pageLines = [];
+  for (let index = 0; index < lines.length; index += 48) pageLines.push(lines.slice(index, index + 48));
+  const objects = [null];
+  const addObject = (value) => {
+    objects.push(value);
+    return objects.length - 1;
+  };
+  const catalogId = addObject("");
+  const pagesId = addObject("");
+  const fontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  const pageIds = pageLines.map((page, pageIndex) => {
+    const commands = page.map((line, lineIndex) => {
+      const size = pageIndex === 0 && lineIndex === 0 ? 16 : 9;
+      return `BT /F1 ${size} Tf 42 ${800 - lineIndex * 15} Td (${pdfEscape(line)}) Tj ET`;
+    }).join("\n");
+    const contentId = addObject(`<< /Length ${commands.length} >>\nstream\n${commands}\nendstream`);
+    return addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+  });
+  objects[catalogId] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+  objects[pagesId] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>`;
+  let output = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.slice(1).forEach((object, index) => {
+    offsets.push(output.length);
+    output += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xref = output.length;
+  output += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach((offset) => { output += `${String(offset).padStart(10, "0")} 00000 n \n`; });
+  output += `trailer\n<< /Size ${objects.length} /Root ${catalogId} 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return new Blob([output], { type: "application/pdf" });
+}
+
+function downloadReportPdf() {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(createSimplePdf(reportTextLines()));
+  link.download = `bakeaholic-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function printReportA4() {
+  document.body.classList.add("is-printing-report");
+  window.print();
+  window.setTimeout(() => document.body.classList.remove("is-printing-report"), 500);
 }
 
 function defaultBrandStory() {
@@ -1903,7 +2008,11 @@ async function saveIntegrations() {
       whatsappPaymentReminderTemplateName: integrationFields.whatsappPaymentReminderTemplateName.value.trim(),
       whatsappPaymentExpiredTemplateName: integrationFields.whatsappPaymentExpiredTemplateName.value.trim(),
       whatsappShippingTemplateName: integrationFields.whatsappShippingTemplateName.value.trim(),
-      whatsappAdminNumber: integrationFields.whatsappAdminNumber.value.trim(),
+      whatsappAdminNumber: [
+        integrationFields.whatsappAdminNumber.value,
+        integrationFields.whatsappAdminNumber2.value,
+        integrationFields.whatsappAdminNumber3.value
+      ].map((value) => value.trim()).filter(Boolean).slice(0, 3).join(","),
       whatsappAdminTemplateName: integrationFields.whatsappAdminTemplateName.value.trim(),
       whatsappAdminShippingTemplateName: integrationFields.whatsappAdminShippingTemplateName.value.trim(),
       whatsappTemplateLanguage: integrationFields.whatsappTemplateLanguage.value.trim()
@@ -2158,6 +2267,8 @@ adminLogoutButton.addEventListener("click", logoutAdmin);
 refreshOrdersButton?.addEventListener("click", loadOrders);
 reportPeriodSelect?.addEventListener("change", renderReports);
 exportCustomersButton?.addEventListener("click", exportBuyerCsv);
+downloadReportPdfButton?.addEventListener("click", downloadReportPdf);
+printReportButton?.addEventListener("click", printReportA4);
 adminOrderList?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-approve-delivery]");
   if (button) {

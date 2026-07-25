@@ -499,7 +499,7 @@ function adminWhatsappNumbers() {
   return [...new Set(String(process.env.WHATSAPP_ADMIN_NUMBER || "")
     .split(/[,\n;]+/)
     .map((value) => normalizePhoneNumber(value))
-    .filter(Boolean))];
+    .filter(Boolean))].slice(0, 3);
 }
 
 async function runWhatsappTemplateDiagnostics() {
@@ -2083,7 +2083,10 @@ function saveIntegrationSettings(input = {}) {
     whatsappPaymentReminderTemplateName: String(input.whatsappPaymentReminderTemplateName || "").trim(),
     whatsappPaymentExpiredTemplateName: String(input.whatsappPaymentExpiredTemplateName || "").trim(),
     whatsappShippingTemplateName: String(input.whatsappShippingTemplateName || "").trim(),
-    whatsappAdminNumber: String(input.whatsappAdminNumber || "").trim(),
+    whatsappAdminNumber: [...new Set(String(input.whatsappAdminNumber || "")
+      .split(/[,\n;]+/)
+      .map((value) => normalizePhoneNumber(value))
+      .filter(Boolean))].slice(0, 3).join(","),
     whatsappAdminTemplateName: String(input.whatsappAdminTemplateName || "").trim(),
     whatsappAdminShippingTemplateName: String(input.whatsappAdminShippingTemplateName || "").trim(),
     whatsappTemplateLanguage: String(input.whatsappTemplateLanguage || "en").trim() || "en"
