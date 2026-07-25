@@ -388,20 +388,19 @@ test("Xendit refund webhooks update pending, succeeded, and failed states", () =
   assert.equal(order.refund.failureCode, "INSUFFICIENT_BALANCE");
 });
 
-test("QRIS uses the current Xendit Payment Request schema", () => {
-  const payload = buildXenditPaymentRequestPayload({
+test("QRIS uses a restricted hosted Invoice with automatic return URLs", () => {
+  const payload = buildXenditInvoicePayload({
     id: "BAK-0200",
-    expiresAt: "2026-07-23T10:00:00.000Z",
     pricing: { total: 18700 },
     payment: { kind: "qris", externalId: "BAK-0200" },
-    customer: { phone: "+6281234567890" },
+    customer: { email: "customer@example.com" },
     receiptToken: "token"
   });
-  assert.equal(payload.reference_id, "BAK-0200");
-  assert.equal(payload.request_amount, 18700);
-  assert.equal(payload.channel_code, "QRIS");
-  assert.equal("amount" in payload, false);
-  assert.equal("payment_method" in payload, false);
+  assert.equal(payload.external_id, "BAK-0200");
+  assert.equal(payload.amount, 18700);
+  assert.deepEqual(payload.payment_methods, ["QRIS"]);
+  assert.match(payload.success_redirect_url, /pay\.html\?order=BAK-0200/);
+  assert.equal(payload.failure_redirect_url, payload.success_redirect_url);
 });
 
 test("every activated bank maps to a restricted Xendit Invoice channel", () => {

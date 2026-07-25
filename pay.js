@@ -201,15 +201,9 @@ function bankOptionsMarkup(payment) {
 function xenditEmbeddedCheckoutMarkup(paymentUrl) {
   return `
     <div class="xendit-embed-card">
-      <iframe
-        class="xendit-checkout-frame"
-        src="${escapeHtml(paymentUrl)}"
-        title="Xendit secure checkout"
-        loading="eager"
-        referrerpolicy="strict-origin-when-cross-origin"
-      ></iframe>
-      <a class="secondary-link centered-link" href="${escapeHtml(paymentUrl)}" target="_blank" rel="noreferrer">
-        Open payment in a new tab
+      <p>Continue to Xendit's secure payment page. After a successful payment, you will return here automatically.</p>
+      <a class="primary-button button-link full-width" href="${escapeHtml(paymentUrl)}">
+        Continue to secure payment
       </a>
     </div>
   `;
@@ -790,7 +784,8 @@ async function bootstrap() {
   const tokenQuery = orderToken ? `&token=${encodeURIComponent(orderToken)}` : "";
   const response = await request(`/api/order?id=${encodeURIComponent(orderId)}${tokenQuery}`);
   state.order = response.order;
-  if (["expired", "payment_failed"].includes(state.order?.status)) {
+  if (["awaiting_payment", "expired", "payment_failed"].includes(state.order?.status)
+      && state.order.payment?.provider !== "xendit_pending_bank") {
     const refreshedResponse = await request("/api/order/payment-status", {
       method: "POST",
       body: JSON.stringify({ id: orderId, token: orderToken })
@@ -806,7 +801,31 @@ async function bootstrap() {
   }
   localStorage.setItem(latestOrderKey, state.order.id);
   render();
+  schedulePaymentStatusCheck();
 }
+
+let paymentStatusTimer = 0;
+
+function schedulePaymentStatusCheck() {
+  window.clearTimeout(paymentStatusTimer);
+  if (state.order?.status !== "awaiting_payment" || document.hidden) return;
+  paymentStatusTimer = window.setTimeout(async () => {
+    try {
+      const response = await request("/api/order/payment-status", {
+        method: "POST",
+        body: JSON.stringify({ id: orderId, token: orderToken })
+      });
+      state.order = response.order;
+      render();
+    } catch (_error) {
+      // A temporary connection problem should not interrupt the payment page.
+    }
+    schedulePaymentStatusCheck();
+  }, 3000);
+}
+
+window.addEventListener("focus", schedulePaymentStatusCheck);
+document.addEventListener("visibilitychange", schedulePaymentStatusCheck);
 
 keepOrderButton.addEventListener("click", () => {
   cancelModal.hidden = true;
