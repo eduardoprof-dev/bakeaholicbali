@@ -808,20 +808,25 @@ let paymentStatusTimer = 0;
 
 function schedulePaymentStatusCheck() {
   window.clearTimeout(paymentStatusTimer);
-  if (state.order?.status !== "awaiting_payment" || document.hidden) return;
+  const paymentPending = state.order?.status === "awaiting_payment";
+  const deliveryActive = ["paid", "preparing", "on_delivery", "shipped"].includes(state.order?.status)
+    && state.order?.fulfillment?.shipment?.orderId;
+  if ((!paymentPending && !deliveryActive) || document.hidden) return;
   paymentStatusTimer = window.setTimeout(async () => {
     try {
-      const response = await request("/api/order/payment-status", {
-        method: "POST",
-        body: JSON.stringify({ id: orderId, token: orderToken })
-      });
+      const response = paymentPending
+        ? await request("/api/order/payment-status", {
+          method: "POST",
+          body: JSON.stringify({ id: orderId, token: orderToken })
+        })
+        : await request(`/api/order?id=${encodeURIComponent(orderId)}${orderToken ? `&token=${encodeURIComponent(orderToken)}` : ""}`);
       state.order = response.order;
       render();
     } catch (_error) {
-      // A temporary connection problem should not interrupt the payment page.
+      // A temporary connection problem should not interrupt the order page.
     }
     schedulePaymentStatusCheck();
-  }, 3000);
+  }, paymentPending ? 3000 : 10000);
 }
 
 window.addEventListener("focus", schedulePaymentStatusCheck);

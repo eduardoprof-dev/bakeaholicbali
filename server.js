@@ -1119,7 +1119,7 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
     throw new Error("Admin WhatsApp number or template name is missing");
   }
 
-  const responses = await Promise.all(adminNumbers.map((adminNumber) => sendWhatsappTemplateMessage(
+  const deliveries = await Promise.allSettled(adminNumbers.map((adminNumber) => sendWhatsappTemplateMessage(
     adminNumber,
     templateName,
     adminWhatsappParameters(order, eventLabel),
@@ -1135,7 +1135,25 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
         : []
     }
   )));
-  return { messages: responses.flatMap((response) => response?.messages || []) };
+  const results = deliveries.map((delivery, index) => ({
+    recipient: maskedWhatsappNumber(adminNumbers[index]),
+    sent: delivery.status === "fulfilled",
+    messageId: delivery.status === "fulfilled"
+      ? delivery.value?.messages?.[0]?.id || ""
+      : "",
+    error: delivery.status === "rejected"
+      ? delivery.reason?.message || "WhatsApp delivery failed"
+      : ""
+  }));
+  if (!results.some((result) => result.sent)) {
+    throw new Error(results.map((result) => result.error).filter(Boolean).join("; ") || "Admin WhatsApp delivery failed");
+  }
+  return {
+    messages: deliveries.flatMap((delivery) => (
+      delivery.status === "fulfilled" ? delivery.value?.messages || [] : []
+    )),
+    results
+  };
 }
 
 async function sendWhatsappPaymentReceipt(order) {
@@ -4036,6 +4054,42 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
   return enrichOrder(order);
 }
 
+let biteshipDeliverySweepInProgress = false;
+
+async function sweepBiteshipDeliveryStatuses() {
+  if (biteshipDeliverySweepInProgress || !getIntegrationConfig().biteshipApiKey) {
+    return;
+  }
+  biteshipDeliverySweepInProgress = true;
+  try {
+    const now = Date.now();
+    for (const mode of Object.keys(stores)) {
+      const activeOrders = getStoreState(mode).orders
+        .filter((order) => (
+          ["preparing", "on_delivery", "shipped"].includes(order.status)
+          && order.fulfillment?.shipment?.orderId
+          && !["cancelled", "canceled", "delivered", "returned"].includes(
+            String(order.fulfillment?.shipment?.status || "").toLowerCase()
+          )
+        ))
+        .filter((order) => {
+          const lastSync = Date.parse(order.fulfillment?.shipment?.syncedAt || "");
+          return !Number.isFinite(lastSync) || now - lastSync >= 25 * 1000;
+        })
+        .slice(0, 25);
+      for (const order of activeOrders) {
+        try {
+          await syncBiteshipDeliveryStatus(mode, order.id);
+        } catch (error) {
+          console.warn(`Biteship delivery sync failed for ${order.id}: ${error.message}`);
+        }
+      }
+    }
+  } finally {
+    biteshipDeliverySweepInProgress = false;
+  }
+}
+
 async function rebookBiteshipDelivery(mode, orderId, session) {
   const order = findOrder(mode, orderId);
   const previousShipment = order?.fulfillment?.shipment;
@@ -4196,7 +4250,11 @@ function findOrderByBiteshipWebhook(body = {}) {
 }
 
 function shipmentStatusToOrderStatus(status = "") {
-  const normalized = String(status || "").toLowerCase();
+  const normalized = String(status || "")
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[\s-]+/g, "_")
+    .toLowerCase();
   if (["confirmed", "scheduled"].includes(normalized)) {
     return "preparing";
   }
@@ -4479,13 +4537,16 @@ function buildXenditPaymentSessionPayload(order) {
   return {
     reference_id: order.payment?.externalId || `${order.id}-card`,
     session_type: "PAY",
-    mode: "PAYMENT_LINK",
+    mode: "COMPONENTS",
     amount: order.pricing.total,
     currency: "IDR",
     country: "ID",
     locale: "en",
     capture_method: "AUTOMATIC",
     allowed_payment_channels: ["CARDS"],
+    components_configuration: {
+      origins: xenditComponentOrigins()
+    },
     customer: {
       reference_id: `${order.id}-customer`,
       type: "INDIVIDUAL",
@@ -4557,18 +4618,12 @@ function buildXenditPaymentRequestPayload(order) {
       type: "PAY",
       country: "ID",
       currency: "IDR",
-      amount: order.pricing.total,
+      request_amount: order.pricing.total,
       capture_method: "AUTOMATIC",
-      payment_method: {
-        type: "VIRTUAL_ACCOUNT",
-        reusability: "ONE_TIME_USE",
-        virtual_account: {
-          channel_code: order.payment.xenditChannelCode,
-          channel_properties: {
-            customer_name: order.customer?.name || "Bakeaholic Customer",
-            expires_at: expiresAt
-          }
-        }
+      channel_code: order.payment.xenditChannelCode,
+      channel_properties: {
+        customer_name: order.customer?.name || "Bakeaholic Customer",
+        expires_at: expiresAt
       },
       description: `Bakeaholic Bali order ${order.id}`,
       metadata: {
@@ -4707,10 +4762,8 @@ async function createPaymentForOrder(order) {
   }
 
   if (order.payment?.kind === "va") {
-    // The activated bank channels are Xendit Invoice virtual accounts. The
-    // legacy callback-VA endpoint is a separate product activation.
-    const invoice = await createXenditInvoice(enrichOrder(order));
-    return applyXenditInvoiceToPayment(order.payment, invoice);
+    const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));
+    return applyXenditPaymentRequestToPayment(order.payment, paymentRequest);
   }
 
   if (order.payment?.kind === "qris") {
@@ -4735,12 +4788,13 @@ async function createXenditPaymentRequest(order) {
     throw new Error("Xendit secret key is required before accepting paid orders.");
   }
 
-  const response = await fetch("https://api.xendit.co/payment_requests", {
+  const response = await fetch("https://api.xendit.co/v3/payment_requests", {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
       Authorization: xenditAuthHeader(),
+      "api-version": "2024-11-11",
       "Idempotency-key": xenditIdempotencyKey(order, "payment-request")
     },
     body: JSON.stringify(buildXenditPaymentRequestPayload(enrichOrder(order)))
@@ -7406,9 +7460,17 @@ if (require.main === module) {
   server.listen(port, host, () => {
     scheduleExistingPendingAdminActions();
     scheduleExistingPaymentReminderFlows();
+    sweepBiteshipDeliveryStatuses().catch((error) => {
+      console.warn(`Biteship delivery sweep failed: ${error.message}`);
+    });
     setInterval(() => {
       sweepPaymentReminderFlows().catch((error) => {
         console.warn(`Payment reminder sweep failed: ${error.message}`);
+      });
+    }, 30 * 1000);
+    setInterval(() => {
+      sweepBiteshipDeliveryStatuses().catch((error) => {
+        console.warn(`Biteship delivery sweep failed: ${error.message}`);
       });
     }, 30 * 1000);
     console.log(`Bakeaholic order app running at http://${host}:${port}`);

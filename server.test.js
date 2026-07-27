@@ -253,6 +253,9 @@ test("Biteship final delivery statuses map to the delivered customer message", (
     assert.equal(shipmentStatusToOrderStatus(status), "delivered");
   }
   assert.equal(shipmentStatusToOrderStatus("picked_up"), "on_delivery");
+  assert.equal(shipmentStatusToOrderStatus("pickingUp"), "on_delivery");
+  assert.equal(shipmentStatusToOrderStatus("inTransit"), "on_delivery");
+  assert.equal(shipmentStatusToOrderStatus("droppingOff"), "on_delivery");
 });
 
 test("public order references preserve live and test modes", () => {
@@ -485,10 +488,34 @@ test("card session enables the shared debit and credit card rail", () => {
   assert.equal(payload.amount, 18700);
   assert.deepEqual(payload.allowed_payment_channels, ["CARDS"]);
   assert.equal(payload.capture_method, "AUTOMATIC");
-  assert.equal(payload.mode, "PAYMENT_LINK");
+  assert.equal(payload.mode, "COMPONENTS");
   assert.match(payload.success_return_url, /pay\.html\?order=BAK-CARD/);
   assert.equal(payload.cancel_return_url, payload.success_return_url);
-  assert.equal(payload.components_configuration, undefined);
+  assert.deepEqual(payload.components_configuration, {
+    origins: ["https://bakeaholicbali.com"]
+  });
+});
+
+test("virtual accounts use Xendit Payments API present-to-customer fields", () => {
+  const payload = buildXenditPaymentRequestPayload({
+    id: "BAK-VA",
+    pricing: { total: 18700 },
+    payment: {
+      kind: "va",
+      externalId: "BAK-VA-BNI",
+      xenditChannelCode: "BNI_VIRTUAL_ACCOUNT"
+    },
+    customer: {
+      name: "Bakeaholic Customer",
+      phone: "+6281234567890"
+    },
+    receiptToken: "token"
+  });
+  assert.equal(payload.request_amount, 18700);
+  assert.equal(payload.channel_code, "BNI_VIRTUAL_ACCOUNT");
+  assert.equal(payload.channel_properties.customer_name, "Bakeaholic Customer");
+  assert.equal(payload.payment_method, undefined);
+  assert.equal(payload.amount, undefined);
 });
 
 test("payment recovery checks every unique Xendit reference attached to an order", () => {

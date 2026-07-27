@@ -923,9 +923,7 @@ function mountXenditCardComponents(order) {
         const cardChannel = (channels || []).find((channel) => (
           String(channel.channelCode || channel.code || channel.id || "").toUpperCase() === "CARDS"
         )) || channels?.[0];
-        const component = cardChannel && typeof components.createChannelComponent === "function"
-          ? components.createChannelComponent(cardChannel)
-          : components.createChannelPickerComponent();
+        const component = components.createChannelPickerComponent(cardChannel);
         mount.replaceChildren(component);
         suppressFieldScrollbars();
       });
