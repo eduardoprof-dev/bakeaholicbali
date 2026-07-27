@@ -130,6 +130,8 @@ let pendingOtpPhone = "";
 let otpResendAvailableAt = 0;
 let otpTimerId = 0;
 let paymentCountdownTimerId = 0;
+let paymentStatusPollTimerId = 0;
+let paymentStatusPollOrderId = "";
 let submitAfterLogin = false;
 let volatileCartSessionId = "";
 
@@ -934,6 +936,7 @@ function mountXenditCardComponents(order) {
 }
 
 function clearCompletedCheckoutState() {
+  stopPaymentStatusPolling();
   state.pendingPaymentUrl = "";
   state.currentOrder = null;
   try {
@@ -941,6 +944,55 @@ function clearCompletedCheckoutState() {
   } catch (_error) {
     // The server still clears the session cart when browser storage is unavailable.
   }
+}
+
+function stopPaymentStatusPolling() {
+  if (paymentStatusPollTimerId) {
+    window.clearTimeout(paymentStatusPollTimerId);
+    paymentStatusPollTimerId = 0;
+  }
+  paymentStatusPollOrderId = "";
+}
+
+function startPaymentStatusPolling(order) {
+  stopPaymentStatusPolling();
+  if (!order?.id || order.status !== "awaiting_payment") {
+    return;
+  }
+
+  paymentStatusPollOrderId = order.id;
+  const poll = async () => {
+    if (paymentStatusPollOrderId !== order.id) {
+      return;
+    }
+    try {
+      const response = await request("/api/order/payment-status", {
+        method: "POST",
+        body: JSON.stringify({ id: order.id })
+      });
+      state.currentOrder = response.order;
+      if (["paid", "preparing", "shipped", "delivered"].includes(response.order.status)) {
+        const completedOrder = response.order;
+        setCheckoutMessage("Payment received. Opening your confirmed order…", "success");
+        clearCompletedCheckoutState();
+        window.location.replace(orderStatusUrlForOrder(completedOrder));
+        return;
+      }
+      if (response.order.status !== "awaiting_payment") {
+        stopPaymentStatusPolling();
+        renderEmbeddedPayment(response.order);
+        setCheckoutMessage("This payment is no longer active. Please choose another payment method.");
+        return;
+      }
+    } catch (_error) {
+      // A temporary status-check failure must not interrupt an active payment.
+    }
+    if (paymentStatusPollOrderId === order.id) {
+      paymentStatusPollTimerId = window.setTimeout(poll, 2500);
+    }
+  };
+
+  paymentStatusPollTimerId = window.setTimeout(poll, 1500);
 }
 
 function startPaymentCountdown(order) {
@@ -957,6 +1009,7 @@ function startPaymentCountdown(order) {
 }
 
 function showPaymentMethodChooser() {
+  stopPaymentStatusPolling();
   if (paymentCountdownTimerId) {
     window.clearInterval(paymentCountdownTimerId);
     paymentCountdownTimerId = 0;
@@ -989,6 +1042,7 @@ function renderEmbeddedPayment(order) {
   checkoutXenditPanel.hidden = false;
   checkoutXenditPanel.innerHTML = nativePaymentMarkup(order);
   bindCheckoutPaymentPanel(order);
+  startPaymentStatusPolling(order);
   checkoutXenditPanel.scrollIntoView({ behavior: "smooth", block: "start" });
   return true;
 }
