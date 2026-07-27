@@ -132,7 +132,7 @@ const PAYMENT_METHODS = [
     kind: "va",
     logoText: "BANK",
     description: "BNI, BRI, CIMB Niaga, BJB, Mandiri, Permata",
-    xenditChannelCode: "BNI"
+    xenditChannelCode: "BNI_VIRTUAL_ACCOUNT"
   },
   {
     id: "xendit-card",
@@ -144,12 +144,12 @@ const PAYMENT_METHODS = [
   }
 ];
 const BANK_TRANSFER_CHANNELS = [
-  { code: "BNI", label: "BNI" },
-  { code: "BRI", label: "BRI" },
-  { code: "CIMB", label: "CIMB Niaga" },
-  { code: "BJB", label: "BJB" },
-  { code: "MANDIRI", label: "Mandiri" },
-  { code: "PERMATA", label: "Permata" }
+  { code: "BNI", channelCode: "BNI_VIRTUAL_ACCOUNT", label: "BNI" },
+  { code: "BRI", channelCode: "BRI_VIRTUAL_ACCOUNT", label: "BRI" },
+  { code: "CIMB", channelCode: "CIMB_VIRTUAL_ACCOUNT", label: "CIMB Niaga" },
+  { code: "BJB", channelCode: "BJB_VIRTUAL_ACCOUNT", label: "BJB" },
+  { code: "MANDIRI", channelCode: "MANDIRI_VIRTUAL_ACCOUNT", label: "Mandiri" },
+  { code: "PERMATA", channelCode: "PERMATA_VIRTUAL_ACCOUNT", label: "Permata" }
 ];
 
 function availablePaymentMethods(mode = "live") {
@@ -6169,7 +6169,7 @@ async function selectOrderBankTransferChannel(mode, orderId, bankCode, session, 
 
   order.payment = {
     ...order.payment,
-    xenditChannelCode: bank.code,
+    xenditChannelCode: bank.channelCode,
     selectedBankCode: bank.code,
     selectedBankLabel: bank.label,
     label: `${bank.label} Virtual Account`,
@@ -6252,7 +6252,7 @@ async function updateOrderPaymentMethod(mode, orderId, methodId, session, token 
       if (!bank) {
         throw new Error("Please choose a supported bank");
       }
-      nextPayment.xenditChannelCode = bank.code;
+      nextPayment.xenditChannelCode = bank.channelCode;
       nextPayment.selectedBankCode = bank.code;
       nextPayment.selectedBankLabel = bank.label;
       nextPayment.label = `${bank.label} Virtual Account`;
