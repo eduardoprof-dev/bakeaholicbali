@@ -426,6 +426,16 @@ function qrImageSource(value) {
   if (/^https?:\/\//i.test(value) || /^data:image\//i.test(value)) {
     return value;
   }
+  if (typeof window.qrcode === "function") {
+    try {
+      const qr = window.qrcode(0, "M");
+      qr.addData(value);
+      qr.make();
+      return qr.createDataURL(8, 4);
+    } catch (_error) {
+      // Keep the remote renderer as a compatibility fallback.
+    }
+  }
   return `https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(value)}`;
 }
 
@@ -571,8 +581,7 @@ function nativePaymentMarkup(order) {
           <span>Total due</span>
           <strong>${formatRupiah.format(order.pricing.total)}</strong>
         </div>
-        ${paymentStatusButtonMarkup(order)}
-        <p class="checkout-native-note">Waiting for payment confirmation...</p>
+        <p class="checkout-native-note" role="status">Payment confirmation is automatic. Keep this page open after scanning.</p>
       </div>
     `;
   }

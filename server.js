@@ -1744,15 +1744,13 @@ async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by ad
   order.cancelReason = reason;
   order.whatsappUrl = buildWhatsappUrl(order);
   await attemptXenditRefund(order, reason);
-  if (["requested", "pending", "succeeded"].includes(order.refund?.status)) {
-    await maybeSendWhatsappOrderStatus(order, previousStatus, { notificationKey: `order:${order.id}:cancelled` });
-  } else {
-    order.whatsappCancellationNotification = {
-      skipped: true,
-      reason: "refund_not_initiated",
-      skippedAt: new Date().toISOString()
-    };
-  }
+  // Cancellation and refund are separate facts. Always tell the customer that
+  // the order was cancelled, even when the refund needs manual review.
+  order.whatsappCancellationNotification = await maybeSendWhatsappOrderStatus(
+    order,
+    previousStatus,
+    { notificationKey: `order:${order.id}:cancelled` }
+  );
   order.adminCancellationResult = {
     status: order.refund?.status || "unknown",
     message: order.refund?.message || "Order cancelled.",
@@ -4709,8 +4707,10 @@ async function createPaymentForOrder(order) {
   }
 
   if (order.payment?.kind === "va") {
-    const virtualAccount = await createXenditVirtualAccount(enrichOrder(order));
-    return applyXenditVirtualAccountToPayment(order.payment, virtualAccount);
+    // The activated bank channels are Xendit Invoice virtual accounts. The
+    // legacy callback-VA endpoint is a separate product activation.
+    const invoice = await createXenditInvoice(enrichOrder(order));
+    return applyXenditInvoiceToPayment(order.payment, invoice);
   }
 
   if (order.payment?.kind === "qris") {
