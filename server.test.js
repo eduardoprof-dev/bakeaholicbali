@@ -25,6 +25,7 @@ const {
   shipmentStatusToOrderStatus,
   xenditPaymentAmount,
   xenditOrderReferenceIds,
+  xenditPaymentSessionIds,
   xenditRefundRequestBody,
   xenditKeyMode
 } = require("./server");
@@ -454,5 +455,25 @@ test("payment recovery checks every unique Xendit reference attached to an order
     "BAK-0108-card-1",
     "BAK-0108",
     "BAK-0108-qris-1"
+  ]);
+});
+
+test("card recovery prefers the valid cached Xendit session over a corrupted active id", () => {
+  assert.deepEqual(xenditPaymentSessionIds({
+    payment: {
+      kind: "card",
+      provider: "xendit_components",
+      paymentSessionId: "6a66ba4a96f28daa06b009d0"
+    },
+    paymentOptions: {
+      card: {
+        kind: "card",
+        provider: "xendit_components",
+        paymentSessionId: "ps-6a66ba8c96f28daa06b00cb9"
+      }
+    }
+  }), [
+    "ps-6a66ba8c96f28daa06b00cb9",
+    "6a66ba4a96f28daa06b009d0"
   ]);
 });

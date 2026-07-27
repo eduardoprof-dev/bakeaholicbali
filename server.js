@@ -5193,46 +5193,59 @@ async function fetchXenditPaymentRequestStatus(order) {
 }
 
 async function fetchXenditPaymentSessionStatus(order) {
-  const sessionId = order.payment?.paymentSessionId || order.payment?.transactionId;
-  if (!isXenditReady() || order.payment?.provider !== "xendit_components" || !sessionId) {
+  const sessionIds = xenditPaymentSessionIds(order);
+  if (!isXenditReady() || order.payment?.provider !== "xendit_components" || !sessionIds.length) {
     return null;
   }
 
-  const response = await fetch(`https://api.xendit.co/sessions/${encodeURIComponent(sessionId)}`, {
-    headers: {
-      Accept: "application/json",
-      Authorization: xenditAuthHeader()
+  let lastPayload = null;
+  let lastError = null;
+  for (const sessionId of sessionIds) {
+    const response = await fetch(`https://api.xendit.co/sessions/${encodeURIComponent(sessionId)}`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: xenditAuthHeader()
+      }
+    });
+    const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+    if (!response.ok) {
+      lastError = payload.message || payload.error_code || "Unable to refresh Xendit session status";
+      continue;
     }
-  });
+    lastPayload = payload;
+    if (isSuccessfulXenditPaymentEvent(payload)) {
+      return payload;
+    }
+  }
 
-  const payload = await response.json().catch(async () => ({ raw: await response.text() }));
-  if (!response.ok) {
-    const recoveredTransaction = await fetchSuccessfulXenditTransaction(order);
-    if (recoveredTransaction) {
-      return {
-        ...recoveredTransaction,
-        status: "COMPLETED",
-        payment_session_id: sessionId,
-        payment_id: recoveredTransaction.payment_id || recoveredTransaction.id || "",
-        reference_id: recoveredTransaction.reference_id || order.payment?.externalId || order.id
-      };
-    }
-    throw new Error(payload.message || payload.error_code || "Unable to refresh Xendit session status");
+  const recoveredTransaction = await fetchSuccessfulXenditTransaction(order);
+  if (recoveredTransaction) {
+    return {
+      ...(lastPayload || {}),
+      ...recoveredTransaction,
+      status: "COMPLETED",
+      payment_session_id: sessionIds[0],
+      payment_id: recoveredTransaction.payment_id || recoveredTransaction.id || "",
+      reference_id: recoveredTransaction.reference_id || order.payment?.externalId || order.id
+    };
   }
-  if (!isSuccessfulXenditPaymentEvent(payload)) {
-    const recoveredTransaction = await fetchSuccessfulXenditTransaction(order);
-    if (recoveredTransaction) {
-      return {
-        ...payload,
-        ...recoveredTransaction,
-        status: "COMPLETED",
-        payment_session_id: sessionId,
-        payment_id: recoveredTransaction.payment_id || recoveredTransaction.id || "",
-        reference_id: recoveredTransaction.reference_id || order.payment?.externalId || order.id
-      };
-    }
+  if (lastPayload) {
+    return lastPayload;
   }
-  return payload;
+  throw new Error(lastError || "Unable to refresh Xendit session status");
+}
+
+function xenditPaymentSessionIds(order) {
+  const candidates = [
+    order.payment?.paymentSessionId,
+    order.payment?.transactionId,
+    ...Object.values(order.paymentOptions || {})
+      .filter((payment) => payment?.provider === "xendit_components" || payment?.kind === "card")
+      .flatMap((payment) => [payment?.paymentSessionId, payment?.transactionId])
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  return [...new Set(candidates)].sort((left, right) => (
+    Number(/^ps-/i.test(right)) - Number(/^ps-/i.test(left))
+  ));
 }
 
 function xenditOrderReferenceIds(order) {
@@ -7375,6 +7388,7 @@ module.exports = {
   whatsappTemplateTestOrder,
   xenditPaymentAmount,
   xenditOrderReferenceIds,
+  xenditPaymentSessionIds,
   xenditRefundRequestBody,
   xenditKeyMode
 };
