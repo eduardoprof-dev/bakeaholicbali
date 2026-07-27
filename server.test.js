@@ -2,7 +2,9 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  applyXenditQrCodeStatusToOrder,
   applyXenditRefundStatusToOrder,
+  applyXenditVirtualAccountStatusToOrder,
   buildXenditInvoicePayload,
   buildXenditPaymentRequestPayload,
   buildXenditPaymentSessionPayload,
@@ -12,6 +14,7 @@ const {
   customerShippingWhatsappParameters,
   defaultSecurityHeaders,
   hasBiteshipShipmentForMessaging,
+  isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
   isSupportedImageBuffer,
   isXenditRefundEvent,
@@ -325,7 +328,50 @@ test("live Xendit selects a production key over a saved development key", () => 
 test("Xendit transaction SUCCESS is treated as a completed payment", () => {
   assert.equal(isSuccessfulXenditPaymentEvent({ status: "SUCCESS" }), true);
   assert.equal(isSuccessfulXenditPaymentEvent({ event: "qr.payment", status: "COMPLETED" }), true);
+  assert.equal(isSuccessfulXenditPaymentEvent({
+    payment_id: "va-payment-1",
+    external_id: "BAK-0109",
+    bank_code: "BNI",
+    paid_amount: 18700
+  }), true);
   assert.equal(isSuccessfulXenditPaymentEvent({ status: "ACTIVE" }), false);
+});
+
+test("temporary inactive QRIS or VA status does not expire an active checkout", () => {
+  assert.equal(isOrderPaymentWindowExpired({
+    expiresAt: "2026-07-27T10:15:00.000Z"
+  }, Date.parse("2026-07-27T10:14:59.000Z")), false);
+  assert.equal(isOrderPaymentWindowExpired({
+    expiresAt: "2026-07-27T10:15:00.000Z"
+  }, Date.parse("2026-07-27T10:15:00.000Z")), true);
+});
+
+test("inactive QRIS and VA instruments remain payable until the checkout expires", () => {
+  const activeOrderBase = {
+    id: "BAK-0109",
+    mode: "live",
+    status: "awaiting_payment",
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    customer: { name: "Test Buyer", phone: "+6281234567890", email: "buyer@example.com" },
+    fulfillment: { type: "delivery", deliveryNotes: "" },
+    items: [],
+    orderNotes: "",
+    pricing: { subtotal: 18700, deliveryFee: 0, tax: 0, discount: { amount: 0 }, total: 18700 }
+  };
+  const activeOrder = {
+    ...activeOrderBase,
+    payment: { provider: "xendit_qr_code", externalId: "BAK-0109", qrCodeData: "qr-data" }
+  };
+  applyXenditQrCodeStatusToOrder(activeOrder, { status: "INACTIVE" });
+  assert.equal(activeOrder.status, "awaiting_payment");
+
+  const activeVaOrder = {
+    ...activeOrderBase,
+    id: "BAK-0110",
+    payment: { provider: "xendit_virtual_account", externalId: "BAK-0110" }
+  };
+  applyXenditVirtualAccountStatusToOrder(activeVaOrder, { status: "INACTIVE" });
+  assert.equal(activeVaOrder.status, "awaiting_payment");
 });
 
 test("legacy Xendit QRIS callbacks accept the nominal payment field", () => {

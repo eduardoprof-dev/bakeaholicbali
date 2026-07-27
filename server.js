@@ -5305,6 +5305,19 @@ async function fetchXenditVirtualAccountStatus(order) {
     throw new Error(payload.message || payload.error_code || "Unable to check Xendit virtual account status");
   }
 
+  if (!isSuccessfulXenditPaymentEvent(payload)) {
+    const recoveredTransaction = await fetchSuccessfulXenditTransaction(order).catch(() => null);
+    if (recoveredTransaction) {
+      return {
+        ...payload,
+        ...recoveredTransaction,
+        status: "SUCCESS",
+        payment_status: "SUCCESS",
+        external_id: recoveredTransaction.reference_id || order.payment?.externalId || order.id
+      };
+    }
+  }
+
   return payload;
 }
 
@@ -5427,7 +5440,7 @@ function applyXenditQrCodeStatusToOrder(order, qrCode = {}) {
     order.status = "paid";
     order.payment.status = "paid";
     order.paidAt = order.paidAt || new Date().toISOString();
-  } else if (status === "INACTIVE" || status === "EXPIRED") {
+  } else if (status === "EXPIRED" || (status === "INACTIVE" && isOrderPaymentWindowExpired(order))) {
     order.status = "expired";
     order.payment.status = status.toLowerCase();
   } else {
@@ -5442,8 +5455,20 @@ function applyXenditQrCodeStatusToOrder(order, qrCode = {}) {
 function isSuccessfulXenditPaymentEvent(payload = {}) {
   const status = String(payload.status || payload.payment_status || "").toUpperCase();
   const event = String(payload.event || "").toLowerCase();
+  const isLegacyVirtualAccountPayment = Boolean(
+    !status
+    && payload.payment_id
+    && (payload.external_id || payload.bank_code)
+    && Number(payload.paid_amount || 0) > 0
+  );
   return ["PAID", "SETTLED", "COMPLETED", "SUCCEEDED", "SUCCESS"].includes(status)
-    || ["payment.succeeded", "payment.capture", "payment_session.completed"].includes(event);
+    || ["payment.succeeded", "payment.capture", "payment_session.completed", "qr.payment"].includes(event)
+    || isLegacyVirtualAccountPayment;
+}
+
+function isOrderPaymentWindowExpired(order, now = Date.now()) {
+  const expiresAt = Date.parse(order?.expiresAt || "");
+  return Number.isFinite(expiresAt) && now >= expiresAt;
 }
 
 function xenditPaymentAmount(payload = {}) {
@@ -5504,7 +5529,7 @@ function applyXenditVirtualAccountStatusToOrder(order, virtualAccount = {}) {
     order.status = "paid";
     order.payment.status = "paid";
     order.paidAt = order.paidAt || new Date().toISOString();
-  } else if (status === "INACTIVE" || status === "EXPIRED") {
+  } else if (status === "EXPIRED" || (status === "INACTIVE" && isOrderPaymentWindowExpired(order))) {
     order.status = "expired";
     order.payment.status = status.toLowerCase();
   } else {
@@ -7359,7 +7384,9 @@ if (require.main === module) {
 
 module.exports = {
   adminWhatsappParameters,
+  applyXenditQrCodeStatusToOrder,
   applyXenditRefundStatusToOrder,
+  applyXenditVirtualAccountStatusToOrder,
   buildXenditInvoicePayload,
   buildXenditPaymentRequestPayload,
   buildXenditPaymentSessionPayload,
@@ -7369,6 +7396,7 @@ module.exports = {
   defaultSecurityHeaders,
   customerShippingWhatsappParameters,
   hasBiteshipShipmentForMessaging,
+  isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,
