@@ -4768,8 +4768,8 @@ async function createPaymentForOrder(order) {
   }
 
   if (order.payment?.kind === "qris") {
-    const qrCode = await createXenditQrCode(enrichOrder(order));
-    return applyXenditQrCodeToPayment(order.payment, qrCode);
+    const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));
+    return applyXenditPaymentRequestToPayment(order.payment, paymentRequest);
   }
 
   const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));

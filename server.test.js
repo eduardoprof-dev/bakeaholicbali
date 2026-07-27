@@ -518,6 +518,21 @@ test("virtual accounts use Xendit Payments API present-to-customer fields", () =
   assert.equal(payload.amount, undefined);
 });
 
+test("new QRIS orders use a refundable Xendit Payment Request", () => {
+  const payload = buildXenditPaymentRequestPayload({
+    id: "BAK-QRIS",
+    pricing: { total: 18700 },
+    payment: { kind: "qris", externalId: "BAK-QRIS-1" },
+    customer: { phone: "+6281234567890" },
+    receiptToken: "token"
+  });
+  assert.equal(payload.type, "PAY");
+  assert.equal(payload.request_amount, 18700);
+  assert.equal(payload.channel_code, "QRIS");
+  assert.equal(payload.capture_method, "AUTOMATIC");
+  assert.equal(payload.payment_method, undefined);
+});
+
 test("payment recovery checks every unique Xendit reference attached to an order", () => {
   assert.deepEqual(xenditOrderReferenceIds({
     id: "BAK-0108",
