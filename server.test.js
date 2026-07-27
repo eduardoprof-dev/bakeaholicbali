@@ -435,4 +435,8 @@ test("card session enables the shared debit and credit card rail", () => {
   assert.equal(payload.amount, 18700);
   assert.deepEqual(payload.allowed_payment_channels, ["CARDS"]);
   assert.equal(payload.capture_method, "AUTOMATIC");
+  assert.equal(payload.mode, "PAYMENT_LINK");
+  assert.match(payload.success_return_url, /pay\.html\?order=BAK-CARD/);
+  assert.equal(payload.cancel_return_url, payload.success_return_url);
+  assert.equal(payload.components_configuration, undefined);
 });

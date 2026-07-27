@@ -993,6 +993,15 @@ function renderEmbeddedPayment(order) {
   return true;
 }
 
+function redirectToHostedPayment(order) {
+  const paymentUrl = xenditCheckoutUrlForOrder(order);
+  if (!paymentUrl) {
+    return false;
+  }
+  window.location.assign(paymentUrl);
+  return true;
+}
+
 async function updateCurrentOrderPaymentMethod(methodId, bankCode = "") {
   const orderId = state.currentOrder?.id || localStorage.getItem(latestOrderKey) || "";
   if (!orderId || !checkoutXenditPanel) {
@@ -1019,6 +1028,9 @@ async function updateCurrentOrderPaymentMethod(methodId, bankCode = "") {
   state.currentOrder = response.order;
   localStorage.setItem(latestOrderKey, response.order.id);
   state.pendingPaymentUrl = paymentUrlForOrder(response.order);
+  if (redirectToHostedPayment(response.order)) {
+    return true;
+  }
   renderEmbeddedPayment(response.order);
   setCheckoutMessage("");
   hideSubmitButtonForOpenPayment();
@@ -1518,12 +1530,40 @@ function bindPaymentMethodButtons(container) {
       setCheckoutMessage("");
       closeModal(paymentModal);
       try {
+        if (state.currentOrder && ["paid", "preparing", "shipped", "delivered"].includes(state.currentOrder.status)) {
+          const completedOrder = state.currentOrder;
+          clearCompletedCheckoutState();
+          window.location.assign(orderStatusUrlForOrder(completedOrder));
+          return;
+        }
+        if (state.currentOrder && state.currentOrder.status !== "awaiting_payment") {
+          clearCompletedCheckoutState();
+          showPaymentMethodChooser();
+        }
         const updatedExistingOrder = await updateCurrentOrderPaymentMethod(state.draft.paymentMethodId);
         if (!updatedExistingOrder) {
           state.pendingPaymentUrl = "";
           setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
         }
       } catch (error) {
+        if (String(error.message || "").includes("Payment method can only be changed")) {
+          const orderId = state.currentOrder?.id || localStorage.getItem(latestOrderKey) || "";
+          if (orderId) {
+            const currentResponse = await request(`/api/order?id=${encodeURIComponent(orderId)}`);
+            state.currentOrder = currentResponse.order;
+            if (["paid", "preparing", "shipped", "delivered"].includes(state.currentOrder.status)) {
+              const completedOrder = state.currentOrder;
+              clearCompletedCheckoutState();
+              window.location.assign(orderStatusUrlForOrder(completedOrder));
+              return;
+            }
+          }
+          clearCompletedCheckoutState();
+          showPaymentMethodChooser();
+          setCheckoutMessage("The previous payment session is closed. Your selected method is ready for a new order.", "success");
+          setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
+          return;
+        }
         setCheckoutMessage(error.message || "Unable to update payment method.");
         setSubmitButtonState(submitButtonLabel(), false);
       }
@@ -1580,20 +1620,36 @@ async function syncSessionProfile() {
 async function submitOrder() {
   try {
     if (state.currentOrder && !checkoutXenditPanel.hidden) {
-      if (["expired", "payment_failed"].includes(state.currentOrder.status)) {
+      if (["paid", "preparing", "shipped", "delivered"].includes(state.currentOrder.status)) {
+        const completedOrder = state.currentOrder;
+        clearCompletedCheckoutState();
+        window.location.assign(orderStatusUrlForOrder(completedOrder));
+        return;
+      }
+      if (["expired", "payment_failed", "cancelled"].includes(state.currentOrder.status)) {
         const refreshedResponse = await request("/api/order/payment-status", {
           method: "POST",
           body: JSON.stringify({ id: state.currentOrder.id })
         });
         state.currentOrder = refreshedResponse.order;
         if (["paid", "preparing"].includes(state.currentOrder.status)) {
+          const completedOrder = state.currentOrder;
           clearCompletedCheckoutState();
-          window.location.assign(orderStatusUrlForOrder(state.currentOrder));
+          window.location.assign(orderStatusUrlForOrder(completedOrder));
           return;
         }
+        if (state.currentOrder.status !== "awaiting_payment") {
+          clearCompletedCheckoutState();
+          showPaymentMethodChooser();
+        }
+      } else if (state.currentOrder.status !== "awaiting_payment") {
+        clearCompletedCheckoutState();
+        showPaymentMethodChooser();
       }
-      await updateCurrentOrderPaymentMethod(state.draft.paymentMethodId);
-      return;
+      if (state.currentOrder?.status === "awaiting_payment") {
+        await updateCurrentOrderPaymentMethod(state.draft.paymentMethodId);
+        return;
+      }
     }
 
     syncDraftFromForm();
@@ -1627,6 +1683,9 @@ async function submitOrder() {
     localStorage.setItem(latestOrderKey, response.order.id);
     state.currentOrder = response.order;
     state.pendingPaymentUrl = paymentUrlForOrder(response.order);
+    if (redirectToHostedPayment(response.order)) {
+      return;
+    }
     if (renderEmbeddedPayment(response.order)) {
       setCheckoutMessage("");
       hideSubmitButtonForOpenPayment();

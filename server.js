@@ -4481,7 +4481,7 @@ function buildXenditPaymentSessionPayload(order) {
   return {
     reference_id: order.payment?.externalId || `${order.id}-card`,
     session_type: "PAY",
-    mode: "COMPONENTS",
+    mode: "PAYMENT_LINK",
     amount: order.pricing.total,
     currency: "IDR",
     country: "ID",
@@ -4504,9 +4504,6 @@ function buildXenditPaymentSessionPayload(order) {
     metadata: {
       order_id: order.id,
       customer_phone: order.customer?.phone || ""
-    },
-    components_configuration: {
-      origins: xenditComponentOrigins()
     }
   };
 }
@@ -5017,7 +5014,7 @@ function applyXenditPaymentSessionToPayment(payment, session) {
     invoiceUrl: "",
     paymentUrl: session.payment_link_url || "",
     rawStatus: session.status || "",
-    instructions: "Enter card details in the secure Xendit card component below."
+    instructions: "Continue to Xendit's secure hosted page to complete card payment."
   };
 }
 
@@ -6080,7 +6077,9 @@ async function updateOrderPaymentMethod(mode, orderId, methodId, session, token 
   const normalizedBankCode = String(bankCode || "").toUpperCase();
   const cacheKey = paymentCacheKey(methodId, normalizedBankCode);
   const cachedPayment = order.paymentOptions?.[cacheKey];
-  const cachedCardSessionAvailable = cachedPayment?.kind !== "card" || Boolean(xenditComponentsSdkKeyForPayment(cachedPayment));
+  const cachedCardSessionAvailable = cachedPayment?.kind !== "card"
+    || Boolean(cachedPayment?.paymentUrl)
+    || Boolean(xenditComponentsSdkKeyForPayment(cachedPayment));
   if (cachedPayment && cachedCardSessionAvailable && paymentHasPresentValue(cachedPayment) && !isOrderPaymentExpired(order)) {
     order.payment = cachedPayment;
     order.whatsappUrl = buildWhatsappUrl(order);
