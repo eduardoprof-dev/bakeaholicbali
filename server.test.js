@@ -13,6 +13,7 @@ const {
   configuredWhatsappOrderTemplateName,
   customerShippingWhatsappParameters,
   defaultSecurityHeaders,
+  findOrderPaymentByXenditReference,
   hasBiteshipShipmentForMessaging,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
@@ -28,6 +29,7 @@ const {
   shipmentStatusToOrderStatus,
   xenditPaymentAmount,
   xenditOrderReferenceIds,
+  xenditQrExternalIds,
   xenditPaymentSessionIds,
   xenditRefundRequestBody,
   xenditKeyMode
@@ -502,6 +504,28 @@ test("payment recovery checks every unique Xendit reference attached to an order
     "BAK-0108",
     "BAK-0108-qris-1"
   ]);
+});
+
+test("QRIS reconciliation checks every QR option without using unrelated invoice references", () => {
+  const order = {
+    payment: { provider: "xendit_qr_code", externalId: "old-invoice-reference" },
+    paymentOptions: {
+      qris: { provider: "xendit_qr_code", kind: "qris", externalId: "BAK-0109-qr" },
+      va: { provider: "xendit", kind: "va", externalId: "BAK-0109-va" }
+    }
+  };
+  assert.deepEqual(xenditQrExternalIds(order), ["old-invoice-reference", "BAK-0109-qr"]);
+});
+
+test("Xendit callbacks resolve the exact payment option they describe", () => {
+  const qris = { provider: "xendit_qr_code", externalId: "BAK-0109-qr" };
+  const va = { provider: "xendit", externalId: "BAK-0109-va" };
+  const order = {
+    payment: qris,
+    paymentOptions: { qris, va }
+  };
+  assert.equal(findOrderPaymentByXenditReference(order, "BAK-0109-va"), va);
+  assert.equal(findOrderPaymentByXenditReference(order, "unknown"), null);
 });
 
 test("card recovery prefers the valid cached Xendit session over a corrupted active id", () => {

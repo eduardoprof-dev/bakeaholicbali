@@ -5254,6 +5254,27 @@ function xenditOrderReferenceIds(order) {
   ].map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
+function xenditQrExternalIds(order) {
+  return [...new Set([
+    order.payment?.provider === "xendit_qr_code" ? order.payment.externalId : "",
+    ...Object.values(order.paymentOptions || {})
+      .filter((payment) => payment?.provider === "xendit_qr_code" || payment?.kind === "qris")
+      .map((payment) => payment?.externalId)
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function findOrderPaymentByXenditReference(order, referenceId = "") {
+  const reference = String(referenceId || "").trim();
+  if (!reference) return null;
+  const payments = [order.payment, ...Object.values(order.paymentOptions || {})].filter(Boolean);
+  return payments.find((payment) => [
+    payment.externalId,
+    payment.transactionId,
+    payment.paymentId,
+    payment.paymentSessionId
+  ].some((value) => String(value || "").trim() === reference)) || null;
+}
+
 async function fetchSuccessfulXenditTransaction(order) {
   const expectedAmount = Number(order.pricing?.total || 0);
   for (const referenceId of xenditOrderReferenceIds(order)) {
@@ -5322,27 +5343,30 @@ async function fetchXenditVirtualAccountStatus(order) {
 }
 
 async function fetchXenditQrCodeStatus(order) {
-  const qrReference = order.payment?.externalId || order.payment?.transactionId || "";
-  if (!isXenditReady() || order.payment?.provider !== "xendit_qr_code" || !qrReference) {
+  const qrReferences = xenditQrExternalIds(order);
+  if (!isXenditReady() || order.payment?.provider !== "xendit_qr_code" || !qrReferences.length) {
     return null;
   }
 
-  const response = await fetch(`https://api.xendit.co/qr_codes/${encodeURIComponent(qrReference)}`, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: xenditAuthHeader()
+  let lastQrCode = null;
+  for (const qrReference of qrReferences) {
+    const response = await fetch(`https://api.xendit.co/qr_codes/${encodeURIComponent(qrReference)}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: xenditAuthHeader()
+      }
+    });
+    const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+    if (response.ok) {
+      lastQrCode = payload;
+      if (isSuccessfulXenditPaymentEvent(payload)) {
+        return payload;
+      }
     }
-  });
-
-  const payload = await response.json().catch(async () => ({ raw: await response.text() }));
-  if (!response.ok) {
-    throw new Error(payload.message || payload.error_code || "Unable to check Xendit QRIS status");
   }
 
-  if (!isSuccessfulXenditPaymentEvent(payload)) {
-    const referenceIds = xenditOrderReferenceIds(order);
-    for (const referenceId of referenceIds) {
+  for (const referenceId of qrReferences) {
       const qrPaymentsUrl = new URL("https://api.xendit.co/qr_codes/payments");
       qrPaymentsUrl.searchParams.set("external_id", referenceId);
       qrPaymentsUrl.searchParams.set("limit", "10");
@@ -5364,50 +5388,30 @@ async function fetchXenditQrCodeStatus(order) {
         ));
         if (completedQrPayment) {
           return {
-            ...payload,
+            ...(lastQrCode || {}),
             ...completedQrPayment,
             status: "COMPLETED",
-            qr_string: payload.qr_string || completedQrPayment.qr_code?.qr_string || order.payment?.qrCodeData || ""
+            qr_string: lastQrCode?.qr_string || completedQrPayment.qr_code?.qr_string || order.payment?.qrCodeData || ""
           };
         }
       }
-    }
-
-    const referenceId = String(order.payment?.externalId || order.id || "").trim();
-    const transactionsUrl = new URL("https://api.xendit.co/transactions");
-    transactionsUrl.searchParams.set("types", "PAYMENT");
-    transactionsUrl.searchParams.set("statuses", "SUCCESS");
-    transactionsUrl.searchParams.set("reference_id", referenceId);
-    transactionsUrl.searchParams.set("limit", "10");
-    const transactionsResponse = await fetch(transactionsUrl, {
-      headers: {
-        Accept: "application/json",
-        Authorization: xenditAuthHeader()
-      }
-    });
-    const transactionsPayload = await transactionsResponse.json().catch(async () => ({ raw: await transactionsResponse.text() }));
-    if (transactionsResponse.ok) {
-      const transactions = Array.isArray(transactionsPayload)
-        ? transactionsPayload
-        : transactionsPayload.data || [];
-      const successfulTransaction = transactions.find((transaction) => (
-        String(transaction.reference_id || "") === referenceId
-        && String(transaction.status || "").toUpperCase() === "SUCCESS"
-        && Number(transaction.amount) === Number(order.pricing?.total || 0)
-      ));
-      if (successfulTransaction) {
-        return {
-          ...payload,
-          ...successfulTransaction,
-          status: "SUCCESS",
-          payment_status: "SUCCESS",
-          qr_string: payload.qr_string || order.payment?.qrCodeData || ""
-        };
-      }
-    }
   }
 
-  return payload;
+  const successfulTransaction = await fetchSuccessfulXenditTransaction(order).catch(() => null);
+  if (successfulTransaction) {
+    return {
+      ...(lastQrCode || {}),
+      ...successfulTransaction,
+      status: "SUCCESS",
+      payment_status: "SUCCESS",
+      qr_string: lastQrCode?.qr_string || order.payment?.qrCodeData || ""
+    };
+  }
+
+  if (lastQrCode) {
+    return lastQrCode;
+  }
+  throw new Error("Unable to check any Xendit QRIS reference for this order");
 }
 
 function applyXenditInvoiceStatusToOrder(order, invoice) {
@@ -7214,6 +7218,35 @@ function handleApi(requestUrl, request, response) {
           return;
         }
 
+        const callbackReference = String(
+          callbackPayload.reference_id
+          || callbackPayload.payment_session_id
+          || callbackPayload.external_id
+          || callbackPayload.qr_code?.external_id
+          || callbackPayload.qr_code_id
+          || ""
+        ).trim();
+        const matchedPayment = findOrderPaymentByXenditReference(order, callbackReference);
+        const isSuccessfulCallback = isSuccessfulXenditPaymentEvent(callbackPayload);
+        if (
+          matchedPayment
+          && order.payment
+          && matchedPayment !== order.payment
+          && !isSuccessfulCallback
+        ) {
+          rememberXenditWebhook(order, webhookId);
+          saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);
+          sendJson(response, 200, {
+            ok: true,
+            ignored: true,
+            reason: "Stale payment-option callback did not change the active order payment."
+          });
+          return;
+        }
+        if (matchedPayment && isSuccessfulCallback) {
+          order.payment = matchedPayment;
+        }
+
         const previousStatus = order.status;
         if (order.payment?.provider === "xendit_qr_code") {
           applyXenditQrCodeStatusToOrder(order, callbackPayload);
@@ -7395,6 +7428,7 @@ module.exports = {
   configuredWhatsappOrderTemplateName,
   defaultSecurityHeaders,
   customerShippingWhatsappParameters,
+  findOrderPaymentByXenditReference,
   hasBiteshipShipmentForMessaging,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
@@ -7414,6 +7448,7 @@ module.exports = {
   whatsappTemplateTestOrder,
   xenditPaymentAmount,
   xenditOrderReferenceIds,
+  xenditQrExternalIds,
   xenditPaymentSessionIds,
   xenditRefundRequestBody,
   xenditKeyMode
