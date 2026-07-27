@@ -24,6 +24,7 @@ const {
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   xenditPaymentAmount,
+  xenditOrderReferenceIds,
   xenditRefundRequestBody,
   xenditKeyMode
 } = require("./server");
@@ -439,4 +440,19 @@ test("card session enables the shared debit and credit card rail", () => {
   assert.match(payload.success_return_url, /pay\.html\?order=BAK-CARD/);
   assert.equal(payload.cancel_return_url, payload.success_return_url);
   assert.equal(payload.components_configuration, undefined);
+});
+
+test("payment recovery checks every unique Xendit reference attached to an order", () => {
+  assert.deepEqual(xenditOrderReferenceIds({
+    id: "BAK-0108",
+    payment: { externalId: "BAK-0108-card-1" },
+    paymentOptions: {
+      card: { externalId: "BAK-0108-card-1" },
+      qris: { externalId: "BAK-0108-qris-1" }
+    }
+  }), [
+    "BAK-0108-card-1",
+    "BAK-0108",
+    "BAK-0108-qris-1"
+  ]);
 });

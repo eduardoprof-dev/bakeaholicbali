@@ -5207,9 +5207,72 @@ async function fetchXenditPaymentSessionStatus(order) {
 
   const payload = await response.json().catch(async () => ({ raw: await response.text() }));
   if (!response.ok) {
+    const recoveredTransaction = await fetchSuccessfulXenditTransaction(order);
+    if (recoveredTransaction) {
+      return {
+        ...recoveredTransaction,
+        status: "COMPLETED",
+        payment_session_id: sessionId,
+        payment_id: recoveredTransaction.payment_id || recoveredTransaction.id || "",
+        reference_id: recoveredTransaction.reference_id || order.payment?.externalId || order.id
+      };
+    }
     throw new Error(payload.message || payload.error_code || "Unable to refresh Xendit session status");
   }
+  if (!isSuccessfulXenditPaymentEvent(payload)) {
+    const recoveredTransaction = await fetchSuccessfulXenditTransaction(order);
+    if (recoveredTransaction) {
+      return {
+        ...payload,
+        ...recoveredTransaction,
+        status: "COMPLETED",
+        payment_session_id: sessionId,
+        payment_id: recoveredTransaction.payment_id || recoveredTransaction.id || "",
+        reference_id: recoveredTransaction.reference_id || order.payment?.externalId || order.id
+      };
+    }
+  }
   return payload;
+}
+
+function xenditOrderReferenceIds(order) {
+  return [...new Set([
+    order.payment?.externalId,
+    order.id,
+    ...Object.values(order.paymentOptions || {}).map((payment) => payment?.externalId)
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+async function fetchSuccessfulXenditTransaction(order) {
+  const expectedAmount = Number(order.pricing?.total || 0);
+  for (const referenceId of xenditOrderReferenceIds(order)) {
+    const transactionsUrl = new URL("https://api.xendit.co/transactions");
+    transactionsUrl.searchParams.set("types", "PAYMENT");
+    transactionsUrl.searchParams.set("statuses", "SUCCESS");
+    transactionsUrl.searchParams.set("reference_id", referenceId);
+    transactionsUrl.searchParams.set("limit", "10");
+    const response = await fetch(transactionsUrl, {
+      headers: {
+        Accept: "application/json",
+        Authorization: xenditAuthHeader()
+      }
+    });
+    const payload = await response.json().catch(async () => ({ raw: await response.text() }));
+    if (!response.ok) {
+      continue;
+    }
+    const transactions = Array.isArray(payload) ? payload : payload.data || [];
+    const successfulTransaction = transactions.find((transaction) => (
+      String(transaction.reference_id || "") === referenceId
+      && String(transaction.status || "").toUpperCase() === "SUCCESS"
+      && Number(transaction.amount) === expectedAmount
+      && (!transaction.currency || String(transaction.currency).toUpperCase() === "IDR")
+    ));
+    if (successfulTransaction) {
+      return successfulTransaction;
+    }
+  }
+  return null;
 }
 
 async function fetchXenditVirtualAccountStatus(order) {
@@ -5254,11 +5317,7 @@ async function fetchXenditQrCodeStatus(order) {
   }
 
   if (!isSuccessfulXenditPaymentEvent(payload)) {
-    const referenceIds = [...new Set([
-      order.payment?.externalId,
-      order.id,
-      ...Object.values(order.paymentOptions || {}).map((payment) => payment?.externalId)
-    ].map((value) => String(value || "").trim()).filter(Boolean))];
+    const referenceIds = xenditOrderReferenceIds(order);
     for (const referenceId of referenceIds) {
       const qrPaymentsUrl = new URL("https://api.xendit.co/qr_codes/payments");
       qrPaymentsUrl.searchParams.set("external_id", referenceId);
@@ -7315,6 +7374,7 @@ module.exports = {
   isSupportedImageBuffer,
   whatsappTemplateTestOrder,
   xenditPaymentAmount,
+  xenditOrderReferenceIds,
   xenditRefundRequestBody,
   xenditKeyMode
 };
