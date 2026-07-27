@@ -32,7 +32,7 @@ At minimum:
 - `XENDIT_SECRET_KEY=...`
 - `XENDIT_CALLBACK_TOKEN=...`
 
-Activate QRIS, Virtual Account, and Card channels in the Xendit dashboard. The storefront lets customers choose QRIS, Bank Transfer, or Credit / Debit Card, then creates a Xendit Payment Request for that channel. QRIS and virtual-account details are shown on the Bakeaholic waiting-payment page when Xendit returns a customer-presentable action; card payments may redirect for secure authentication.
+Activate QRIS, Virtual Account, and Card channels in the Xendit dashboard. The storefront keeps all three payment methods on the Bakeaholic checkout: QRIS displays the Xendit QR code, Bank Transfer displays the generated virtual-account number, and Credit / Debit Card uses Xendit's embedded secure card component. Bank-app handoff and card authentication may still invoke the customer's banking or authentication flow when required, but the checkout itself must not send customers to a hosted Xendit Invoice page.
 
 Optional but recommended for live messaging:
 

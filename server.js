@@ -4709,17 +4709,13 @@ async function createPaymentForOrder(order) {
   }
 
   if (order.payment?.kind === "va") {
-    // These live channels are activated as Xendit Virtual Account Invoice
-    // products, so create an Invoice restricted to the selected bank.
-    const invoice = await createXenditInvoice(enrichOrder(order));
-    return applyXenditInvoiceToPayment(order.payment, invoice);
+    const virtualAccount = await createXenditVirtualAccount(enrichOrder(order));
+    return applyXenditVirtualAccountToPayment(order.payment, virtualAccount);
   }
 
   if (order.payment?.kind === "qris") {
-    // A hosted Invoice keeps the method restricted to QRIS and lets Xendit
-    // return the customer to our order page after payment.
-    const invoice = await createXenditInvoice(enrichOrder(order));
-    return applyXenditInvoiceToPayment(order.payment, invoice);
+    const qrCode = await createXenditQrCode(enrichOrder(order));
+    return applyXenditQrCodeToPayment(order.payment, qrCode);
   }
 
   const paymentRequest = await createXenditPaymentRequest(enrichOrder(order));
@@ -5014,7 +5010,9 @@ function applyXenditPaymentSessionToPayment(payment, session) {
     invoiceUrl: "",
     paymentUrl: session.payment_link_url || "",
     rawStatus: session.status || "",
-    instructions: "Continue to Xendit's secure hosted page to complete card payment."
+    instructions: componentsSdkKey
+      ? "Enter your card details in the secure Xendit form below."
+      : "Secure card payment is being prepared."
   };
 }
 
