@@ -4623,6 +4623,7 @@ function buildXenditPaymentRequestPayload(order) {
       capture_method: "AUTOMATIC",
       channel_code: order.payment.xenditChannelCode,
       channel_properties: {
+        display_name: order.customer?.name || "Bakeaholic Customer",
         customer_name: order.customer?.name || "Bakeaholic Customer",
         expires_at: expiresAt
       },

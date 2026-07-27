@@ -513,6 +513,7 @@ test("virtual accounts use Xendit Payments API present-to-customer fields", () =
   });
   assert.equal(payload.request_amount, 18700);
   assert.equal(payload.channel_code, "BNI_VIRTUAL_ACCOUNT");
+  assert.equal(payload.channel_properties.display_name, "Bakeaholic Customer");
   assert.equal(payload.channel_properties.customer_name, "Bakeaholic Customer");
   assert.equal(payload.payment_method, undefined);
   assert.equal(payload.amount, undefined);
