@@ -1539,7 +1539,8 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
       ...order.adminWhatsappNotifications,
       lastNotificationKey: eventKey,
       lastSentAt: new Date().toISOString(),
-      messageId: messageResponse?.messages?.[0]?.id || order.adminWhatsappNotifications?.messageId || ""
+      messageId: messageResponse?.messages?.[0]?.id || order.adminWhatsappNotifications?.messageId || "",
+      recipients: messageResponse?.results || []
     };
     delete order.adminWhatsappNotificationError;
     return { sent: true, messageId: messageResponse?.messages?.[0]?.id || "" };

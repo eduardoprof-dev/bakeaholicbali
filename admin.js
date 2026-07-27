@@ -1098,7 +1098,10 @@ function renderAdminOrders() {
     const notificationErrors = [
       order.whatsappShippingNotificationError ? `Customer shipping WhatsApp: ${order.whatsappShippingNotificationError}` : "",
       order.adminWhatsappShippingNotificationError ? `Admin shipping WhatsApp: ${order.adminWhatsappShippingNotificationError}` : "",
-      order.adminWhatsappNotificationError ? `Admin alert WhatsApp: ${order.adminWhatsappNotificationError}` : ""
+      order.adminWhatsappNotificationError ? `Admin alert WhatsApp: ${order.adminWhatsappNotificationError}` : "",
+      ...(order.adminWhatsappNotifications?.recipients || [])
+        .filter((recipient) => !recipient.sent)
+        .map((recipient) => `Admin ${recipient.recipient || "recipient"}: ${recipient.error || "WhatsApp delivery failed"}`)
     ].filter(Boolean);
     const refund = order.refund || null;
     const refundTone = ["succeeded"].includes(refund?.status)
