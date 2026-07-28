@@ -2518,6 +2518,52 @@ body::before {
   font-size: 0.92rem;
 }
 
+.admin-recipient-status {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.admin-recipient-status-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-recipient-status-list > span {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  min-width: 210px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: #eef9f1;
+  color: #176b36;
+}
+
+.admin-recipient-status-list > span.is-failed {
+  background: #fff0ed;
+  color: #a73527;
+}
+
+.admin-recipient-status-list b {
+  grid-row: 1 / span 2;
+}
+
+.admin-recipient-status-list small {
+  color: inherit;
+  opacity: 0.78;
+}
+
+.admin-recipient-status.is-empty {
+  color: #786b62;
+  background: rgba(248, 244, 240, 0.72);
+}
+
 .admin-refund-note.status-paid {
   border-color: rgba(33, 150, 83, 0.28);
   background: #f1fbf5;

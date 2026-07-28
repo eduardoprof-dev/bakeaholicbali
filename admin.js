@@ -1103,6 +1103,28 @@ function renderAdminOrders() {
         .filter((recipient) => !recipient.sent)
         .map((recipient) => `Admin ${recipient.recipient || "recipient"}: ${recipient.error || "WhatsApp delivery failed"}`)
     ].filter(Boolean);
+    const adminRecipients = order.adminWhatsappNotifications?.recipients || [];
+    const adminRecipientDetails = adminRecipients.length
+      ? `
+        <div class="admin-recipient-status">
+          <strong>Admin WhatsApp delivery</strong>
+          <div class="admin-recipient-status-list">
+            ${adminRecipients.map((recipient) => `
+              <span class="${recipient.sent ? "is-sent" : "is-failed"}">
+                <b>${recipient.sent ? "✓" : "!"}</b>
+                Admin ${escapeHtml(recipient.recipient || "recipient")}
+                <small>${escapeHtml(recipient.sent ? "Accepted by Meta" : recipient.error || "Delivery failed")}</small>
+              </span>
+            `).join("")}
+          </div>
+        </div>
+      `
+      : `
+        <div class="admin-recipient-status is-empty">
+          <strong>Admin WhatsApp delivery</strong>
+          <span>No per-recipient delivery result has been recorded for this order.</span>
+        </div>
+      `;
     const refund = order.refund || null;
     const refundTone = ["succeeded"].includes(refund?.status)
       ? "status-paid"
@@ -1146,6 +1168,7 @@ function renderAdminOrders() {
           ${deliveryActions}
         </div>
         ${notificationErrors.length ? `<p class="admin-delivery-note status-negative">${notificationErrors.map(escapeHtml).join("<br>")}</p>` : ""}
+        ${adminRecipientDetails}
         ${refundDetails}
         ${isDeliveryIssue ? `<p class="admin-delivery-note">The courier booking was cancelled. Payment is still paid. Rebook after correcting the pickup location, or process a refund through the verified refund workflow.</p>` : ""}
       </article>

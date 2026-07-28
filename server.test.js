@@ -436,6 +436,7 @@ test("Xendit refund webhooks update pending, succeeded, and failed states", () =
   assert.equal(order.refund.status, "pending");
   applyXenditRefundStatusToOrder(order, { event: "refund.succeeded", status: "SUCCEEDED" });
   assert.equal(order.refund.status, "succeeded");
+  assert.ok(order.refund.confirmedAt);
   applyXenditRefundStatusToOrder(order, {
     event: "refund.failed",
     status: "FAILED",

@@ -5127,8 +5127,9 @@ async function attemptXenditRefund(order, reason = "Requested by admin") {
   const payloadStatus = String(payload.status || "").trim().toLowerCase();
   order.refund = {
     status: response.ok
-      ? (["pending", "succeeded"].includes(payloadStatus) ? payloadStatus : "requested")
+      ? (["failed", "cancelled", "canceled"].includes(payloadStatus) ? "manual_required" : "pending")
       : "manual_required",
+    requestStatus: payloadStatus || "",
     id: payload.id || "",
     paymentRequestId,
     reason,
@@ -5178,6 +5179,9 @@ function applyXenditRefundStatusToOrder(order, payload = {}) {
     paymentRequestId: payload.payment_request_id || order.refund?.paymentRequestId || "",
     referenceId: payload.reference_id || order.refund?.referenceId || "",
     status,
+    confirmedAt: status === "succeeded"
+      ? (payload.updated || new Date().toISOString())
+      : order.refund?.confirmedAt || "",
     failureCode: payload.failure_code || "",
     message: status === "succeeded"
       ? "Refund succeeded in Xendit."
@@ -5773,6 +5777,19 @@ function paymentHasPresentValue(payment) {
 function enrichOrder(order, options = {}) {
   if (!order) return null;
   const payment = { ...(order.payment || {}) };
+  const refund = order.refund ? { ...order.refund } : null;
+  // A successful refund-request response is not the same as confirmation from
+  // the payment channel. Older orders stored that request response as
+  // `succeeded`; expose it as pending until a refund webhook confirms it.
+  if (
+    refund?.status === "succeeded"
+    && !refund.confirmedAt
+    && !refund.updatedAt
+    && refund.message === "Refund requested in Xendit."
+  ) {
+    refund.status = "pending";
+    refund.message = "Refund request accepted. Waiting for confirmation from Xendit.";
+  }
   delete payment.componentsSdkKey;
   if (options.includeComponentsSdkKey && payment.provider === "xendit_components") {
     const componentsSdkKey = xenditComponentsSdkKeyForPayment(payment);
@@ -5783,6 +5800,7 @@ function enrichOrder(order, options = {}) {
   return {
     ...order,
     payment,
+    ...(refund ? { refund } : {}),
     documentUrl: getPublicDocumentUrl(order),
     lineItems: order.items
       .map(({ itemId, quantity }) => {
