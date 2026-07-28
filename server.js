@@ -477,6 +477,10 @@ function whatsappTemplateTestOrder(recipient) {
       label: "Template test - no payment",
       status: "paid"
     },
+    refund: {
+      id: "rf_template_test",
+      status: "succeeded"
+    },
     fulfillment: {
       shipment: {
         orderId: "bakeaholic-template-test",
@@ -582,6 +586,16 @@ async function runWhatsappTemplateDiagnostics() {
       key: "admin_shipping",
       templateName: process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME,
       send: () => sendWhatsappShippingUpdate(order, { admin: true })
+    },
+    {
+      key: "refund_completed",
+      templateName: process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "refund_completed",
+      send: () => sendWhatsappRefundCompleted(order)
+    },
+    {
+      key: "admin_refund_update",
+      templateName: process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME || "admin_refund_update",
+      send: () => sendWhatsappAdminRefundUpdate(order)
     }
   ];
 
@@ -1007,7 +1021,6 @@ function orderUpdateWhatsappOptions(order, templateName) {
   const dynamicButtonTemplates = new Set([
     "payment_pending",
     "order_received",
-    "order_preparing",
     "order_shipped"
   ]);
   const options = { languageCode: "en" };
