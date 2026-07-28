@@ -118,6 +118,8 @@ test("admin diagnostics exercise every configured template without creating an o
     "WHATSAPP_SHIPPING_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME",
+    "WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME",
     "WHATSAPP_TEMPLATE_LANGUAGE"
   ];
   const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
@@ -135,6 +137,8 @@ test("admin diagnostics exercise every configured template without creating an o
     WHATSAPP_SHIPPING_TEMPLATE_NAME: "shipping_update",
     WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2",
     WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update",
+    WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME: "refund_completed",
+    WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME: "admin_refund_update",
     WHATSAPP_TEMPLATE_LANGUAGE: "en_US"
   });
   global.fetch = async (_url, options) => {
@@ -161,7 +165,7 @@ test("admin diagnostics exercise every configured template without creating an o
   assert.equal(diagnostic.synthetic, true);
   assert.equal(diagnostic.charged, false);
   assert.equal(diagnostic.orderCreated, false);
-  assert.equal(payloads.length, 14);
+  assert.equal(payloads.length, 16);
   const bodyCounts = Object.fromEntries(payloads.map((payload) => {
     const body = payload.template.components?.find((component) => component.type === "body");
     return [payload.template.name, body?.parameters?.length || 0];
@@ -180,8 +184,12 @@ test("admin diagnostics exercise every configured template without creating an o
     order_cancelled: 1,
     shipping_update: 4,
     admin_order_alert_v2: 9,
-    admin_shipping_update: 4
+    admin_shipping_update: 4,
+    refund_completed: 3,
+    admin_refund_update: 4
   });
+  const preparingPayload = payloads.find((payload) => payload.template.name === "order_preparing");
+  assert.equal(preparingPayload.template.components, undefined);
 });
 
 test("status templates select the paid confirmation for legacy settings", () => {
