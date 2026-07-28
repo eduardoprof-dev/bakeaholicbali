@@ -342,6 +342,10 @@ test("Xendit transaction SUCCESS is treated as a completed payment", () => {
   assert.equal(isSuccessfulXenditPaymentEvent({ status: "ACTIVE" }), false);
 });
 
+test("Xendit payment amount accepts Payment Request response amounts", () => {
+  assert.equal(xenditPaymentAmount({ request_amount: 18700 }), 18700);
+});
+
 test("temporary inactive QRIS or VA status does not expire an active checkout", () => {
   assert.equal(isOrderPaymentWindowExpired({
     expiresAt: "2026-07-27T10:15:00.000Z"
@@ -492,7 +496,8 @@ test("card session enables the shared debit and credit card rail", () => {
   assert.match(payload.success_return_url, /pay\.html\?order=BAK-CARD/);
   assert.equal(payload.cancel_return_url, payload.success_return_url);
   assert.deepEqual(payload.components_configuration, {
-    origins: ["https://bakeaholicbali.com"]
+    origins: ["https://bakeaholicbali.com"],
+    return_url: payload.success_return_url
   });
 });
 

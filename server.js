@@ -4546,7 +4546,8 @@ function buildXenditPaymentSessionPayload(order) {
     capture_method: "AUTOMATIC",
     allowed_payment_channels: ["CARDS"],
     components_configuration: {
-      origins: xenditComponentOrigins()
+      origins: xenditComponentOrigins(),
+      return_url: returnUrl
     },
     customer: {
       reference_id: `${order.id}-customer`,
@@ -5270,6 +5271,31 @@ async function fetchXenditPaymentSessionStatus(order) {
     if (isSuccessfulXenditPaymentEvent(payload)) {
       return payload;
     }
+    const paymentRequestId = String(payload.payment_request_id || "").trim();
+    if (paymentRequestId) {
+      const paymentResponse = await fetch(
+        `https://api.xendit.co/v3/payment_requests/${encodeURIComponent(paymentRequestId)}`,
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: xenditAuthHeader(),
+            "api-version": "2024-11-11"
+          }
+        }
+      );
+      const paymentPayload = await paymentResponse.json().catch(async () => ({ raw: await paymentResponse.text() }));
+      if (paymentResponse.ok && isSuccessfulXenditPaymentEvent(paymentPayload)) {
+        return {
+          ...payload,
+          status: "COMPLETED",
+          payment_session_id: payload.payment_session_id || sessionId,
+          payment_request_id: paymentPayload.payment_request_id || paymentRequestId,
+          payment_id: paymentPayload.payment_id || payload.payment_id || "",
+          reference_id: paymentPayload.reference_id || payload.reference_id || order.payment?.externalId || order.id,
+          amount: xenditPaymentAmount(paymentPayload) ?? payload.amount
+        };
+      }
+    }
   }
 
   const recoveredTransaction = await fetchSuccessfulXenditTransaction(order);
@@ -5534,6 +5560,7 @@ function isOrderPaymentWindowExpired(order, now = Date.now()) {
 function xenditPaymentAmount(payload = {}) {
   const candidates = [
     payload.amount,
+    payload.request_amount,
     payload.nominal,
     payload.paid_amount,
     payload.payment_amount,

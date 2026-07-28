@@ -222,12 +222,6 @@ function xenditCardMarkup(payment) {
       <div class="checkout-xendit-card-component" data-xendit-card-component>
         Loading secure card fields...
       </div>
-      <div class="accepted-card-brands" aria-label="Accepted cards">
-        <span class="card-brand card-brand-visa">VISA</span>
-        <span class="card-brand card-brand-mastercard">Mastercard</span>
-        <span class="card-brand card-brand-jcb">JCB</span>
-        <span class="card-brand card-brand-amex">AMEX</span>
-      </div>
       <div class="checkout-xendit-action-component" data-xendit-card-action hidden></div>
       <button class="primary-button full-width checkout-payment-status-button checkout-card-pay-button" type="button" data-xendit-card-submit disabled>
         Pay ${formatRupiah.format(state.order.pricing.total)}
@@ -719,12 +713,14 @@ function mountXenditCardComponents() {
       components.addEventListener("action-begin", () => {
         if (!actionMount || typeof components.createActionContainerComponent !== "function") return;
         actionMount.hidden = false;
+        document.documentElement.classList.add("has-secure-payment-modal");
         actionMount.replaceChildren(components.createActionContainerComponent());
       });
       components.addEventListener("action-end", () => {
         if (!actionMount) return;
         actionMount.hidden = true;
         actionMount.replaceChildren();
+        document.documentElement.classList.remove("has-secure-payment-modal");
       });
       components.addEventListener("init", () => {
         const cardChannels = typeof components.getActiveChannels === "function"
@@ -820,8 +816,11 @@ function schedulePaymentStatusCheck() {
           body: JSON.stringify({ id: orderId, token: orderToken })
         })
         : await request(`/api/order?id=${encodeURIComponent(orderId)}${orderToken ? `&token=${encodeURIComponent(orderToken)}` : ""}`);
+      const previousStatus = state.order?.status;
       state.order = response.order;
-      render();
+      if (state.order.status !== previousStatus || state.order.status !== "awaiting_payment") {
+        render();
+      }
     } catch (_error) {
       // A temporary connection problem should not interrupt the order page.
     }

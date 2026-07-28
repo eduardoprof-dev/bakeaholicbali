@@ -663,12 +663,6 @@ function nativePaymentMarkup(order) {
           <div class="checkout-xendit-card-component" id="xenditCardComponent-${escapeHtml(order.id)}" data-xendit-card-component="${escapeHtml(order.id)}">
             Loading secure card fields...
           </div>
-          <div class="accepted-card-brands" aria-label="Accepted cards">
-            <span class="card-brand card-brand-visa">VISA</span>
-            <span class="card-brand card-brand-mastercard">Mastercard</span>
-            <span class="card-brand card-brand-jcb">JCB</span>
-            <span class="card-brand card-brand-amex">AMEX</span>
-          </div>
           <div class="checkout-xendit-action-component" id="xenditCardAction-${escapeHtml(order.id)}" data-xendit-card-action hidden></div>
           <button class="primary-button full-width checkout-payment-status-button checkout-card-pay-button" type="button" data-xendit-card-submit="${escapeHtml(order.id)}" disabled>
             Pay ${formatRupiah.format(order.pricing.total)}
@@ -903,8 +897,8 @@ function mountXenditCardComponents(order) {
           return;
         }
         actionMount.hidden = false;
+        document.documentElement.classList.add("has-secure-payment-modal");
         actionMount.replaceChildren(components.createActionContainerComponent());
-        actionMount.scrollIntoView({ behavior: "smooth", block: "center" });
       });
       components.addEventListener("action-end", () => {
         if (!actionMount) {
@@ -912,6 +906,7 @@ function mountXenditCardComponents(order) {
         }
         actionMount.hidden = true;
         actionMount.replaceChildren();
+        document.documentElement.classList.remove("has-secure-payment-modal");
       });
       components.addEventListener("init", () => {
         const activeChannels = typeof components.getActiveChannels === "function"

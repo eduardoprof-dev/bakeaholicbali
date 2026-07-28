@@ -5776,15 +5776,43 @@ body.has-cart-items .storefront-content {
 }
 
 .checkout-xendit-action-component {
-  min-height: 360px;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  background: #fff;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: clamp(16px, 4vw, 48px);
+  overflow: auto;
+  background: rgba(20, 12, 8, 0.72);
+  backdrop-filter: blur(8px);
 }
 
 .checkout-xendit-action-component[hidden] {
   display: none;
+}
+
+.checkout-xendit-action-component > * {
+  width: min(100%, 760px) !important;
+  min-height: min(720px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 0;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(20, 12, 8, 0.34);
+}
+
+.checkout-xendit-action-component iframe {
+  display: block;
+  width: 100% !important;
+  min-height: min(680px, calc(100dvh - 64px));
+  border: 0 !important;
+}
+
+html.has-secure-payment-modal,
+html.has-secure-payment-modal body {
+  overflow: hidden;
 }
 
 .checkout-native-total {
