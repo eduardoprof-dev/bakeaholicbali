@@ -598,7 +598,8 @@ async function runWhatsappTemplateDiagnostics() {
         key: check.key,
         templateName,
         ok: true,
-        messageId: response?.messages?.[0]?.id || "accepted"
+        messageId: response?.messages?.[0]?.id || "accepted",
+        recipients: Array.isArray(response?.results) ? response.results : undefined
       });
     } catch (error) {
       results.push({ key: check.key, templateName, ok: false, error: error.message });

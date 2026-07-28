@@ -2236,19 +2236,26 @@ async function saveIntegrations() {
 }
 
 async function testWhatsappTemplates() {
+  const diagnosticLine = (result) => {
+    const summary = `${result.ok ? "PASS" : "FAIL"}  ${result.key}  ${result.templateName || "not configured"}${result.error ? `  ${result.error}` : ""}`;
+    const recipients = (result.recipients || [])
+      .map((recipient) => `\n      ${recipient.sent ? "PASS" : "FAIL"}  Admin ${recipient.recipient || "recipient"}  ${recipient.sent ? "Accepted by Meta" : recipient.error || "Delivery failed"}`)
+      .join("");
+    return `${summary}${recipients}`;
+  };
   try {
     testWhatsappTemplatesButton.disabled = true;
     whatsappTemplateTestResults.hidden = false;
     whatsappTemplateTestResults.textContent = "Sending synthetic WhatsApp template tests...";
     const response = await request("/api/admin/whatsapp-template-tests", { method: "POST" });
     whatsappTemplateTestResults.textContent = response.results
-      .map((result) => `${result.ok ? "PASS" : "FAIL"}  ${result.key}  ${result.templateName || "not configured"}${result.error ? `  ${result.error}` : ""}`)
+      .map(diagnosticLine)
       .join("\n");
     setStatus(response.ok ? "All WhatsApp templates were accepted by Meta." : "One or more WhatsApp templates failed.");
   } catch (error) {
     const results = error.payload?.results || [];
     whatsappTemplateTestResults.textContent = results.length
-      ? results.map((result) => `${result.ok ? "PASS" : "FAIL"}  ${result.key}  ${result.templateName || "not configured"}${result.error ? `  ${result.error}` : ""}`).join("\n")
+      ? results.map(diagnosticLine).join("\n")
       : error.message;
     setStatus("One or more WhatsApp templates failed.");
   } finally {
