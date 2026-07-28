@@ -1157,6 +1157,64 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
   };
 }
 
+function refundWhatsappParameters(order) {
+  const refund = order.refund || {};
+  return [
+    order.id,
+    `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`,
+    refund.id || refund.referenceId || "-"
+  ];
+}
+
+function adminRefundWhatsappParameters(order) {
+  const refund = order.refund || {};
+  const status = String(refund.status || "pending")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return [
+    order.id,
+    status,
+    `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`,
+    refund.id || refund.referenceId || "-"
+  ];
+}
+
+async function sendWhatsappRefundCompleted(order) {
+  const templateName = String(process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "refund_completed").trim();
+  return sendWhatsappTemplateMessage(order.customer.phone, templateName, refundWhatsappParameters(order), {
+    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+    urlButtonParameters: [
+      {
+        index: "0",
+        text: publicOrderButtonQuery(order)
+      }
+    ]
+  });
+}
+
+async function sendWhatsappAdminRefundUpdate(order) {
+  const adminNumbers = adminWhatsappNumbers();
+  const templateName = String(process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME || "admin_refund_update").trim();
+  if (!adminNumbers.length) {
+    throw new Error("Admin WhatsApp number is missing");
+  }
+  const deliveries = await Promise.allSettled(adminNumbers.map((adminNumber) => (
+    sendWhatsappTemplateMessage(adminNumber, templateName, adminRefundWhatsappParameters(order), {
+      languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en"
+    })
+  )));
+  const results = deliveries.map((delivery, index) => ({
+    recipient: maskedWhatsappNumber(adminNumbers[index]),
+    sent: delivery.status === "fulfilled",
+    messageId: delivery.status === "fulfilled" ? delivery.value?.messages?.[0]?.id || "" : "",
+    error: delivery.status === "rejected" ? delivery.reason?.message || "WhatsApp delivery failed" : ""
+  }));
+  if (!results.some((result) => result.sent)) {
+    throw new Error(results.map((result) => result.error).filter(Boolean).join("; ") || "Admin refund WhatsApp delivery failed");
+  }
+  return { results };
+}
+
 async function sendWhatsappPaymentReceipt(order) {
   const templateName = String(process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME || "").trim();
   if (!templateName) {
@@ -7279,11 +7337,33 @@ function handleApi(requestUrl, request, response) {
             refundOrder.refund.processedWebhookIds = [...new Set([...processedIds, webhookId])].slice(-50);
           }
           if (refundOrder.refund.status !== previousRefundStatus) {
-            refundOrder.adminRefundNotification = await maybeSendWhatsappAdminAlert(
-              refundOrder,
-              `refund:${refundOrder.id}:${refundOrder.refund.status}`,
-              `Refund ${refundOrder.refund.status.replace(/_/g, " ")}`
-            );
+            if (refundOrder.mode !== "test" && isWhatsappCloudReady()) {
+              try {
+                refundOrder.adminRefundNotification = {
+                  sentAt: new Date().toISOString(),
+                  ...(await sendWhatsappAdminRefundUpdate(refundOrder))
+                };
+              } catch (error) {
+                refundOrder.adminRefundNotification = {
+                  error: error.message,
+                  attemptedAt: new Date().toISOString()
+                };
+              }
+              if (refundOrder.refund.status === "succeeded") {
+                try {
+                  const customerResponse = await sendWhatsappRefundCompleted(refundOrder);
+                  refundOrder.customerRefundNotification = {
+                    sentAt: new Date().toISOString(),
+                    messageId: customerResponse?.messages?.[0]?.id || ""
+                  };
+                } catch (error) {
+                  refundOrder.customerRefundNotification = {
+                    error: error.message,
+                    attemptedAt: new Date().toISOString()
+                  };
+                }
+              }
+            }
           }
           saveOrders(ordersPathForMode(refundOrder.mode || "live"), getStoreState(refundOrder.mode || "live").orders);
           sendJson(response, 200, { ok: true, refundStatus: refundOrder.refund.status });
