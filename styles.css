@@ -6409,6 +6409,78 @@ body.cart-is-empty .checkout-shell .cart-layout {
   background: #5b351f;
 }
 
+.refund-status-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.55fr);
+  gap: 24px;
+  margin-bottom: 24px;
+  padding: 22px;
+  border: 1px solid rgba(117, 75, 47, 0.16);
+  border-radius: 18px;
+  background: #fffaf5;
+}
+
+.refund-status-card h2,
+.refund-status-card p,
+.refund-status-card dl {
+  margin: 0;
+}
+
+.refund-status-card p {
+  margin-top: 8px;
+  color: #6f6259;
+  line-height: 1.55;
+}
+
+.refund-status-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #8b684f;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.refund-status-details {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.refund-status-details div {
+  display: grid;
+  gap: 3px;
+}
+
+.refund-status-details dt {
+  color: #8b7a6f;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.refund-status-details dd {
+  overflow-wrap: anywhere;
+  font-weight: 800;
+}
+
+.refund-status-succeeded {
+  border-color: rgba(32, 137, 72, 0.24);
+  background: #f1fbf4;
+}
+
+.refund-status-failed,
+.refund-status-manual_required {
+  border-color: rgba(192, 57, 43, 0.24);
+  background: #fff4f2;
+}
+
+@media (max-width: 720px) {
+  .refund-status-card {
+    grid-template-columns: 1fr;
+  }
+}
+
 .status-steps {
   display: flex;
   justify-content: center;

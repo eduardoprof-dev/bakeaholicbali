@@ -317,6 +317,27 @@ function paymentActionMarkup(payment) {
 
 function renderCancelled() {
   document.title = `Order ${state.order.id} Cancelled`;
+  const refund = state.order.refund || {};
+  const refundStatus = String(refund.status || "not_required");
+  const refundPending = ["requested", "pending"].includes(refundStatus);
+  const refundSucceeded = refundStatus === "succeeded";
+  const refundNeedsHelp = ["failed", "manual_required"].includes(refundStatus);
+  const refundTitle = refundSucceeded
+    ? "Refund completed"
+    : refundPending
+      ? "Refund is processing"
+      : refundNeedsHelp
+        ? "Refund needs assistance"
+        : "No refund required";
+  const refundMessage = refundSucceeded
+    ? "Xendit confirmed that your refund was completed. Your bank or card statement may take additional time to display it."
+    : refundPending
+      ? "Your refund request was accepted by Xendit. This page updates automatically when its status changes."
+      : refundNeedsHelp
+        ? "Our team needs to review this refund. Contact Bakeaholic and include your order number."
+        : "This order was cancelled before a completed payment, so no refund is due.";
+  const refundUpdatedAt = refund.updatedAt || refund.requestedAt || "";
+  const refundReference = refund.referenceId || refund.id || "";
   paymentApp.innerHTML = `
     <section class="status-hero cancelled-hero">
       <div class="status-steps">
@@ -332,6 +353,18 @@ function renderCancelled() {
       <div class="status-time">
         <strong>Order cancelled at</strong>
         <span>${new Date(state.order.cancelledAt || state.order.createdAt).toLocaleString()}</span>
+      </div>
+      <div class="refund-status-card refund-status-${escapeHtml(refundStatus)}">
+        <div>
+          <span class="refund-status-label">Refund status</span>
+          <h2>${escapeHtml(refundTitle)}</h2>
+          <p>${escapeHtml(refundMessage)}</p>
+        </div>
+        <dl class="refund-status-details">
+          <div><dt>Amount</dt><dd>${formatRupiah.format(Number(state.order.pricing?.total || 0))}</dd></div>
+          ${refundReference ? `<div><dt>Reference</dt><dd>${escapeHtml(refundReference)}</dd></div>` : ""}
+          ${refundUpdatedAt ? `<div><dt>Last updated</dt><dd>${escapeHtml(new Date(refundUpdatedAt).toLocaleString())}</dd></div>` : ""}
+        </dl>
       </div>
       <div class="purchase-summary">
         <div class="section-head-inline">
@@ -807,7 +840,9 @@ function schedulePaymentStatusCheck() {
   const paymentPending = state.order?.status === "awaiting_payment";
   const deliveryActive = ["paid", "preparing", "on_delivery", "shipped"].includes(state.order?.status)
     && state.order?.fulfillment?.shipment?.orderId;
-  if ((!paymentPending && !deliveryActive) || document.hidden) return;
+  const refundPending = state.order?.status === "cancelled"
+    && ["requested", "pending"].includes(state.order?.refund?.status);
+  if ((!paymentPending && !deliveryActive && !refundPending) || document.hidden) return;
   paymentStatusTimer = window.setTimeout(async () => {
     try {
       const response = paymentPending
@@ -817,8 +852,13 @@ function schedulePaymentStatusCheck() {
         })
         : await request(`/api/order?id=${encodeURIComponent(orderId)}${orderToken ? `&token=${encodeURIComponent(orderToken)}` : ""}`);
       const previousStatus = state.order?.status;
+      const previousRefundStatus = state.order?.refund?.status;
       state.order = response.order;
-      if (state.order.status !== previousStatus || state.order.status !== "awaiting_payment") {
+      if (
+        state.order.status !== previousStatus
+        || state.order.refund?.status !== previousRefundStatus
+        || (!paymentPending && !refundPending)
+      ) {
         render();
       }
     } catch (_error) {

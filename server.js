@@ -1775,6 +1775,11 @@ async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by ad
     message: order.refund?.message || "Order cancelled.",
     recordedAt: new Date().toISOString()
   };
+  order.adminRefundNotification = await maybeSendWhatsappAdminAlert(
+    order,
+    `refund:${order.id}:${order.refund?.status || "requested"}`,
+    `Refund ${String(order.refund?.status || "requested").replace(/_/g, " ")}`
+  );
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
 }
@@ -2434,7 +2439,7 @@ function defaultSecurityHeaders(cacheControl = "no-store") {
       "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://maps.googleapis.com https://maps.gstatic.com https://*.xendit.co https://api.qrserver.com https://biteship.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "connect-src 'self' https://nominatim.openstreetmap.org https://maps.googleapis.com https://*.xendit.co",
-      "frame-src 'self' https://checkout.xendit.co https://checkout-staging.xendit.co https://*.xendit.co",
+      "frame-src 'self' https://www.google.com https://maps.google.com https://checkout.xendit.co https://checkout-staging.xendit.co https://*.xendit.co",
       "upgrade-insecure-requests"
     ].join("; "),
     "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
@@ -7249,9 +7254,17 @@ function handleApi(requestUrl, request, response) {
             sendJson(response, 200, { ok: true, duplicate: true });
             return;
           }
+          const previousRefundStatus = refundOrder.refund?.status || "";
           applyXenditRefundStatusToOrder(refundOrder, refundPayload);
           if (webhookId) {
             refundOrder.refund.processedWebhookIds = [...new Set([...processedIds, webhookId])].slice(-50);
+          }
+          if (refundOrder.refund.status !== previousRefundStatus) {
+            refundOrder.adminRefundNotification = await maybeSendWhatsappAdminAlert(
+              refundOrder,
+              `refund:${refundOrder.id}:${refundOrder.refund.status}`,
+              `Refund ${refundOrder.refund.status.replace(/_/g, " ")}`
+            );
           }
           saveOrders(ordersPathForMode(refundOrder.mode || "live"), getStoreState(refundOrder.mode || "live").orders);
           sendJson(response, 200, { ok: true, refundStatus: refundOrder.refund.status });
