@@ -641,6 +641,9 @@ function dashboardAttentionItems() {
       order.adminWhatsappNotificationError,
       order.adminWhatsappShippingNotificationError
     ].filter(Boolean);
+    const recipientDeliveryError = (order.adminWhatsappNotifications?.recipients || [])
+      .find((recipient) => recipient.deliveryStatus === "failed")?.deliveryError;
+    if (recipientDeliveryError) messageErrors.push(recipientDeliveryError);
     if (messageErrors.length) {
       items.push({ tone: "danger", title: `${order.id} has a WhatsApp failure`, detail: messageErrors[0] });
     }
@@ -1100,8 +1103,8 @@ function renderAdminOrders() {
       order.adminWhatsappShippingNotificationError ? `Admin shipping WhatsApp: ${order.adminWhatsappShippingNotificationError}` : "",
       order.adminWhatsappNotificationError ? `Admin alert WhatsApp: ${order.adminWhatsappNotificationError}` : "",
       ...(order.adminWhatsappNotifications?.recipients || [])
-        .filter((recipient) => !recipient.sent)
-        .map((recipient) => `Admin ${recipient.recipient || "recipient"}: ${recipient.error || "WhatsApp delivery failed"}`)
+        .filter((recipient) => !recipient.sent || recipient.deliveryStatus === "failed")
+        .map((recipient) => `Admin ${recipient.recipient || "recipient"}: ${recipient.deliveryError || recipient.error || "WhatsApp delivery failed"}`)
     ].filter(Boolean);
     const adminRecipients = order.adminWhatsappNotifications?.recipients || [];
     const adminRecipientDetails = adminRecipients.length
@@ -1110,10 +1113,18 @@ function renderAdminOrders() {
           <strong>Admin WhatsApp delivery</strong>
           <div class="admin-recipient-status-list">
             ${adminRecipients.map((recipient) => `
-              <span class="${recipient.sent ? "is-sent" : "is-failed"}">
-                <b>${recipient.sent ? "✓" : "!"}</b>
+              <span class="${recipient.sent && recipient.deliveryStatus !== "failed" ? "is-sent" : "is-failed"}">
+                <b>${recipient.sent && recipient.deliveryStatus !== "failed" ? "✓" : "!"}</b>
                 Admin ${escapeHtml(recipient.recipient || "recipient")}
-                <small>${escapeHtml(recipient.sent ? "Accepted by Meta" : recipient.error || "Delivery failed")}</small>
+                <small>${escapeHtml(
+                  recipient.deliveryStatus === "failed"
+                    ? recipient.deliveryError || "Meta could not deliver"
+                    : ["delivered", "read"].includes(recipient.deliveryStatus)
+                      ? `${recipient.deliveryStatus === "read" ? "Read" : "Delivered"} by WhatsApp`
+                      : recipient.sent
+                        ? "Accepted by Meta — awaiting delivery receipt"
+                        : recipient.error || "Delivery failed"
+                )}</small>
               </span>
             `).join("")}
           </div>

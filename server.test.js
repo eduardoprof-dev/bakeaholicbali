@@ -9,6 +9,7 @@ const {
   buildXenditPaymentRequestPayload,
   buildXenditPaymentSessionPayload,
   adminWhatsappParameters,
+  adminWhatsappNumbers,
   availablePaymentMethods,
   configuredWhatsappOrderTemplateName,
   customerShippingWhatsappParameters,
@@ -22,9 +23,11 @@ const {
   orderUpdateWhatsappParameters,
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
+  sendWhatsappAdminAlert,
   securityTxtBody,
   selectXenditSecretKey,
   sendWhatsappTemplateMessage,
+  updateAdminWhatsappDeliveryStatus,
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   xenditPaymentAmount,
@@ -34,6 +37,78 @@ const {
   xenditRefundRequestBody,
   xenditKeyMode
 } = require("./server");
+
+test("admin alerts fan out to all three configured recipients", async () => {
+  const previousFetch = global.fetch;
+  const previousEnv = {
+    token: process.env.WHATSAPP_ACCESS_TOKEN,
+    phoneId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    adminNumbers: process.env.WHATSAPP_ADMIN_NUMBER,
+    template: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME
+  };
+  const recipients = [];
+  Object.assign(process.env, {
+    WHATSAPP_ACCESS_TOKEN: "test-token",
+    WHATSAPP_PHONE_NUMBER_ID: "123456",
+    WHATSAPP_ADMIN_NUMBER: "628111111111, 628222222222;628333333333",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2"
+  });
+  global.fetch = async (_url, options) => {
+    const payload = JSON.parse(options.body);
+    recipients.push(payload.to);
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ messages: [{ id: `wamid.${payload.to}` }] })
+    };
+  };
+  try {
+    assert.deepEqual(adminWhatsappNumbers(), ["628111111111", "628222222222", "628333333333"]);
+    const result = await sendWhatsappAdminAlert({
+      id: "BAK-0999",
+      status: "paid",
+      customer: { name: "Customer", phone: "628999999999" },
+      pricing: { total: 18700 },
+      payment: { label: "QRIS" },
+      fulfillment: { shipment: {} },
+      receiptToken: "token"
+    }, "Payment received");
+    assert.deepEqual(recipients, ["628111111111", "628222222222", "628333333333"]);
+    assert.equal(result.results.length, 3);
+    assert.equal(result.results.every((entry) => entry.sent), true);
+  } finally {
+    global.fetch = previousFetch;
+    for (const [key, value] of Object.entries({
+      WHATSAPP_ACCESS_TOKEN: previousEnv.token,
+      WHATSAPP_PHONE_NUMBER_ID: previousEnv.phoneId,
+      WHATSAPP_ADMIN_NUMBER: previousEnv.adminNumbers,
+      WHATSAPP_ADMIN_TEMPLATE_NAME: previousEnv.template
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test("admin recipient delivery receipts record Meta failures", () => {
+  const order = {
+    adminWhatsappNotifications: {
+      recipients: [
+        { recipient: "628***111", sent: true, messageId: "wamid.one" },
+        { recipient: "628***222", sent: true, messageId: "wamid.two" }
+      ]
+    }
+  };
+  assert.equal(updateAdminWhatsappDeliveryStatus(order, {
+    id: "wamid.two",
+    status: "failed",
+    timestamp: "1785300000",
+    errors: [{ code: 131026, message: "Message undeliverable" }]
+  }), true);
+  assert.equal(order.adminWhatsappNotifications.recipients[1].deliveryStatus, "failed");
+  assert.equal(order.adminWhatsappNotifications.recipients[1].deliveryErrorCode, 131026);
+  assert.equal(order.adminWhatsappNotifications.recipients[1].deliveryError, "Message undeliverable");
+});
 
 test("paid admin alert describes an unbooked delivery and required approval", () => {
   const parameters = adminWhatsappParameters({
