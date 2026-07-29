@@ -1058,6 +1058,8 @@ function renderAdminOrders() {
   }
 
   adminOrderList.innerHTML = orders.map((order) => {
+    const canCheckCardPayment = ["awaiting_payment", "expired", "payment_failed"].includes(order.status)
+      && order.payment?.provider === "xendit_components";
     const canRetryFailedBooking = order.status === "delivery_issue"
       && order.payment?.status === "paid"
       && !order.fulfillment?.shipment?.orderId;
@@ -1189,6 +1191,9 @@ function renderAdminOrders() {
         <div class="admin-order-actions">
           <a class="admin-button secondary" href="${escapeHtml(order.documentUrl || "#")}" target="_blank" rel="noreferrer">Open &amp; print invoice</a>
           <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">WhatsApp handoff</a>
+          ${canCheckCardPayment
+            ? `<button class="admin-button" type="button" data-check-card-payment="${escapeHtml(order.id)}">Check payment with Xendit</button>`
+            : ""}
           ${deliveryActions}
         </div>
         ${notificationErrors.length ? `<p class="admin-delivery-note status-negative">${notificationErrors.map(escapeHtml).join("<br>")}</p>` : ""}
@@ -2437,6 +2442,24 @@ async function syncDeliveryStatus(orderId) {
   }
 }
 
+async function checkCardPayment(orderId) {
+  try {
+    setStatus(`Checking Xendit payment for ${orderId}...`);
+    const response = await request(`/api/admin/orders/${encodeURIComponent(orderId)}/reconcile-payment`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    await loadOrders();
+    if (response.order?.status === "paid") {
+      setStatus(`${orderId} is paid. Customer and admin notifications have been processed.`);
+      return;
+    }
+    setStatus(`${orderId} is still ${statusLabel(response.order?.status || "unresolved")} in Xendit. No charge was created.`);
+  } catch (error) {
+    setStatus(`Could not reconcile ${orderId}: ${error.message}`);
+  }
+}
+
 function addProduct() {
   const firstCategory = state.catalog.categories[0]?.id || "";
   state.catalog.items.push({
@@ -2525,6 +2548,11 @@ exportCustomersButton?.addEventListener("click", exportBuyerCsv);
 downloadReportPdfButton?.addEventListener("click", downloadReportPdf);
 printReportButton?.addEventListener("click", printReportA4);
 adminOrderList?.addEventListener("click", (event) => {
+  const paymentButton = event.target.closest("[data-check-card-payment]");
+  if (paymentButton) {
+    checkCardPayment(paymentButton.dataset.checkCardPayment);
+    return;
+  }
   const button = event.target.closest("[data-approve-delivery]");
   if (button) {
     approveDelivery(button.dataset.approveDelivery);

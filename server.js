@@ -7111,6 +7111,23 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/reconcile-payment")) {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/reconcile-payment", ""));
+    const order = findOrder(mode, orderId);
+    if (!order || order.payment?.provider !== "xendit_components") {
+      sendJson(response, 400, { error: "This order does not have a card payment to reconcile" });
+      return true;
+    }
+    updateOrderPaymentStatus(mode, orderId)
+      .then((updatedOrder) => sendJson(response, 200, { ok: true, order: updatedOrder }))
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
   if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/rebook-delivery")) {
     const session = requireAdminSession(request, response);
     if (!session) {
