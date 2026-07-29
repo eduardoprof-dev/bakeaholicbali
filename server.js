@@ -6482,6 +6482,23 @@ async function sweepUnresolvedCardPayments(mode) {
   }
 }
 
+const unresolvedCardPaymentSweeps = new Map();
+
+function scheduleUnresolvedCardPaymentSweep(mode) {
+  if (unresolvedCardPaymentSweeps.has(mode)) {
+    return unresolvedCardPaymentSweeps.get(mode);
+  }
+  const sweep = sweepUnresolvedCardPayments(mode)
+    .catch((error) => {
+      console.warn(`Card payment sweep failed for ${mode}: ${error.message}`);
+    })
+    .finally(() => {
+      unresolvedCardPaymentSweeps.delete(mode);
+    });
+  unresolvedCardPaymentSweeps.set(mode, sweep);
+  return sweep;
+}
+
 async function beginCardPaymentAttempt(mode, orderId, session) {
   let order = findOrder(mode, orderId);
   if (!order || !customerOwnsOrder(session, order)) {
@@ -7072,12 +7089,13 @@ function handleApi(requestUrl, request, response) {
     if (!session) {
       return true;
     }
-    sweepUnresolvedCardPayments(mode)
-      .then(() => sendJson(response, 200, {
-        mode,
-        orders: storeState.orders.map((order) => enrichOrder(order))
-      }))
-      .catch((error) => sendJson(response, 400, { error: error.message }));
+    // Admin rendering must never wait for Xendit. Return stored orders
+    // immediately, then reconcile unresolved card payments in the background.
+    sendJson(response, 200, {
+      mode,
+      orders: storeState.orders.map((order) => enrichOrder(order))
+    });
+    scheduleUnresolvedCardPaymentSweep(mode);
     return true;
   }
 
@@ -7902,12 +7920,8 @@ if (require.main === module) {
       });
     }, 30 * 1000);
     setInterval(() => {
-      Promise.all([
-        sweepUnresolvedCardPayments("live"),
-        sweepUnresolvedCardPayments("test")
-      ]).catch((error) => {
-        console.warn(`Card payment sweep failed: ${error.message}`);
-      });
+      scheduleUnresolvedCardPaymentSweep("live");
+      scheduleUnresolvedCardPaymentSweep("test");
     }, 30 * 1000);
     console.log(`Bakeaholic order app running at http://${host}:${port}`);
   });
