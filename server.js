@@ -6499,37 +6499,6 @@ function scheduleUnresolvedCardPaymentSweep(mode) {
   return sweep;
 }
 
-async function beginCardPaymentAttempt(mode, orderId, session) {
-  let order = findOrder(mode, orderId);
-  if (!order || !customerOwnsOrder(session, order)) {
-    throw new Error("Order not found");
-  }
-
-  // Always reconcile with Xendit immediately before authorizing a browser-side
-  // card submission. This prevents an old Components iframe from charging an
-  // order that has already completed or expired.
-  await updateOrderPaymentStatus(mode, orderId);
-  order = findOrder(mode, orderId);
-  if (order.status !== "awaiting_payment") {
-    throw new Error("This card payment is no longer active");
-  }
-  if (order.payment?.provider !== "xendit_components" || order.payment?.kind !== "card") {
-    throw new Error("This is not the active card payment session");
-  }
-  if (order.payment.clientAttemptStartedAt) {
-    throw new Error("This card payment was already submitted. Checking its result now.");
-  }
-
-  order.payment.clientAttemptStartedAt = new Date().toISOString();
-  const cacheKey = paymentCacheKey("xendit-card");
-  order.paymentOptions = {
-    ...(order.paymentOptions || {}),
-    [cacheKey]: order.payment
-  };
-  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
-  return enrichCheckoutOrder(order);
-}
-
 async function selectOrderBankTransferChannel(mode, orderId, bankCode, session, token = "") {
   const order = findOrder(mode, orderId);
   const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
@@ -7528,24 +7497,6 @@ function handleApi(requestUrl, request, response) {
           ? await updateOrderPaymentStatus(mode, orderId, { simulateTestPayment })
           : await updateOrderPaymentStatusForSession(mode, orderId, session, { simulateTestPayment });
         sendJson(response, 200, { order: updatedOrder });
-      })
-      .catch((error) => sendJson(response, 400, { error: error.message }));
-    return true;
-  }
-
-  if (request.method === "POST" && pathname === "/api/order/card-attempt") {
-    parseBody(request)
-      .then(async (body) => {
-        const session = requireCustomerSession(request, response);
-        if (!session) {
-          return;
-        }
-        const order = await beginCardPaymentAttempt(
-          mode,
-          String(body.id || "").trim(),
-          session
-        );
-        sendJson(response, 200, { order });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;

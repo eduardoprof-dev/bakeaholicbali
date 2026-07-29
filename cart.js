@@ -963,34 +963,19 @@ function mountXenditCardComponents(order) {
         mount.replaceChildren(component);
         suppressFieldScrollbars();
       });
-      submitButton.addEventListener("click", async () => {
+      submitButton.addEventListener("click", () => {
         if (submissionStarted) {
           setCheckoutMessage("This card payment is already processing. Please do not submit it again.", "success");
           return;
         }
         submitButton.disabled = true;
-        submitButton.textContent = "Securing payment...";
+        submitButton.textContent = "Processing...";
         try {
-          const response = await request("/api/order/card-attempt", {
-            method: "POST",
-            body: JSON.stringify({ id: order.id })
-          });
-          state.currentOrder = response.order;
           submissionStarted = true;
           components.submit();
         } catch (error) {
           const message = error.message || "Please complete the card details.";
           setCheckoutMessage(message);
-          if (message.includes("already submitted")) {
-            submissionStarted = true;
-            reconcileUntilSettled();
-            return;
-          }
-          if (message.includes("no longer active") || message.includes("not the active")) {
-            submissionStarted = true;
-            reconcileUntilSettled();
-            return;
-          }
           submissionStarted = false;
           submitButton.textContent = `Pay ${formatRupiah.format(order.pricing.total)}`;
           submitButton.disabled = false;
