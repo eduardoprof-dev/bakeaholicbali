@@ -336,9 +336,15 @@ test("Biteship final delivery statuses map to the delivered customer message", (
     assert.equal(shipmentStatusToOrderStatus(status), "delivered");
   }
   assert.equal(shipmentStatusToOrderStatus("picked_up"), "on_delivery");
-  assert.equal(shipmentStatusToOrderStatus("pickingUp"), "on_delivery");
+  assert.equal(shipmentStatusToOrderStatus("pickingUp"), "preparing");
   assert.equal(shipmentStatusToOrderStatus("inTransit"), "on_delivery");
   assert.equal(shipmentStatusToOrderStatus("droppingOff"), "on_delivery");
+});
+
+test("Biteship pickup notification waits until the parcel is actually picked", () => {
+  assert.equal(shipmentStatusToOrderStatus("allocated"), "preparing");
+  assert.equal(shipmentStatusToOrderStatus("picking_up"), "preparing");
+  assert.equal(shipmentStatusToOrderStatus("picked"), "on_delivery");
 });
 
 test("public order references preserve live and test modes", () => {
