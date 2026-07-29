@@ -17,6 +17,7 @@ const cartSessionMaxAgeMs = 24 * 60 * 60 * 1000;
 const xenditComponentsSdkUrl = "https://cdn.jsdelivr.net/npm/xendit-components-web@0.0.24/sdk/dist/index.umd.js";
 const xenditComponentsSdkIntegrity = "sha384-f7WJhUhA6M8Ws7YX1TCkdByJbvagFsACWdWwBTWUv/FPIrjryB2NsKCqZXJ/J+gs";
 let xenditComponentsSdkPromise = null;
+let paymentSelectionInProgress = false;
 
 const state = {
   store: null,
@@ -1652,6 +1653,11 @@ function bindPaymentMethodButtons(container) {
   if (!container) return;
   container.querySelectorAll("[data-method-id]").forEach((button) => {
     button.addEventListener("click", async () => {
+      if (paymentSelectionInProgress) return;
+      paymentSelectionInProgress = true;
+      document.querySelectorAll("[data-method-id]").forEach((methodButton) => {
+        methodButton.disabled = true;
+      });
       state.draft.paymentMethodId = button.dataset.methodId;
       persistDraft();
       renderPaymentChoice();
@@ -1671,7 +1677,7 @@ function bindPaymentMethodButtons(container) {
         const updatedExistingOrder = await updateCurrentOrderPaymentMethod(state.draft.paymentMethodId);
         if (!updatedExistingOrder) {
           state.pendingPaymentUrl = "";
-          setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
+          await submitOrder();
         }
       } catch (error) {
         if (String(error.message || "").includes("Payment method can only be changed")) {
@@ -1689,11 +1695,16 @@ function bindPaymentMethodButtons(container) {
           clearCompletedCheckoutState();
           showPaymentMethodChooser();
           setCheckoutMessage("The previous payment session is closed. Your selected method is ready for a new order.", "success");
-          setSubmitButtonState(submitButtonLabel(), state.cart?.itemCount === 0);
+          await submitOrder();
           return;
         }
         setCheckoutMessage(error.message || "Unable to update payment method.");
         setSubmitButtonState(submitButtonLabel(), false);
+      } finally {
+        paymentSelectionInProgress = false;
+        document.querySelectorAll("[data-method-id]").forEach((methodButton) => {
+          methodButton.disabled = false;
+        });
       }
     });
   });
