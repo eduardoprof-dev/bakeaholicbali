@@ -714,15 +714,7 @@ function mountXenditCardComponents() {
       const confirmPayment = async () => {
         submitButton.disabled = true;
         submitButton.textContent = "Confirming payment...";
-        const response = await request("/api/order/payment-status", {
-          method: "POST",
-          body: JSON.stringify({ id: orderId, token: orderToken })
-        });
-        state.order = response.order;
-        paymentCheckMessage = state.order.status === "awaiting_payment"
-          ? "Payment is still processing. Check again in a moment."
-          : "";
-        render();
+        await reconcilePaymentUntilSettled();
       };
       components.addEventListener("submission-ready", () => { submitButton.disabled = false; });
       components.addEventListener("submission-not-ready", () => { submitButton.disabled = true; });
@@ -754,6 +746,10 @@ function mountXenditCardComponents() {
         actionMount.hidden = true;
         actionMount.replaceChildren();
         document.documentElement.classList.remove("has-secure-payment-modal");
+        reconcilePaymentUntilSettled().catch((error) => {
+          paymentCheckMessage = error.message || "Unable to confirm card payment yet.";
+          render();
+        });
       });
       components.addEventListener("init", () => {
         const cardChannels = typeof components.getActiveChannels === "function"
@@ -834,6 +830,35 @@ async function bootstrap() {
 }
 
 let paymentStatusTimer = 0;
+let paymentReconciliationPromise = null;
+
+async function reconcilePaymentUntilSettled({ attempts = 12, delayMs = 2000 } = {}) {
+  if (paymentReconciliationPromise) return paymentReconciliationPromise;
+  paymentReconciliationPromise = (async () => {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const response = await request("/api/order/payment-status", {
+        method: "POST",
+        body: JSON.stringify({ id: orderId, token: orderToken })
+      });
+      state.order = response.order;
+      if (state.order.status !== "awaiting_payment") {
+        paymentCheckMessage = "";
+        render();
+        return state.order;
+      }
+      if (attempt < attempts - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+      }
+    }
+    paymentCheckMessage = "Your bank approved the payment, but confirmation is still syncing. This page will keep checking automatically.";
+    render();
+    return state.order;
+  })().finally(() => {
+    paymentReconciliationPromise = null;
+    schedulePaymentStatusCheck();
+  });
+  return paymentReconciliationPromise;
+}
 
 function schedulePaymentStatusCheck() {
   window.clearTimeout(paymentStatusTimer);
@@ -869,6 +894,11 @@ function schedulePaymentStatusCheck() {
 }
 
 window.addEventListener("focus", schedulePaymentStatusCheck);
+window.addEventListener("pageshow", () => {
+  if (state.order?.status === "awaiting_payment") {
+    reconcilePaymentUntilSettled({ attempts: 6 }).catch(() => schedulePaymentStatusCheck());
+  }
+});
 document.addEventListener("visibilitychange", schedulePaymentStatusCheck);
 
 keepOrderButton.addEventListener("click", () => {
