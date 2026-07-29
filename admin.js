@@ -1067,11 +1067,19 @@ function renderAdminOrders() {
     const canRebook = Boolean(order.fulfillment?.shipment?.orderId)
       && order.fulfillment?.type === "delivery"
       && !["delivered", "cancelled", "returned", "delivery_failed"].includes(order.status);
+    const shipmentStatus = String(order.fulfillment?.shipment?.status || "").trim().toLowerCase();
     const canCancelDelivery = Boolean(order.fulfillment?.shipment?.orderId)
       && order.fulfillment?.type === "delivery"
+      && ["confirmed", "scheduled", "allocated", "picking_up", "pickingup"].includes(shipmentStatus)
       && !["delivery_issue", "delivered", "cancelled", "returned", "delivery_failed"].includes(order.status);
     const canSyncDelivery = Boolean(order.fulfillment?.shipment?.orderId)
       && order.fulfillment?.type === "delivery";
+    const canCancelOrder = order.payment?.status === "paid"
+      && ["paid", "preparing", "delivery_issue"].includes(order.status)
+      && (
+        !order.fulfillment?.shipment?.orderId
+        || ["cancelled", "canceled", "rejected", "courier_not_found"].includes(shipmentStatus)
+      );
     const isDeliveryIssue = order.status === "delivery_issue";
     const statusClass = ["delivery_issue", "returned", "delivery_failed", "cancelled", "expired", "payment_failed"].includes(order.status)
       ? "status-negative"
@@ -1080,7 +1088,7 @@ function renderAdminOrders() {
         : ["preparing", "on_delivery", "shipped", "delivered", "complete"].includes(order.status)
           ? "status-paid"
           : "";
-    const deliveryActions = canApprove
+    const deliveryActions = `${canApprove
       ? `<button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}">${canRetryFailedBooking ? "Retry delivery booking" : "Approve delivery"}</button>`
       : isDeliveryIssue
         ? `
@@ -1092,7 +1100,9 @@ function renderAdminOrders() {
             <button class="admin-button secondary" type="button" data-sync-delivery="${escapeHtml(order.id)}">Sync delivery status</button>
             <button class="admin-button secondary" type="button" data-cancel-delivery="${escapeHtml(order.id)}" ${canCancelDelivery ? "" : "disabled"}>Cancel delivery</button>
           `
-          : "";
+          : ""}${canCancelOrder
+            ? `<button class="admin-button danger" type="button" data-cancel-order="${escapeHtml(order.id)}">Cancel order &amp; refund</button>`
+            : ""}`;
     const lineItems = (order.lineItems || []).map((entry) => `
       <li>${entry.quantity}x ${escapeHtml(entry.item?.name || entry.itemId)} (${formatRupiah.format(entry.lineTotal || 0)})</li>
     `).join("");
@@ -2396,6 +2406,23 @@ async function cancelDelivery(orderId) {
   }
 }
 
+async function cancelAdminOrder(orderId) {
+  if (!window.confirm(`Cancel ${orderId} and start its refund? This cannot be undone.`)) {
+    return;
+  }
+  try {
+    setStatus(`Cancelling ${orderId} and requesting its refund...`);
+    await request(`/api/admin/orders/${encodeURIComponent(orderId)}/cancel-order`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    await loadOrders();
+    setStatus(`${orderId} was cancelled. The refund status is shown on the order.`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
 async function syncDeliveryStatus(orderId) {
   try {
     setStatus(`Syncing Biteship delivery for ${orderId}...`);
@@ -2511,6 +2538,11 @@ adminOrderList?.addEventListener("click", (event) => {
   const cancelButton = event.target.closest("[data-cancel-delivery]");
   if (cancelButton) {
     cancelDelivery(cancelButton.dataset.cancelDelivery);
+    return;
+  }
+  const cancelOrderButton = event.target.closest("[data-cancel-order]");
+  if (cancelOrderButton) {
+    cancelAdminOrder(cancelOrderButton.dataset.cancelOrder);
     return;
   }
   const rebookButton = event.target.closest("[data-rebook-delivery]");

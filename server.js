@@ -1432,7 +1432,7 @@ async function refreshUnpaidOrderFromXendit(order) {
     clearPaymentReminderTimers(order.mode || "live", order.id);
     clearPaidOrderCart(order);
     await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
-    await maybeSendWhatsappAdminAlert(order, `order:${order.id}:xendit:${order.status}`, humanizeOrderStatus(order));
+    await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
   }
   return order;
 }
@@ -1617,6 +1617,7 @@ async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = f
     if (!admin && !process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME) return "shipping_template_not_configured";
     if (!hasBiteshipShipmentForMessaging(order)) return "biteship_shipment_not_available";
     const bucket = admin ? order.adminWhatsappShippingNotification : order.whatsappShippingNotification;
+    if (admin && bucket?.lastSentAt) return "already_sent";
     if (!admin && bucket?.lastSentAt) return "already_sent";
     if (eventKey && bucket?.lastNotificationKey === eventKey) return "already_sent";
     return "";
@@ -1924,11 +1925,26 @@ async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by ad
   if (!order) {
     throw new Error("Order not found");
   }
-  if (!["paid", "preparing"].includes(order.status)) {
-    throw new Error("Only paid or preparing orders can be cancelled from WhatsApp");
+  if (!["paid", "preparing", "delivery_issue"].includes(order.status)) {
+    throw new Error("Only paid orders that have not been collected can be cancelled");
   }
   if (order.fulfillment?.shipment?.orderId) {
-    throw new Error("Delivery already requested. Cancel the shipment in Biteship before refunding.");
+    const shipmentStatus = String(order.fulfillment.shipment.status || "").trim().toLowerCase();
+    if (!["cancelled", "canceled", "rejected", "courier_not_found"].includes(shipmentStatus)) {
+      throw new Error("Cancel the active Biteship delivery first, then cancel and refund the order.");
+    }
+    const shipmentHistory = Array.isArray(order.fulfillment.shipmentHistory)
+      ? order.fulfillment.shipmentHistory
+      : [];
+    order.fulfillment.shipmentHistory = [
+      ...shipmentHistory,
+      {
+        ...order.fulfillment.shipment,
+        endedAt: order.fulfillment.shipment.cancelledAt || new Date().toISOString(),
+        endReason: "Order cancelled and refund requested"
+      }
+    ].slice(-10);
+    order.fulfillment.shipment = null;
   }
 
   const previousStatus = order.status;
@@ -4439,10 +4455,10 @@ function shipmentStatusToOrderStatus(status = "") {
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .replace(/[\s-]+/g, "_")
     .toLowerCase();
-  if (["confirmed", "scheduled"].includes(normalized)) {
+  if (["confirmed", "scheduled", "allocated", "picking_up"].includes(normalized)) {
     return "preparing";
   }
-  if (["allocated", "picking_up", "picking up", "picked", "picked_up", "picked up", "successfully_pickup", "successfully pickup", "successfully_picked_up", "successfully picked up"].includes(normalized)) {
+  if (["picked", "picked_up", "successfully_pickup", "successfully_picked_up"].includes(normalized)) {
     return "on_delivery";
   }
   if (["dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalized)) {
@@ -6363,7 +6379,7 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
       await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     }
     if (order.status === "paid") {
-      await maybeSendWhatsappAdminAlert(order, `order:${order.id}:status:${order.status}`, humanizeOrderStatus(order));
+      await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
     }
   }
 
@@ -6976,6 +6992,18 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/cancel-order")) {
+    const session = requireAdminSession(request, response);
+    if (!session) {
+      return true;
+    }
+    const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/cancel-order", ""));
+    cancelPaidOrderFromAdmin(mode, orderId, "Cancelled from Admin")
+      .then((order) => sendJson(response, 200, { ok: true, order }))
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
   if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/sync-delivery")) {
     const session = requireAdminSession(request, response);
     if (!session) {
@@ -7582,7 +7610,7 @@ function handleApi(requestUrl, request, response) {
             clearPaidOrderCart(order);
             await maybeSendWhatsappOrderStatus(order, previousStatus);
             await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
-            await maybeSendWhatsappAdminAlert(order, `order:${order.id}:xendit:${order.status}`, humanizeOrderStatus(order));
+            await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
           } else if (order.status === "expired") {
             order.expiredAt = order.expiredAt || new Date().toISOString();
             order.paymentReminderFlow = {
@@ -7604,7 +7632,11 @@ function handleApi(requestUrl, request, response) {
             await maybeSendWhatsappOrderStatus(order, previousStatus);
           }
           if (order.status !== "expired") {
-            await maybeSendWhatsappAdminAlert(order, `order:${order.id}:xendit:${order.status}`, humanizeOrderStatus(order));
+            await maybeSendWhatsappAdminAlert(
+              order,
+              order.status === "paid" ? `order:${order.id}:paid` : `order:${order.id}:xendit:${order.status}`,
+              humanizeOrderStatus(order)
+            );
           }
         }
         saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);
