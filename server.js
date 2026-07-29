@@ -4330,7 +4330,10 @@ async function approveOrderForDelivery(mode, orderId, session) {
   if (!order) {
     throw new Error("Order not found");
   }
-  if (order.status !== "paid" && order.status !== "preparing") {
+  const retryingFailedBooking = order.status === "delivery_issue"
+    && !order.fulfillment?.shipment?.orderId
+    && order.payment?.status === "paid";
+  if (order.status !== "paid" && order.status !== "preparing" && !retryingFailedBooking) {
     throw new Error("Only paid orders can be approved for delivery");
   }
   if (order.fulfillment?.type !== "delivery") {
@@ -4340,6 +4343,8 @@ async function approveOrderForDelivery(mode, orderId, session) {
   order.status = "preparing";
   order.fulfillment = {
     ...order.fulfillment,
+    shipmentError: "",
+    deliveryRequestError: "",
     approval: {
       status: "approved",
       approvedAt: order.fulfillment?.approval?.approvedAt || new Date().toISOString(),
@@ -4358,6 +4363,9 @@ async function approveOrderForDelivery(mode, orderId, session) {
     return enrichOrder(order);
   }
 
+  delete order.fulfillment.shipmentError;
+  delete order.fulfillment.deliveryRequestError;
+  delete order.fulfillment.deliveryRequestFailedAt;
   const shippingKey = `biteship:${shipment.orderId}:requested`;
   await notifyShipmentUpdate(order, shippingKey);
 

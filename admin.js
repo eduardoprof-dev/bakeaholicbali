@@ -1058,7 +1058,10 @@ function renderAdminOrders() {
   }
 
   adminOrderList.innerHTML = orders.map((order) => {
-    const canApprove = order.status === "paid"
+    const canRetryFailedBooking = order.status === "delivery_issue"
+      && order.payment?.status === "paid"
+      && !order.fulfillment?.shipment?.orderId;
+    const canApprove = (order.status === "paid" || canRetryFailedBooking)
       && order.fulfillment?.type === "delivery"
       && !order.fulfillment?.shipment?.orderId;
     const canRebook = Boolean(order.fulfillment?.shipment?.orderId)
@@ -1078,7 +1081,7 @@ function renderAdminOrders() {
           ? "status-paid"
           : "";
     const deliveryActions = canApprove
-      ? `<button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}">Approve delivery</button>`
+      ? `<button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}">${canRetryFailedBooking ? "Retry delivery booking" : "Approve delivery"}</button>`
       : isDeliveryIssue
         ? `
           <button class="admin-button secondary" type="button" data-sync-delivery="${escapeHtml(order.id)}">Sync delivery status</button>
@@ -1181,7 +1184,7 @@ function renderAdminOrders() {
         ${notificationErrors.length ? `<p class="admin-delivery-note status-negative">${notificationErrors.map(escapeHtml).join("<br>")}</p>` : ""}
         ${adminRecipientDetails}
         ${refundDetails}
-        ${isDeliveryIssue ? `<p class="admin-delivery-note">The courier booking was cancelled. Payment is still paid. Rebook after correcting the pickup location, or process a refund through the verified refund workflow.</p>` : ""}
+        ${isDeliveryIssue ? `<p class="admin-delivery-note">${canRetryFailedBooking ? "Biteship did not create a delivery. Correct the cause, then use Retry delivery booking. The customer must not pay again." : "The courier booking needs attention. Payment is still paid. Rebook after correcting the issue, or process a refund through the verified refund workflow."}</p>` : ""}
       </article>
     `;
   }).join("");
