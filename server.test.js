@@ -35,6 +35,7 @@ const {
   xenditOrderReferenceIds,
   xenditQrExternalIds,
   xenditPaymentSessionIds,
+  xenditCallbackReferenceIds,
   xenditRefundRequestBody,
   xenditKeyMode
 } = require("./server");
@@ -735,4 +736,32 @@ test("card recovery prefers the valid cached Xendit session over a corrupted act
     "ps-6a66ba8c96f28daa06b00cb9",
     "6a66ba4a96f28daa06b009d0"
   ]);
+});
+
+test("card callbacks expose every identifier Xendit can use for reconciliation", () => {
+  assert.deepEqual(xenditCallbackReferenceIds({
+    event: "payment.capture",
+    data: {
+      reference_id: "BAK-0200-card",
+      payment_session_id: "ps-session",
+      payment_request_id: "pr-request",
+      payment_id: "py-payment"
+    }
+  }), [
+    "BAK-0200-card",
+    "ps-session",
+    "pr-request",
+    "py-payment"
+  ]);
+});
+
+test("Xendit payment option matching includes request and payment ids", () => {
+  const card = {
+    provider: "xendit_components",
+    paymentRequestId: "pr-request",
+    paymentId: "py-payment"
+  };
+  const order = { payment: card, paymentOptions: { card } };
+  assert.equal(findOrderPaymentByXenditReference(order, "pr-request"), card);
+  assert.equal(findOrderPaymentByXenditReference(order, "py-payment"), card);
 });

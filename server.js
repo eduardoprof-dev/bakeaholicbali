@@ -5506,6 +5506,37 @@ async function fetchXenditPaymentSessionStatus(order) {
           amount: xenditPaymentAmount(paymentPayload) ?? payload.amount
         };
       }
+      const paymentId = String(
+        paymentPayload.latest_payment_id
+        || paymentPayload.payment_id
+        || payload.payment_id
+        || ""
+      ).trim();
+      if (paymentResponse.ok && paymentId) {
+        const capturedResponse = await fetch(
+          `https://api.xendit.co/v3/payments/${encodeURIComponent(paymentId)}`,
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: xenditAuthHeader(),
+              "api-version": "2024-11-11"
+            }
+          }
+        );
+        const capturedPayload = await capturedResponse.json().catch(async () => ({ raw: await capturedResponse.text() }));
+        if (capturedResponse.ok && isSuccessfulXenditPaymentEvent(capturedPayload)) {
+          return {
+            ...payload,
+            ...capturedPayload,
+            status: "COMPLETED",
+            payment_session_id: payload.payment_session_id || sessionId,
+            payment_request_id: capturedPayload.payment_request_id || paymentRequestId,
+            payment_id: capturedPayload.payment_id || paymentId,
+            reference_id: capturedPayload.reference_id || payload.reference_id || order.payment?.externalId || order.id,
+            amount: xenditPaymentAmount(capturedPayload) ?? payload.amount
+          };
+        }
+      }
     }
   }
 
@@ -5547,6 +5578,29 @@ function xenditOrderReferenceIds(order) {
   ].map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
+function xenditCallbackReferenceIds(payload = {}) {
+  const data = payload.data && typeof payload.data === "object" ? payload.data : {};
+  const candidates = [
+    data.reference_id,
+    data.payment_session_id,
+    data.payment_request_id,
+    data.payment_id,
+    data.latest_payment_id,
+    data.external_id,
+    data.qr_code?.external_id,
+    data.qr_code_id,
+    payload.reference_id,
+    payload.payment_session_id,
+    payload.payment_request_id,
+    payload.payment_id,
+    payload.latest_payment_id,
+    payload.external_id,
+    payload.qr_code?.external_id,
+    payload.qr_code_id
+  ];
+  return [...new Set(candidates.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
 function xenditQrExternalIds(order) {
   return [...new Set([
     order.payment?.provider === "xendit_qr_code" ? order.payment.externalId : "",
@@ -5564,7 +5618,8 @@ function findOrderPaymentByXenditReference(order, referenceId = "") {
     payment.externalId,
     payment.transactionId,
     payment.paymentId,
-    payment.paymentSessionId
+    payment.paymentSessionId,
+    payment.paymentRequestId
   ].some((value) => String(value || "").trim() === reference)) || null;
 }
 
@@ -6321,6 +6376,16 @@ function findOrderByXenditExternalId(externalId) {
       entry.id === id
       || entry.payment?.externalId === id
       || entry.payment?.paymentSessionId === id
+      || entry.payment?.paymentRequestId === id
+      || entry.payment?.paymentId === id
+      || entry.payment?.transactionId === id
+      || Object.values(entry.paymentOptions || {}).some((payment) => [
+        payment?.externalId,
+        payment?.paymentSessionId,
+        payment?.paymentRequestId,
+        payment?.paymentId,
+        payment?.transactionId
+      ].some((value) => String(value || "").trim() === id))
       || id.startsWith(`${entry.id}-`)
     ));
     if (order) {
@@ -7528,17 +7593,14 @@ function handleApi(requestUrl, request, response) {
         const paymentEvent = body.data && typeof body.data === "object"
           ? { ...body.data, event: body.event }
           : null;
-        const orderId = String(
-          paymentEvent?.reference_id
-          || paymentEvent?.payment_session_id
-          || paymentEvent?.external_id
-          || paymentEvent?.qr_code?.external_id
-          || body.external_id
-          || body.qr_code?.external_id
-          || body.qr_code_id
-          || ""
-        ).trim();
-        const order = findOrder("live", orderId) || findOrder("test", orderId) || findOrderByXenditExternalId(orderId);
+        const callbackReferences = xenditCallbackReferenceIds(body);
+        const order = callbackReferences
+          .map((reference) => (
+            findOrder("live", reference)
+            || findOrder("test", reference)
+            || findOrderByXenditExternalId(reference)
+          ))
+          .find(Boolean);
         if (!order) {
           sendJson(response, 200, {
             ok: true,
@@ -7568,14 +7630,10 @@ function handleApi(requestUrl, request, response) {
           return;
         }
 
-        const callbackReference = String(
-          callbackPayload.reference_id
-          || callbackPayload.payment_session_id
-          || callbackPayload.external_id
-          || callbackPayload.qr_code?.external_id
-          || callbackPayload.qr_code_id
-          || ""
-        ).trim();
+        const callbackReference = xenditCallbackReferenceIds(callbackPayload)
+          .find((reference) => findOrderPaymentByXenditReference(order, reference))
+          || xenditCallbackReferenceIds(callbackPayload)[0]
+          || "";
         const matchedPayment = findOrderPaymentByXenditReference(order, callbackReference);
         const isSuccessfulCallback = isSuccessfulXenditPaymentEvent(callbackPayload);
         if (
@@ -7816,6 +7874,7 @@ module.exports = {
   xenditOrderReferenceIds,
   xenditQrExternalIds,
   xenditPaymentSessionIds,
+  xenditCallbackReferenceIds,
   xenditRefundRequestBody,
   xenditKeyMode
 };
