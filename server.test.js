@@ -3,6 +3,7 @@ const test = require("node:test");
 
 const {
   applyXenditQrCodeStatusToOrder,
+  applyXenditPaymentSessionStatusToOrder,
   applyXenditRefundStatusToOrder,
   applyXenditVirtualAccountStatusToOrder,
   buildXenditInvoicePayload,
@@ -753,6 +754,96 @@ test("card callbacks expose every identifier Xendit can use for reconciliation",
     "pr-request",
     "py-payment"
   ]);
+});
+
+test("failed card callback ends confirmation instead of leaving the order pending", () => {
+  const order = {
+    id: "BAK-0126",
+    mode: "live",
+    status: "awaiting_payment",
+    customer: {
+      name: "Customer",
+      phone: "628999999999",
+      email: "customer@example.com",
+      address: "Bali",
+      notes: ""
+    },
+    fulfillment: { type: "delivery", deliveryNotes: "" },
+    items: [],
+    pricing: {
+      subtotal: 6000,
+      deliveryFee: 11000,
+      tax: 1700,
+      discount: { code: "", amount: 0 },
+      total: 18700
+    },
+    payment: {
+      provider: "xendit_components",
+      label: "Credit / Debit Card",
+      paymentSessionId: "ps-session",
+      externalId: "BAK-0126-card"
+    },
+    orderNotes: ""
+  };
+  applyXenditPaymentSessionStatusToOrder(order, {
+    event: "payment.failure",
+    status: "FAILED",
+    payment_id: "py-payment",
+    payment_request_id: "pr-request",
+    reference_id: "BAK-0126-card",
+    failure_code: "INVALID_CVV"
+  });
+  assert.equal(order.status, "payment_failed");
+  assert.equal(order.payment.status, "failed");
+  assert.equal(order.payment.failureCode, "INVALID_CVV");
+  assert.match(order.payment.failureMessage, /security code \(CVV\) is incorrect/i);
+});
+
+test("card failures explain invalid card numbers and expiry dates", () => {
+  const makeOrder = () => ({
+    id: "BAK-0127",
+    mode: "live",
+    status: "awaiting_payment",
+    customer: {
+      name: "Customer",
+      phone: "628999999999",
+      email: "customer@example.com",
+      address: "Bali",
+      notes: ""
+    },
+    fulfillment: { type: "delivery", deliveryNotes: "" },
+    items: [],
+    pricing: {
+      subtotal: 6000,
+      deliveryFee: 11000,
+      tax: 1700,
+      discount: { code: "", amount: 0 },
+      total: 18700
+    },
+    payment: {
+      provider: "xendit_components",
+      label: "Credit / Debit Card",
+      paymentSessionId: "ps-session",
+      externalId: "BAK-0127-card"
+    },
+    orderNotes: ""
+  });
+
+  const invalidNumber = makeOrder();
+  applyXenditPaymentSessionStatusToOrder(invalidNumber, {
+    event: "payment.failure",
+    status: "FAILED",
+    failure_code: "INVALID_CARD_NUMBER"
+  });
+  assert.match(invalidNumber.payment.failureMessage, /card number is invalid/i);
+
+  const invalidExpiry = makeOrder();
+  applyXenditPaymentSessionStatusToOrder(invalidExpiry, {
+    event: "payment.failure",
+    status: "FAILED",
+    failure_code: "INVALID_EXPIRY"
+  });
+  assert.match(invalidExpiry.payment.failureMessage, /expiry date is invalid/i);
 });
 
 test("Xendit payment option matching includes request and payment ids", () => {

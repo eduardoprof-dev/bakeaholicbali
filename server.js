@@ -5249,6 +5249,29 @@ function applyXenditPaymentRequestToPayment(payment, paymentRequest) {
   };
 }
 
+function xenditCardFailureMessage(failureCode = "") {
+  const code = String(failureCode).trim().toUpperCase();
+  if (!code) {
+    return "";
+  }
+  if (code.includes("CVV") || code.includes("CVN") || code.includes("SECURITY_CODE")) {
+    return "Payment failed: the card security code (CVV) is incorrect. Check the three or four digit code and try again.";
+  }
+  if (code.includes("EXPIR")) {
+    return "Payment failed: the card expiry date is invalid or the card has expired. Check the month and year or use another card.";
+  }
+  if (code.includes("CARD_NUMBER") || code.includes("PAN")) {
+    return "Payment failed: the card number is invalid. Check the number and try again.";
+  }
+  if (code.includes("INSUFFICIENT")) {
+    return "Payment failed: the card has insufficient funds. Use another card or contact your bank.";
+  }
+  if (code.includes("DECLIN") || code.includes("DO_NOT_HONOR")) {
+    return "Payment was declined by the card issuer. No successful payment was recorded. Contact your bank or use another card.";
+  }
+  return `Payment failed: ${code.replaceAll("_", " ").toLowerCase()}. No successful payment was recorded.`;
+}
+
 function applyXenditPaymentSessionToPayment(payment, session) {
   if (!session) {
     return payment;
@@ -5271,6 +5294,8 @@ function applyXenditPaymentSessionToPayment(payment, session) {
     paymentRequestId: session.payment_request_id || payment.paymentRequestId || "",
     paymentId: session.payment_id || payment.paymentId || "",
     externalId: session.reference_id || payment.externalId || "",
+    failureCode: session.failure_code || "",
+    failureMessage: xenditCardFailureMessage(session.failure_code),
     invoiceUrl: "",
     paymentUrl: session.payment_link_url || "",
     rawStatus: session.status || "",
@@ -5949,6 +5974,9 @@ function applyXenditPaymentSessionStatusToOrder(order, session = {}) {
     order.status = "paid";
     order.payment.status = "paid";
     order.paidAt = order.paidAt || new Date().toISOString();
+  } else if (status === "FAILED" || eventName === "payment.failure") {
+    order.status = "payment_failed";
+    order.payment.status = "failed";
   } else if (status === "EXPIRED" || status === "CANCELED" || eventName === "payment_session.expired") {
     order.status = "expired";
     order.payment.status = status.toLowerCase() || "expired";
@@ -6402,6 +6430,9 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
   }
 
   const previousStatus = order.status;
+  if (previousStatus === "payment_failed" && options.preferStoredFinal) {
+    return enrichCheckoutOrder(order);
+  }
   const canReconcilePayment = ["awaiting_payment", "expired", "payment_failed"].includes(previousStatus);
   if (!canReconcilePayment) {
     return enrichCheckoutOrder(order);
@@ -7494,8 +7525,13 @@ function handleApi(requestUrl, request, response) {
           return;
         }
         const updatedOrder = tokenMatches
-          ? await updateOrderPaymentStatus(mode, orderId, { simulateTestPayment })
-          : await updateOrderPaymentStatusForSession(mode, orderId, session, { simulateTestPayment });
+          ? await updateOrderPaymentStatus(mode, orderId, { simulateTestPayment, preferStoredFinal: true })
+          : await updateOrderPaymentStatusForSession(
+            mode,
+            orderId,
+            session,
+            { simulateTestPayment, preferStoredFinal: true }
+          );
         sendJson(response, 200, { order: updatedOrder });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -7899,6 +7935,7 @@ module.exports = {
   adminWhatsappParameters,
   adminWhatsappNumbers,
   applyXenditQrCodeStatusToOrder,
+  applyXenditPaymentSessionStatusToOrder,
   applyXenditRefundStatusToOrder,
   applyXenditVirtualAccountStatusToOrder,
   buildXenditInvoicePayload,

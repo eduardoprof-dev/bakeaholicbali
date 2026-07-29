@@ -275,18 +275,22 @@ function rememberCartSession(payload) {
 }
 
 function request(path, options = {}) {
+  const { timeoutMs = 15000, ...fetchOptions } = options;
   const cartSessionId = getCartSessionId();
   const requestUrl = new URL(path, window.location.origin);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
   if (cartSessionId) {
     requestUrl.searchParams.set("cart_session", cartSessionId);
   }
   return fetch(`${requestUrl.pathname}${requestUrl.search}`, {
-    ...options,
+    ...fetchOptions,
+    signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
       "X-App-Mode": appMode,
       ...(cartSessionId ? { "X-Cart-Session": cartSessionId } : {}),
-      ...(options.headers || {})
+      ...(fetchOptions.headers || {})
     }
   }).then(async (response) => {
     const payload = await response.json().catch(() => ({}));
@@ -295,6 +299,13 @@ function request(path, options = {}) {
     }
     rememberCartSession(payload);
     return payload;
+  }).catch((error) => {
+    if (error?.name === "AbortError") {
+      throw new Error("Payment confirmation is taking longer than expected. Do not pay again; we will keep checking.");
+    }
+    throw error;
+  }).finally(() => {
+    window.clearTimeout(timeoutId);
   });
 }
 
@@ -866,12 +877,21 @@ function mountXenditCardComponents(order) {
         submitButton.textContent = "Confirming payment...";
         const response = await request("/api/order/payment-status", {
           method: "POST",
-          body: JSON.stringify({ id: order.id })
+          body: JSON.stringify({ id: order.id }),
+          timeoutMs: 10000
         });
         state.currentOrder = response.order;
         if (["paid", "preparing", "shipped", "delivered"].includes(response.order.status)) {
           clearCompletedCheckoutState();
           window.location.replace(orderStatusUrlForOrder(response.order));
+          return true;
+        }
+        if (response.order.status === "payment_failed") {
+          renderEmbeddedPayment(response.order, false);
+          setCheckoutMessage(
+            response.order.payment?.failureMessage
+              || "The card payment was declined. No successful payment was recorded. Please check with your bank before trying again."
+          );
           return true;
         }
         if (response.order.status !== "awaiting_payment") {
