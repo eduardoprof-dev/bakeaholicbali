@@ -850,6 +850,35 @@ async function sendWhatsappInteractiveButtons(to, bodyText = "", buttons = []) {
   return parsed;
 }
 
+async function sendWhatsappTextMessage(to, bodyText = "") {
+  if (!isWhatsappCloudReady()) {
+    throw new Error("WhatsApp Cloud API is not configured");
+  }
+  const recipient = formatIndonesianPhone(to);
+  if (!recipient) {
+    throw new Error("Recipient WhatsApp number is missing");
+  }
+  const response = await fetch(whatsappMessagesUrl(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: recipient,
+      type: "text",
+      text: { body: String(bodyText || "").trim() }
+    })
+  });
+  const responseText = await response.text();
+  const parsed = parseJsonSafely(responseText, {});
+  if (!response.ok) {
+    throw new Error(parsed?.error?.message || `WhatsApp text message failed with status ${response.status}`);
+  }
+  return parsed;
+}
+
 async function sendWhatsappOtpCode(phone, code) {
   const templateName = String(process.env.WHATSAPP_OTP_TEMPLATE_NAME || "").trim();
   if (!templateName) {
@@ -1168,6 +1197,31 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
     )),
     results
   };
+}
+
+function updateAdminWhatsappDeliveryStatus(order, status = {}) {
+  const messageId = String(status.id || "").trim();
+  const recipients = order?.adminWhatsappNotifications?.recipients;
+  if (!messageId || !Array.isArray(recipients)) {
+    return false;
+  }
+  const recipient = recipients.find((entry) => entry.messageId === messageId);
+  if (!recipient) {
+    return false;
+  }
+  recipient.deliveryStatus = String(status.status || "").trim();
+  recipient.deliveryUpdatedAt = status.timestamp
+    ? new Date(Number(status.timestamp) * 1000).toISOString()
+    : new Date().toISOString();
+  const error = status.errors?.[0];
+  if (error) {
+    recipient.deliveryError = error.message || error.title || error.code || "WhatsApp delivery failed";
+    recipient.deliveryErrorCode = error.code || "";
+  } else {
+    delete recipient.deliveryError;
+    delete recipient.deliveryErrorCode;
+  }
+  return true;
 }
 
 function refundWhatsappParameters(order) {
@@ -1794,7 +1848,7 @@ function clearAdminActionTimer(mode, orderId, token) {
 }
 
 async function sendAdminActionUndoPrompt(order, action) {
-  const adminNumber = String(process.env.WHATSAPP_ADMIN_NUMBER || "").trim();
+  const adminNumber = normalizePhoneNumber(order?.adminPendingAction?.requestedBy || "");
   const pending = order.adminPendingAction || {};
   if (!adminNumber || !pending.token) {
     return { sent: false, skipped: true, reason: "admin_pending_action_missing" };
@@ -1814,6 +1868,52 @@ async function sendAdminActionUndoPrompt(order, action) {
       }
     ]
   );
+}
+
+async function sendAdminActionConfirmation(recipient, order, action) {
+  const target = normalizePhoneNumber(recipient);
+  if (!target) {
+    return { sent: false, skipped: true, reason: "requesting_admin_missing" };
+  }
+  const message = action === "cancel"
+    ? `Cancellation accepted for ${order.id}. The order is cancelled and the refund workflow has started.`
+    : `Approval accepted for ${order.id}. The delivery request is now being processed.`;
+  try {
+    const response = await sendWhatsappTextMessage(target, message);
+    return {
+      sent: true,
+      messageId: response?.messages?.[0]?.id || ""
+    };
+  } catch (error) {
+    return { sent: false, skipped: false, error: error.message };
+  }
+}
+
+async function executeAdminOrderAction(mode, orderId, action, requestedBy = "") {
+  const order = findOrder(mode, orderId);
+  if (!order) {
+    throw new Error("Order not found");
+  }
+  if (action === "cancel") {
+    await cancelPaidOrderFromAdmin(mode, orderId, "Cancelled from WhatsApp by admin");
+    const cancelledOrder = findOrder(mode, orderId);
+    cancelledOrder.adminActionConfirmation = await sendAdminActionConfirmation(
+      requestedBy,
+      cancelledOrder,
+      action
+    );
+    saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+    return cancelledOrder;
+  }
+  await approveOrderForDelivery(mode, orderId, { role: "whatsapp_admin" });
+  const approvedOrder = findOrder(mode, orderId);
+  approvedOrder.adminActionConfirmation = await sendAdminActionConfirmation(
+    requestedBy,
+    approvedOrder,
+    "approve"
+  );
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return approvedOrder;
 }
 
 async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by admin") {
@@ -2020,16 +2120,16 @@ async function processWhatsappAdminCommand(message = {}) {
   const cancelCommand = parseAdminCancelCommand(text);
   if (cancelCommand) {
     const cancelOrderId = resolveAdminCommandOrderId(cancelCommand, ["paid", "preparing"]);
-    const order = await scheduleAdminOrderAction("live", cancelOrderId, "cancel");
-    return { handled: true, action: "cancel_scheduled", orderId: order.id };
+    const order = await executeAdminOrderAction("live", cancelOrderId, "cancel", message.from);
+    return { handled: true, action: "cancelled", orderId: order.id };
   }
   const approveCommand = parseAdminApproveCommand(text);
   if (!approveCommand) {
     return { handled: false, reason: "not_approve_command" };
   }
   const orderId = resolveAdminCommandOrderId(approveCommand, ["paid"]);
-  const order = await scheduleAdminOrderAction("live", orderId, "approve");
-  return { handled: true, action: "approve_scheduled", orderId: order.id };
+  const order = await executeAdminOrderAction("live", orderId, "approve", message.from);
+  return { handled: true, action: "approved", orderId: order.id };
 }
 
 async function processWhatsappWebhook(payload) {
@@ -2041,17 +2141,15 @@ async function processWhatsappWebhook(payload) {
 
   if (statuses.length) {
     stores.live.orders.forEach((order) => {
-      if (!order.whatsappNotifications?.messageId) {
-        return;
+      for (const status of statuses) {
+        if (status.id === order.whatsappNotifications?.messageId) {
+          order.whatsappNotifications.lastDeliveryStatus = status.status || "";
+          order.whatsappNotifications.lastDeliveryAt = status.timestamp
+            ? new Date(Number(status.timestamp) * 1000).toISOString()
+            : new Date().toISOString();
+        }
+        updateAdminWhatsappDeliveryStatus(order, status);
       }
-      const status = statuses.find((entry) => entry.id === order.whatsappNotifications.messageId);
-      if (!status) {
-        return;
-      }
-      order.whatsappNotifications.lastDeliveryStatus = status.status || "";
-      order.whatsappNotifications.lastDeliveryAt = status.timestamp
-        ? new Date(Number(status.timestamp) * 1000).toISOString()
-        : new Date().toISOString();
     });
     saveOrders(ordersLivePath, stores.live.orders);
   }
@@ -4254,11 +4352,8 @@ async function approveOrderForDelivery(mode, orderId, session) {
   try {
     shipment = await requireBiteshipShipmentForOrder(order);
   } catch (error) {
-    await maybeSendWhatsappAdminAlert(
-      order,
-      `order:${order.id}:delivery-failed:${Date.now()}`,
-      `Delivery request failed: ${error.message}. Check the order in Admin and rebook after fixing the issue.`
-    );
+    order.fulfillment.deliveryRequestError = error.message;
+    order.fulfillment.deliveryRequestFailedAt = new Date().toISOString();
     saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
     return enrichOrder(order);
   }
@@ -7633,6 +7728,7 @@ if (require.main === module) {
 
 module.exports = {
   adminWhatsappParameters,
+  adminWhatsappNumbers,
   applyXenditQrCodeStatusToOrder,
   applyXenditRefundStatusToOrder,
   applyXenditVirtualAccountStatusToOrder,
@@ -7655,9 +7751,11 @@ module.exports = {
   paymentReminderWhatsappParameters,
   receiptWhatsappParameters,
   runWhatsappTemplateDiagnostics,
+  sendWhatsappAdminAlert,
   securityTxtBody,
   selectXenditSecretKey,
   sendWhatsappTemplateMessage,
+  updateAdminWhatsappDeliveryStatus,
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   isSupportedImageBuffer,
