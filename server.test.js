@@ -24,6 +24,7 @@ const {
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
   sendWhatsappAdminAlert,
+  sendWhatsappAdminRefundUpdate,
   securityTxtBody,
   selectXenditSecretKey,
   sendWhatsappTemplateMessage,
@@ -88,6 +89,56 @@ test("admin alerts fan out to all three configured recipients", async () => {
       else process.env[key] = value;
     }
   }
+});
+
+test("admin cancellation refund update uses the dedicated refund template", async () => {
+  const previousFetch = global.fetch;
+  const previousEnv = {
+    token: process.env.WHATSAPP_ACCESS_TOKEN,
+    phoneId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    adminNumbers: process.env.WHATSAPP_ADMIN_NUMBER,
+    template: process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME
+  };
+  const payloads = [];
+  Object.assign(process.env, {
+    WHATSAPP_ACCESS_TOKEN: "test-token",
+    WHATSAPP_PHONE_NUMBER_ID: "123456",
+    WHATSAPP_ADMIN_NUMBER: "628111111111,628222222222,628333333333",
+    WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME: "admin_refund_update"
+  });
+  global.fetch = async (_url, options) => {
+    payloads.push(JSON.parse(options.body));
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ messages: [{ id: `wamid.refund.${payloads.length}` }] })
+    };
+  };
+
+  try {
+    await sendWhatsappAdminRefundUpdate({
+      id: "BAK-0122",
+      pricing: { total: 18700 },
+      refund: { status: "pending", id: "rfd-test" }
+    });
+  } finally {
+    global.fetch = previousFetch;
+    if (previousEnv.token === undefined) delete process.env.WHATSAPP_ACCESS_TOKEN;
+    else process.env.WHATSAPP_ACCESS_TOKEN = previousEnv.token;
+    if (previousEnv.phoneId === undefined) delete process.env.WHATSAPP_PHONE_NUMBER_ID;
+    else process.env.WHATSAPP_PHONE_NUMBER_ID = previousEnv.phoneId;
+    if (previousEnv.adminNumbers === undefined) delete process.env.WHATSAPP_ADMIN_NUMBER;
+    else process.env.WHATSAPP_ADMIN_NUMBER = previousEnv.adminNumbers;
+    if (previousEnv.template === undefined) delete process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME;
+    else process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME = previousEnv.template;
+  }
+
+  assert.equal(payloads.length, 3);
+  assert.deepEqual(payloads.map((payload) => payload.template.name), [
+    "admin_refund_update",
+    "admin_refund_update",
+    "admin_refund_update"
+  ]);
 });
 
 test("admin recipient delivery receipts record Meta failures", () => {
