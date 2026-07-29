@@ -1966,11 +1966,19 @@ async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by ad
     message: order.refund?.message || "Order cancelled.",
     recordedAt: new Date().toISOString()
   };
-  order.adminRefundNotification = await maybeSendWhatsappAdminAlert(
-    order,
-    `refund:${order.id}:${order.refund?.status || "requested"}`,
-    `Refund ${String(order.refund?.status || "requested").replace(/_/g, " ")}`
-  );
+  if (order.mode !== "test" && isWhatsappCloudReady()) {
+    try {
+      order.adminRefundNotification = {
+        sentAt: new Date().toISOString(),
+        ...(await sendWhatsappAdminRefundUpdate(order))
+      };
+    } catch (error) {
+      order.adminRefundNotification = {
+        error: error.message,
+        attemptedAt: new Date().toISOString()
+      };
+    }
+  }
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
 }
@@ -7795,6 +7803,7 @@ module.exports = {
   receiptWhatsappParameters,
   runWhatsappTemplateDiagnostics,
   sendWhatsappAdminAlert,
+  sendWhatsappAdminRefundUpdate,
   securityTxtBody,
   selectXenditSecretKey,
   sendWhatsappTemplateMessage,
