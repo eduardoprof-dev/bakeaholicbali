@@ -1196,6 +1196,9 @@ function renderAdminOrders() {
             : ""}
           ${deliveryActions}
         </div>
+        ${canCheckCardPayment
+          ? `<p class="admin-delivery-note" data-payment-reconcile-result="${escapeHtml(order.id)}" role="status" aria-live="polite"></p>`
+          : ""}
         ${notificationErrors.length ? `<p class="admin-delivery-note status-negative">${notificationErrors.map(escapeHtml).join("<br>")}</p>` : ""}
         ${adminRecipientDetails}
         ${refundDetails}
@@ -2442,21 +2445,46 @@ async function syncDeliveryStatus(orderId) {
   }
 }
 
-async function checkCardPayment(orderId) {
+function setPaymentReconcileResult(orderId, message, isError = false) {
+  const result = adminOrderList?.querySelector(
+    `[data-payment-reconcile-result="${CSS.escape(orderId)}"]`
+  );
+  if (!result) return;
+  result.textContent = message;
+  result.classList.toggle("status-negative", isError);
+}
+
+async function checkCardPayment(button) {
+  const orderId = button.dataset.checkCardPayment;
+  const originalLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Checking Xendit…";
   try {
     setStatus(`Checking Xendit payment for ${orderId}...`);
+    setPaymentReconcileResult(orderId, "Contacting Xendit. This can take up to 30 seconds…");
     const response = await request(`/api/admin/orders/${encodeURIComponent(orderId)}/reconcile-payment`, {
       method: "POST",
       body: JSON.stringify({})
     });
     await loadOrders();
     if (response.order?.status === "paid") {
-      setStatus(`${orderId} is paid. Customer and admin notifications have been processed.`);
+      const message = `${orderId} is paid. Customer and admin notifications have been processed.`;
+      setStatus(message);
+      setPaymentReconcileResult(orderId, message);
       return;
     }
-    setStatus(`${orderId} is still ${statusLabel(response.order?.status || "unresolved")} in Xendit. No charge was created.`);
+    const message = `${orderId}: Xendit did not return a successful payment for this order's saved payment references. Current status: ${statusLabel(response.order?.status || "unresolved")}.`;
+    setStatus(message);
+    setPaymentReconcileResult(orderId, message, true);
   } catch (error) {
-    setStatus(`Could not reconcile ${orderId}: ${error.message}`);
+    const message = `Could not check ${orderId}: ${error.message}`;
+    setStatus(message);
+    setPaymentReconcileResult(orderId, message, true);
+  } finally {
+    if (button.isConnected) {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
   }
 }
 
@@ -2550,7 +2578,7 @@ printReportButton?.addEventListener("click", printReportA4);
 adminOrderList?.addEventListener("click", (event) => {
   const paymentButton = event.target.closest("[data-check-card-payment]");
   if (paymentButton) {
-    checkCardPayment(paymentButton.dataset.checkCardPayment);
+    checkCardPayment(paymentButton);
     return;
   }
   const button = event.target.closest("[data-approve-delivery]");
