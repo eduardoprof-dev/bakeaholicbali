@@ -1044,6 +1044,28 @@ function statusLabel(status = "") {
   return labels[status] || String(status || "Order").replace(/[_-]+/g, " ");
 }
 
+function paymentOutcomeReason(order) {
+  const status = String(order?.status || "").trim().toLowerCase();
+  if (!["expired", "payment_failed"].includes(status)) return "";
+
+  const failureCode = String(order?.payment?.failureCode || "").trim().toUpperCase();
+  const knownReasons = {
+    INVALID_CVV: "The card security code (CVV) was incorrect. The customer can retry with the correct CVV.",
+    INVALID_CARD_NUMBER: "The card number was invalid. The customer can retry after checking the card number.",
+    INVALID_EXPIRY_DATE: "The card expiry date was invalid. The customer can retry with the correct expiry date.",
+    EXPIRED_CARD: "The card has expired. The customer must use a different card.",
+    INSUFFICIENT_BALANCE: "The card did not have sufficient funds. The customer can retry or use another payment method.",
+    ISSUER_DECLINED: "The card issuer declined the payment. The customer should contact their bank or use another payment method."
+  };
+
+  if (knownReasons[failureCode]) return knownReasons[failureCode];
+  if (order?.payment?.failureMessage) return String(order.payment.failureMessage);
+  if (status === "expired") {
+    return "The payment window expired before Xendit confirmed a successful payment. No paid order was created.";
+  }
+  return "Xendit did not confirm a successful payment. The customer can retry or choose another payment method.";
+}
+
 function renderAdminOrders() {
   if (!adminOrderList) return;
   const orders = state.orders || [];
@@ -1167,6 +1189,16 @@ function renderAdminOrders() {
         </div>
       `
       : "";
+    const paymentReason = paymentOutcomeReason(order);
+    const paymentReasonDetails = paymentReason
+      ? `
+        <div class="admin-payment-reason status-negative">
+          <strong>Payment reason</strong>
+          <span>${escapeHtml(paymentReason)}</span>
+          ${order.payment?.failureCode ? `<small>Xendit code: ${escapeHtml(order.payment.failureCode)}</small>` : ""}
+        </div>
+      `
+      : "";
     return `
       <article class="admin-order-card" data-order-id="${escapeHtml(order.id)}">
         <div class="admin-order-main">
@@ -1200,6 +1232,7 @@ function renderAdminOrders() {
           ? `<p class="admin-delivery-note" data-payment-reconcile-result="${escapeHtml(order.id)}" role="status" aria-live="polite"></p>`
           : ""}
         ${notificationErrors.length ? `<p class="admin-delivery-note status-negative">${notificationErrors.map(escapeHtml).join("<br>")}</p>` : ""}
+        ${paymentReasonDetails}
         ${adminRecipientDetails}
         ${refundDetails}
         ${isDeliveryIssue ? `<p class="admin-delivery-note">${canRetryFailedBooking ? "Biteship did not create a delivery. Correct the cause, then use Retry delivery booking. The customer must not pay again." : "The courier booking needs attention. Payment is still paid. Rebook after correcting the issue, or process a refund through the verified refund workflow."}</p>` : ""}

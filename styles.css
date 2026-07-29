@@ -2507,6 +2507,27 @@ body::before {
   line-height: 1.45;
 }
 
+.admin-payment-reason {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(192, 57, 43, 0.22);
+  border-radius: 8px;
+  color: #7f2d22;
+  background: #fff7f5;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.admin-payment-reason strong {
+  color: #a93324;
+}
+
+.admin-payment-reason small {
+  color: var(--muted);
+}
+
 .admin-refund-note {
   display: grid;
   gap: 4px;
