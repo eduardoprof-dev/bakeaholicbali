@@ -500,7 +500,10 @@ function maskedWhatsappNumber(value = "") {
 }
 
 function adminWhatsappNumbers() {
-  return [...new Set(String(process.env.WHATSAPP_ADMIN_NUMBER || "")
+  const configuredAdminNumbers = getIntegrationConfig().whatsappAdminNumber
+    || process.env.WHATSAPP_ADMIN_NUMBER
+    || "";
+  return [...new Set(String(configuredAdminNumbers)
     .split(/[,\n;]+/)
     .map((value) => normalizePhoneNumber(value))
     .filter(Boolean))].slice(0, 3);
@@ -2687,7 +2690,7 @@ function cacheControlForFile(targetPath) {
     return "public, max-age=31536000, immutable";
   }
   if ([".css", ".js"].includes(ext)) {
-    return "public, max-age=3600";
+    return "no-cache";
   }
   return "no-store";
 }
