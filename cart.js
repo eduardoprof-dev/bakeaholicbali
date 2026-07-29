@@ -851,40 +851,80 @@ function mountXenditCardComponents(order) {
       };
       const fieldObserver = new MutationObserver(suppressFieldScrollbars);
       fieldObserver.observe(mount, { childList: true, subtree: true });
+      let submissionStarted = false;
+      let reconciliationStarted = false;
       const enableSubmit = () => {
-        submitButton.disabled = false;
+        if (!submissionStarted) {
+          submitButton.disabled = false;
+        }
       };
       const disableSubmit = () => {
         submitButton.disabled = true;
       };
-      const confirmPaid = async () => {
+      const confirmPaid = async ({ finalAttempt = false } = {}) => {
         submitButton.disabled = true;
         submitButton.textContent = "Confirming payment...";
         const response = await request("/api/order/payment-status", {
           method: "POST",
-          body: JSON.stringify({ id: order.id, simulateTestPayment: true })
+          body: JSON.stringify({ id: order.id })
         });
         state.currentOrder = response.order;
-        if (response.order.status === "paid" || response.order.status === "preparing") {
+        if (["paid", "preparing", "shipped", "delivered"].includes(response.order.status)) {
           clearCompletedCheckoutState();
-          window.location.assign(orderStatusUrlForOrder(response.order));
+          window.location.replace(orderStatusUrlForOrder(response.order));
+          return true;
+        }
+        if (response.order.status !== "awaiting_payment") {
+          renderEmbeddedPayment(response.order, false);
+          setCheckoutMessage("This card payment is no longer active.");
+          return true;
+        }
+        if (finalAttempt) {
+          submitButton.textContent = "Payment submitted";
+          setCheckoutMessage(
+            "Your card payment was submitted. We are still waiting for Xendit confirmation. Do not pay again; refresh this page in a moment.",
+            "success"
+          );
+        }
+        return false;
+      };
+      const reconcileUntilSettled = async () => {
+        if (reconciliationStarted) {
           return;
         }
-        renderEmbeddedPayment(response.order, false);
-        setCheckoutMessage("Payment is still processing. Please check again in a moment.", "success");
+        reconciliationStarted = true;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          try {
+            const settled = await confirmPaid({ finalAttempt: attempt === 19 });
+            if (settled) {
+              return;
+            }
+          } catch (error) {
+            if (attempt === 19) {
+              setCheckoutMessage(
+                error.message || "Payment submitted. Confirmation is delayed; do not pay again.",
+                "success"
+              );
+            }
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        }
       };
 
       components.addEventListener("submission-ready", enableSubmit);
       components.addEventListener("submission-not-ready", disableSubmit);
       components.addEventListener("submission-begin", () => {
+        submissionStarted = true;
         submitButton.disabled = true;
         submitButton.textContent = "Processing...";
       });
       components.addEventListener("submission-end", () => {
-        submitButton.textContent = `Pay ${formatRupiah.format(order.pricing.total)}`;
+        submitButton.disabled = true;
+        submitButton.textContent = "Confirming payment...";
+        reconcileUntilSettled();
       });
       components.addEventListener("session-complete", () => {
-        confirmPaid().catch((error) => {
+        reconcileUntilSettled().catch((error) => {
           setCheckoutMessage(error.message || "Unable to confirm card payment.");
         });
       });
@@ -907,6 +947,7 @@ function mountXenditCardComponents(order) {
         actionMount.hidden = true;
         actionMount.replaceChildren();
         document.documentElement.classList.remove("has-secure-payment-modal");
+        reconcileUntilSettled();
       });
       components.addEventListener("init", () => {
         const activeChannels = typeof components.getActiveChannels === "function"
@@ -922,11 +963,37 @@ function mountXenditCardComponents(order) {
         mount.replaceChildren(component);
         suppressFieldScrollbars();
       });
-      submitButton.addEventListener("click", () => {
+      submitButton.addEventListener("click", async () => {
+        if (submissionStarted) {
+          setCheckoutMessage("This card payment is already processing. Please do not submit it again.", "success");
+          return;
+        }
+        submitButton.disabled = true;
+        submitButton.textContent = "Securing payment...";
         try {
+          const response = await request("/api/order/card-attempt", {
+            method: "POST",
+            body: JSON.stringify({ id: order.id })
+          });
+          state.currentOrder = response.order;
+          submissionStarted = true;
           components.submit();
         } catch (error) {
-          setCheckoutMessage(error.message || "Please complete the card details.");
+          const message = error.message || "Please complete the card details.";
+          setCheckoutMessage(message);
+          if (message.includes("already submitted")) {
+            submissionStarted = true;
+            reconcileUntilSettled();
+            return;
+          }
+          if (message.includes("no longer active") || message.includes("not the active")) {
+            submissionStarted = true;
+            reconcileUntilSettled();
+            return;
+          }
+          submissionStarted = false;
+          submitButton.textContent = `Pay ${formatRupiah.format(order.pricing.total)}`;
+          submitButton.disabled = false;
         }
       });
     })
