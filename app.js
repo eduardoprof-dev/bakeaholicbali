@@ -147,6 +147,7 @@ let otpResendAvailableAt = 0;
 let otpTimerId = 0;
 let volatileCartSessionId = "";
 const pendingCartAdds = new Set();
+const cartQuantitySyncs = new Map();
 const isAdminPreview = params.has("admin-preview");
 
 const whatsappIcon = `
@@ -776,13 +777,13 @@ function renderCartDrawer() {
   `).join("");
 
   cartDrawerItems.querySelectorAll("[data-drawer-action]").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       const entry = state.cart.items.find((candidate) => candidate.itemId === button.dataset.itemId);
       const currentQuantity = entry?.quantity || 0;
       const nextQuantity = button.dataset.drawerAction === "increase"
         ? currentQuantity + 1
         : currentQuantity - 1;
-      await updateCartQuantity(button.dataset.itemId, nextQuantity);
+      updateCartQuantity(button.dataset.itemId, nextQuantity);
     });
   });
 }
@@ -1098,15 +1099,84 @@ async function addToCart(itemId, triggerButton = null) {
   }
 }
 
-async function updateCartQuantity(itemId, quantity) {
-  await request("/api/cart", {
-    method: "PATCH",
-    body: JSON.stringify({ itemId, quantity })
-  });
-  await refreshCart();
-  if ((state.cart?.itemCount || 0) <= 0) {
+function applyOptimisticCartQuantity(itemId, quantity) {
+  if (!state.cart) return;
+
+  const normalizedQuantity = Math.max(0, Math.floor(Number(quantity) || 0));
+  const items = (state.cart.items || [])
+    .map((entry) => entry.itemId === itemId ? { ...entry, quantity: normalizedQuantity } : entry)
+    .filter((entry) => entry.quantity > 0);
+  const lineItems = (state.cart.lineItems || [])
+    .map((entry) => entry.itemId === itemId
+      ? { ...entry, quantity: normalizedQuantity, lineTotal: entry.item.price * normalizedQuantity }
+      : entry)
+    .filter((entry) => entry.quantity > 0);
+
+  state.cart = {
+    ...state.cart,
+    items,
+    lineItems,
+    itemCount: lineItems.reduce((total, entry) => total + entry.quantity, 0),
+    subtotal: lineItems.reduce((total, entry) => total + entry.item.price * entry.quantity, 0)
+  };
+  renderCartSummary();
+  if (state.cart.itemCount <= 0) {
     closeModal(cartDrawer);
   }
+}
+
+function scheduleCartQuantitySync(itemId) {
+  const sync = cartQuantitySyncs.get(itemId);
+  if (!sync || sync.inFlight) return;
+  if (sync.timer) window.clearTimeout(sync.timer);
+  sync.timer = window.setTimeout(() => flushCartQuantitySync(itemId), 120);
+}
+
+async function flushCartQuantitySync(itemId) {
+  const sync = cartQuantitySyncs.get(itemId);
+  if (!sync || sync.inFlight) return;
+
+  sync.timer = 0;
+  sync.inFlight = true;
+  const sentRevision = sync.revision;
+  const sentQuantity = sync.quantity;
+  try {
+    const cartPayload = await request("/api/cart", {
+      method: "PATCH",
+      body: JSON.stringify({ itemId, quantity: sentQuantity })
+    });
+    if (sync.revision === sentRevision) {
+      state.cart = cartPayload;
+      renderCartSummary();
+      cartQuantitySyncs.delete(itemId);
+    }
+  } catch (error) {
+    if (sync.revision === sentRevision) {
+      cartQuantitySyncs.delete(itemId);
+      await refreshCart();
+      window.alert(error.message || "We could not update the cart. Please try again.");
+    }
+  } finally {
+    sync.inFlight = false;
+    if (cartQuantitySyncs.get(itemId) === sync && sync.revision !== sentRevision) {
+      scheduleCartQuantitySync(itemId);
+    }
+  }
+}
+
+function updateCartQuantity(itemId, quantity) {
+  const normalizedQuantity = Math.max(0, Math.floor(Number(quantity) || 0));
+  const sync = cartQuantitySyncs.get(itemId) || {
+    quantity: normalizedQuantity,
+    revision: 0,
+    timer: 0,
+    inFlight: false
+  };
+  sync.quantity = normalizedQuantity;
+  sync.revision += 1;
+  cartQuantitySyncs.set(itemId, sync);
+  applyOptimisticCartQuantity(itemId, normalizedQuantity);
+  scheduleCartQuantitySync(itemId);
 }
 
 function openCartDrawer() {
