@@ -18,6 +18,9 @@ const xenditComponentsSdkUrl = "https://cdn.jsdelivr.net/npm/xendit-components-w
 const xenditComponentsSdkIntegrity = "sha384-f7WJhUhA6M8Ws7YX1TCkdByJbvagFsACWdWwBTWUv/FPIrjryB2NsKCqZXJ/J+gs";
 let xenditComponentsSdkPromise = null;
 let paymentSelectionInProgress = false;
+const pendingQuantities = new Map();
+const quantityUpdateTimers = new Map();
+const quantityUpdateVersions = new Map();
 
 const state = {
   store: null,
@@ -1146,14 +1149,24 @@ async function updateCurrentOrderPaymentMethod(methodId, bankCode = "") {
   `;
   checkoutXenditPanel.hidden = false;
 
-  const response = await request("/api/order/payment-method", {
-    method: "POST",
-    body: JSON.stringify({
-      id: orderId,
-      paymentMethodId: methodId,
-      bankCode
-    })
-  });
+  let response;
+  try {
+    response = await request("/api/order/payment-method", {
+      method: "POST",
+      body: JSON.stringify({
+        id: orderId,
+        paymentMethodId: methodId,
+        bankCode
+      })
+    });
+  } catch (error) {
+    if (String(error.message || "").toLowerCase().includes("order not found")) {
+      clearCompletedCheckoutState();
+      showPaymentMethodChooser();
+      return false;
+    }
+    throw error;
+  }
   state.currentOrder = response.order;
   localStorage.setItem(latestOrderKey, response.order.id);
   state.pendingPaymentUrl = paymentUrlForOrder(response.order);
@@ -1596,15 +1609,45 @@ function renderCartItems() {
     .join("");
 
   cartItems.querySelectorAll("[data-item-id]").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       const itemId = button.dataset.itemId;
-      const current = state.cart.items.find((entry) => entry.itemId === itemId)?.quantity || 0;
+      const current = pendingQuantities.has(itemId)
+        ? pendingQuantities.get(itemId)
+        : state.cart.items.find((entry) => entry.itemId === itemId)?.quantity || 0;
+      const stock = state.cart.lineItems.find((entry) => entry.itemId === itemId)?.item?.stock || 0;
       const nextQuantity = button.dataset.action === "increase" ? current + 1 : current - 1;
-      await request("/api/cart", {
-        method: "PATCH",
-        body: JSON.stringify({ itemId, quantity: nextQuantity })
-      });
-      await refreshCart();
+      if (nextQuantity > stock) return;
+
+      pendingQuantities.set(itemId, nextQuantity);
+      const row = button.closest(".quantity-row");
+      const quantityLabel = row?.querySelector("strong");
+      if (quantityLabel) quantityLabel.textContent = String(Math.max(0, nextQuantity));
+      const decreaseButton = row?.querySelector('[data-action="decrease"]');
+      const increaseButton = row?.querySelector('[data-action="increase"]');
+      if (decreaseButton) decreaseButton.disabled = nextQuantity <= 0;
+      if (increaseButton) increaseButton.disabled = nextQuantity >= stock;
+
+      window.clearTimeout(quantityUpdateTimers.get(itemId));
+      const version = (quantityUpdateVersions.get(itemId) || 0) + 1;
+      quantityUpdateVersions.set(itemId, version);
+      quantityUpdateTimers.set(itemId, window.setTimeout(async () => {
+        try {
+          const cartPayload = await request("/api/cart", {
+            method: "PATCH",
+            body: JSON.stringify({ itemId, quantity: nextQuantity })
+          });
+          if (quantityUpdateVersions.get(itemId) === version) {
+            pendingQuantities.delete(itemId);
+            quantityUpdateTimers.delete(itemId);
+            applyCartPayload(cartPayload);
+          }
+        } catch (error) {
+          pendingQuantities.delete(itemId);
+          quantityUpdateTimers.delete(itemId);
+          await refreshCart().catch(() => {});
+          setCheckoutMessage(error.message || "Unable to update quantity.");
+        }
+      }, 140));
     });
   });
 }
@@ -1738,6 +1781,8 @@ async function syncSessionProfile() {
   try {
     const payload = await request("/api/session");
     if (!payload?.authenticated) {
+      state.draft.customer.phoneVerifiedAt = "";
+      persistDraft();
       return false;
     }
 

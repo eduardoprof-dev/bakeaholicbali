@@ -1338,6 +1338,34 @@ async function sendWhatsappPaymentExpired(order) {
   });
 }
 
+async function maybeSendWhatsappPaymentExpired(order) {
+  const reminderFlow = ensurePaymentReminderFlow(order);
+  if (reminderFlow.expiredMessageSentAt || reminderFlow.expiredMessageQueuedAt) {
+    return { sent: false, skipped: true, reason: "already_sent" };
+  }
+  if (order.mode === "test") {
+    reminderFlow.expiredSkipped = "test_order";
+    return { sent: false, skipped: true, reason: "test_order" };
+  }
+  if (!isWhatsappCloudReady() || !process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
+    reminderFlow.expiredSkipped = "template_or_whatsapp_not_configured";
+    return { sent: false, skipped: true, reason: reminderFlow.expiredSkipped };
+  }
+
+  reminderFlow.expiredMessageQueuedAt = new Date().toISOString();
+  try {
+    const response = await sendWhatsappPaymentExpired(order);
+    reminderFlow.expiredMessageSentAt = new Date().toISOString();
+    reminderFlow.expiredMessageId = response?.messages?.[0]?.id || "";
+    delete reminderFlow.expiredError;
+    return { sent: true, messageId: reminderFlow.expiredMessageId };
+  } catch (error) {
+    delete reminderFlow.expiredMessageQueuedAt;
+    reminderFlow.expiredError = error.message;
+    return { sent: false, skipped: false, error: error.message };
+  }
+}
+
 async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   const skipReason = (() => {
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
@@ -1458,6 +1486,9 @@ async function processPaymentReminderStep(mode, orderId, step) {
 
   if (step === "first" || step === "second") {
     const eventKey = `order:${order.id}:payment-reminder:${step}`;
+    if (step === "second" && reminderFlow.firstSentAt) {
+      return { handled: false, reason: "reminder_already_sent" };
+    }
     if (reminderFlow[`${step}SentAt`]) {
       return { handled: false, reason: "already_sent" };
     }
@@ -1489,20 +1520,7 @@ async function processPaymentReminderStep(mode, orderId, step) {
   order.whatsappUrl = buildWhatsappUrl(order);
   reminderFlow.expiredAt = order.expiredAt;
 
-  if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
-    try {
-      const response = await sendWhatsappPaymentExpired(order);
-      reminderFlow.expiredMessageSentAt = new Date().toISOString();
-      reminderFlow.expiredMessageId = response?.messages?.[0]?.id || "";
-      delete reminderFlow.expiredError;
-    } catch (error) {
-      reminderFlow.expiredError = error.message;
-      console.warn(`WhatsApp payment expiry failed for ${order.id}: ${error.message}`);
-    }
-  } else {
-    reminderFlow.expiredSkipped = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
-    console.warn(`WhatsApp payment expiry skipped for ${order.id}: ${reminderFlow.expiredSkipped}`);
-  }
+  await maybeSendWhatsappPaymentExpired(order);
 
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return { handled: true, action: "expired", orderId };
@@ -1722,6 +1740,7 @@ async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options 
   const notificationKey = String(options.notificationKey || "").trim();
   const skipReason = (() => {
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
+    if (["awaiting_payment", "payment_failed", "expired"].includes(order.status)) return "payment_status_has_dedicated_flow";
     if (order.status === "paid") return "payment_receipt_is_confirmation";
     if (order.status === "preparing") return "shipping_update_is_next_customer_message";
     if (!configuredWhatsappOrderTemplateName(order)) return "template_not_configured";
@@ -5263,6 +5282,9 @@ function xenditCardFailureMessage(failureCode = "") {
   if (code.includes("CARD_NUMBER") || code.includes("PAN")) {
     return "Payment failed: the card number is invalid. Check the number and try again.";
   }
+  if (code.includes("INVALID_ACCOUNT") || code.includes("INVALID_DETAIL")) {
+    return "Payment failed: some card information is incorrect. Check the card number, expiry date, and CVV, then try again. No successful payment was recorded.";
+  }
   if (code.includes("INSUFFICIENT")) {
     return "Payment failed: the card has insufficient funds. Use another card or contact your bank.";
   }
@@ -7776,25 +7798,9 @@ function handleApi(requestUrl, request, response) {
               ...(order.paymentReminderFlow || {}),
               expiredAt: order.expiredAt
             };
-            if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME) {
-              try {
-                const expiredResponse = await sendWhatsappPaymentExpired(order);
-                order.paymentReminderFlow.expiredMessageSentAt = new Date().toISOString();
-                order.paymentReminderFlow.expiredMessageId = expiredResponse?.messages?.[0]?.id || "";
-                delete order.paymentReminderFlow.expiredError;
-              } catch (error) {
-                order.paymentReminderFlow.expiredError = error.message;
-              }
-            }
-          } else {
+            await maybeSendWhatsappPaymentExpired(order);
+          } else if (order.status !== "payment_failed") {
             await maybeSendWhatsappOrderStatus(order, previousStatus);
-          }
-          if (order.status !== "expired") {
-            await maybeSendWhatsappAdminAlert(
-              order,
-              order.status === "paid" ? `order:${order.id}:paid` : `order:${order.id}:xendit:${order.status}`,
-              humanizeOrderStatus(order)
-            );
           }
         }
         saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);

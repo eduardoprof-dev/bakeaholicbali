@@ -844,6 +844,15 @@ test("card failures explain invalid card numbers and expiry dates", () => {
     failure_code: "INVALID_EXPIRY"
   });
   assert.match(invalidExpiry.payment.failureMessage, /expiry date is invalid/i);
+
+  const invalidDetails = makeOrder();
+  applyXenditPaymentSessionStatusToOrder(invalidDetails, {
+    event: "payment.failure",
+    status: "FAILED",
+    failure_code: "INVALID_ACCOUNT_DETAILS"
+  });
+  assert.match(invalidDetails.payment.failureMessage, /some card information is incorrect/i);
+  assert.match(invalidDetails.payment.failureMessage, /card number, expiry date, and CVV/i);
 });
 
 test("Xendit payment option matching includes request and payment ids", () => {
