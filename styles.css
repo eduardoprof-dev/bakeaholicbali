@@ -1161,6 +1161,20 @@ body::before {
   color: var(--muted);
 }
 
+.admin-order-detail-table {
+  min-width: 980px;
+}
+
+.admin-report-items {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+}
+
+.admin-report-items span {
+  line-height: 1.35;
+}
+
 @media (max-width: 1180px) {
   .admin-main.is-storefront-studio,
   .admin-main.is-storefront-studio.is-mobile-preview,
@@ -7563,6 +7577,11 @@ body.cart-is-empty .checkout-shell .cart-layout {
     margin: 10mm;
   }
 
+  @page invoice {
+    size: A5 portrait;
+    margin: 8mm;
+  }
+
   html,
   body,
   .invoice-body {
@@ -7582,8 +7601,9 @@ body.cart-is-empty .checkout-shell .cart-layout {
   }
 
   .invoice-page {
-    width: 190mm;
-    max-width: 190mm;
+    page: invoice;
+    width: 132mm;
+    max-width: 132mm;
     margin: 0 auto;
     padding: 0;
     overflow: visible;
@@ -7603,7 +7623,7 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
   .invoice-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12mm;
+    gap: 6mm;
   }
 
   .invoice-header,
@@ -7612,7 +7632,7 @@ body.cart-is-empty .checkout-shell .cart-layout {
   .invoice-table,
   .invoice-totals,
   .invoice-footer {
-    font-size: 10.5pt;
+    font-size: 8.5pt;
   }
 
   .invoice-status span {
@@ -7621,7 +7641,7 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
   .invoice-table th,
   .invoice-table td {
-    padding: 8px 6px;
+    padding: 5px 4px;
   }
 
   .invoice-header,

@@ -22,6 +22,7 @@ const {
   isSupportedImageBuffer,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,
+  orderIdFromWhatsappReplyContext,
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
   sendWhatsappAdminAlert,
@@ -161,6 +162,25 @@ test("admin recipient delivery receipts record Meta failures", () => {
   assert.equal(order.adminWhatsappNotifications.recipients[1].deliveryStatus, "failed");
   assert.equal(order.adminWhatsappNotifications.recipients[1].deliveryErrorCode, 131026);
   assert.equal(order.adminWhatsappNotifications.recipients[1].deliveryError, "Message undeliverable");
+});
+
+test("WhatsApp quick replies resolve the order from each admin recipient message", () => {
+  const orders = [{
+    id: "BAK-0133",
+    adminWhatsappNotifications: {
+      messageId: "wamid.primary",
+      recipients: [
+        { recipient: "628***111", messageId: "wamid.admin-one" },
+        { recipient: "628***222", messageId: "wamid.admin-two" },
+        { recipient: "628***333", messageId: "wamid.admin-three" }
+      ]
+    }
+  }];
+
+  assert.equal(orderIdFromWhatsappReplyContext({ context: { id: "wamid.admin-two" } }, orders), "BAK-0133");
+  assert.equal(orderIdFromWhatsappReplyContext({ context: { id: "wamid.primary" } }, orders), "BAK-0133");
+  assert.equal(orderIdFromWhatsappReplyContext({ context: { id: "wamid.unknown" } }, orders), "");
+  assert.equal(orderIdFromWhatsappReplyContext({}, orders), "");
 });
 
 test("paid admin alert describes an unbooked delivery and required approval", () => {
@@ -565,7 +585,7 @@ test("Xendit refund payload uses the Payment Request contract", () => {
   );
 });
 
-test("Xendit refund webhooks update pending, succeeded, and failed states", () => {
+test("Xendit refund webhooks distinguish pending, provider-processed, and failed states", () => {
   const order = { refund: { status: "requested", id: "rfd-1" } };
   assert.equal(isXenditRefundEvent({ event: "refund.pending" }), true);
   applyXenditRefundStatusToOrder(order, {
@@ -577,8 +597,8 @@ test("Xendit refund webhooks update pending, succeeded, and failed states", () =
   });
   assert.equal(order.refund.status, "pending");
   applyXenditRefundStatusToOrder(order, { event: "refund.succeeded", status: "SUCCEEDED" });
-  assert.equal(order.refund.status, "succeeded");
-  assert.ok(order.refund.confirmedAt);
+  assert.equal(order.refund.status, "processed");
+  assert.ok(order.refund.processedAt);
   applyXenditRefundStatusToOrder(order, {
     event: "refund.failed",
     status: "FAILED",

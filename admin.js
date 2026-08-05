@@ -46,6 +46,7 @@ const exportCustomersButton = document.getElementById("exportCustomersButton");
 const downloadReportPdfButton = document.getElementById("downloadReportPdfButton");
 const printReportButton = document.getElementById("printReportButton");
 const voucherList = document.getElementById("voucherList");
+const clearVouchersButton = document.getElementById("clearVouchersButton");
 const addVoucherButton = document.getElementById("addVoucherButton");
 const saveVouchersButton = document.getElementById("saveVouchersButton");
 const adminSectionSelect = document.getElementById("adminSectionSelect");
@@ -1174,8 +1175,8 @@ function renderAdminOrders() {
         </div>
       `;
     const refund = order.refund || null;
-    const refundTone = ["succeeded"].includes(refund?.status)
-      ? "status-paid"
+    const refundTone = ["processed", "succeeded"].includes(refund?.status)
+      ? "status-pending"
       : ["failed", "manual_required"].includes(refund?.status)
         ? "status-negative"
         : "status-pending";
@@ -1335,16 +1336,48 @@ function renderReports() {
   document.getElementById("reportBuyerTable").innerHTML = buyers.length
     ? buyers.map((buyer) => `<tr><td><strong>${escapeHtml(buyer.name)}</strong>${buyer.email ? `<small>${escapeHtml(buyer.email)}</small>` : ""}</td><td>${escapeHtml(buyer.phone || "—")}</td><td>${escapeHtml(buyer.location)}</td><td>${buyer.orders}</td><td>${formatRupiah.format(buyer.spent)}</td><td>${buyer.lastDate ? buyer.lastDate.toLocaleDateString("en-GB") : "—"}</td></tr>`).join("")
     : '<tr><td colspan="6">No buyers in this period.</td></tr>';
+
+  const orderTable = document.getElementById("reportOrderTable");
+  if (orderTable) {
+    orderTable.innerHTML = orders.length
+      ? orders.map((order) => {
+        const itemDetails = (order.lineItems || []).map((entry) =>
+          `<span><strong>${Number(entry.quantity || 0)}×</strong> ${escapeHtml(entry.item?.name || entry.itemId || "Unknown product")}</span>`
+        ).join("");
+        const created = orderDate(order);
+        return `<tr>
+          <td><strong>${escapeHtml(order.id || "—")}</strong></td>
+          <td>${created ? created.toLocaleString("en-GB") : "—"}</td>
+          <td><strong>${escapeHtml(order.customer?.name || "Guest")}</strong><small>${escapeHtml(order.customer?.phone || order.customer?.email || "—")}</small></td>
+          <td><div class="admin-report-items">${itemDetails || "—"}</div></td>
+          <td>${escapeHtml(order.payment?.label || order.payment?.kind || "—")}</td>
+          <td>${escapeHtml(statusLabel(order.status))}${order.refund?.status ? `<small>Refund: ${escapeHtml(order.refund.status)}</small>` : ""}</td>
+          <td><strong>${formatRupiah.format(order.pricing?.total || 0)}</strong></td>
+        </tr>`;
+      }).join("")
+      : '<tr><td colspan="7">No orders in this period.</td></tr>';
+  }
 }
 
 function exportBuyerCsv() {
-  const rows = [["Customer", "Email", "Phone", "Location", "Orders", "Total spent", "Last purchase"], ...buildBuyerRows(reportOrders()).map((buyer) => [
-    buyer.name, buyer.email, buyer.phone, buyer.location, buyer.orders, buyer.spent, buyer.lastDate?.toISOString() || ""
-  ])];
+  const rows = [[
+    "Order ID", "Created", "Status", "Customer", "Email", "Phone", "Location", "Payment method",
+    "Product", "Product ID", "Quantity", "Line total", "Subtotal", "Discount", "Delivery fee", "Tax", "Order total", "Refund status"
+  ]];
+  reportOrders().forEach((order) => {
+    const items = order.lineItems?.length ? order.lineItems : [{ item: {}, quantity: 0, lineTotal: 0 }];
+    items.forEach((entry) => rows.push([
+      order.id, order.createdAt || "", statusLabel(order.status), order.customer?.name || "", order.customer?.email || "",
+      order.customer?.phone || "", order.customer?.address || order.deliveryAddress || "", order.payment?.label || order.payment?.kind || "",
+      entry.item?.name || entry.itemId || "Unknown product", entry.itemId || entry.item?.id || "", Number(entry.quantity || 0), Number(entry.lineTotal || 0),
+      Number(order.pricing?.subtotal || 0), Number(order.pricing?.discount || 0), Number(order.pricing?.deliveryFee || 0),
+      Number(order.pricing?.tax || 0), Number(order.pricing?.total || 0), order.refund?.status || ""
+    ]));
+  });
   const csv = rows.map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  link.download = `bakeaholic-buyers-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `bakeaholic-detailed-sales-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -1387,6 +1420,14 @@ function reportTextLines() {
   buildBuyerRows(orders).forEach((buyer) => lines.push(
     `${buyer.name} | ${buyer.phone || "—"} | ${buyer.location} | ${buyer.orders} orders | ${formatRupiah.format(buyer.spent)}`
   ));
+  lines.push("", "ORDER DETAILS");
+  orders.forEach((order) => {
+    lines.push(`${order.id} | ${statusLabel(order.status)} | ${order.customer?.name || "Customer"} | ${formatRupiah.format(order.pricing?.total || 0)}`);
+    (order.lineItems || []).forEach((entry) => lines.push(
+      `  ${Number(entry.quantity || 0)} x ${entry.item?.name || entry.itemId || "Unknown product"} | ${formatRupiah.format(entry.lineTotal || 0)}`
+    ));
+    lines.push(`  Payment: ${order.payment?.label || order.payment?.kind || "-"} | Delivery: ${formatRupiah.format(order.pricing?.deliveryFee || 0)} | Tax: ${formatRupiah.format(order.pricing?.tax || 0)}`);
+  });
   return lines;
 }
 
@@ -1395,8 +1436,26 @@ function pdfEscape(value) {
 }
 
 function createSimplePdf(lines) {
+  const wrappedLines = [];
+  lines.forEach((line) => {
+    const value = String(line || "");
+    if (!value || /^(TOP SELLERS|BUYERS|ORDER DETAILS)$/.test(value)) {
+      wrappedLines.push(value);
+      return;
+    }
+    const indent = value.match(/^\s+/)?.[0] || "";
+    const available = Math.max(40, 100 - indent.length);
+    let remaining = value.trim();
+    while (remaining.length > available) {
+      let splitAt = remaining.lastIndexOf(" ", available);
+      if (splitAt < Math.floor(available * 0.55)) splitAt = available;
+      wrappedLines.push(`${indent}${remaining.slice(0, splitAt).trim()}`);
+      remaining = remaining.slice(splitAt).trim();
+    }
+    wrappedLines.push(`${indent}${remaining}`);
+  });
   const pageLines = [];
-  for (let index = 0; index < lines.length; index += 48) pageLines.push(lines.slice(index, index + 48));
+  for (let index = 0; index < wrappedLines.length; index += 42) pageLines.push(wrappedLines.slice(index, index + 42));
   const objects = [null];
   const addObject = (value) => {
     objects.push(value);
@@ -1405,13 +1464,20 @@ function createSimplePdf(lines) {
   const catalogId = addObject("");
   const pagesId = addObject("");
   const fontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  const boldFontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
   const pageIds = pageLines.map((page, pageIndex) => {
-    const commands = page.map((line, lineIndex) => {
-      const size = pageIndex === 0 && lineIndex === 0 ? 16 : 9;
-      return `BT /F1 ${size} Tf 42 ${800 - lineIndex * 15} Td (${pdfEscape(line)}) Tj ET`;
-    }).join("\n");
-    const contentId = addObject(`<< /Length ${commands.length} >>\nstream\n${commands}\nendstream`);
-    return addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+    const commands = ["0.45 0.27 0.15 rg 0 790 595 52 re f"];
+    commands.push(`1 1 1 rg BT /F2 18 Tf 42 810 Td (${pdfEscape(pageIndex ? "BAKEAHOLIC BALI - SALES REPORT (continued)" : "BAKEAHOLIC BALI - SALES REPORT")}) Tj ET`);
+    page.forEach((line, lineIndex) => {
+      const heading = /^(TOP SELLERS|BUYERS|ORDER DETAILS)$/.test(line);
+      const y = 764 - lineIndex * 17;
+      if (heading) commands.push(`0.96 0.92 0.89 rg 38 ${y - 5} 519 18 re f`);
+      commands.push(`0.18 0.12 0.09 rg BT /${heading ? "F2" : "F1"} ${heading ? 10 : 8.5} Tf 44 ${y} Td (${pdfEscape(line)}) Tj ET`);
+    });
+    commands.push(`0.5 0.4 0.34 rg BT /F1 7 Tf 44 24 Td (Generated ${pdfEscape(new Date().toLocaleString("en-GB"))} - Page ${pageIndex + 1} of ${pageLines.length}) Tj ET`);
+    const commandText = commands.join("\n");
+    const contentId = addObject(`<< /Length ${commandText.length} >>\nstream\n${commandText}\nendstream`);
+    return addObject(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontId} 0 R /F2 ${boldFontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
   });
   objects[catalogId] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
   objects[pagesId] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>`;
@@ -2372,6 +2438,25 @@ async function saveVouchers() {
   }
 }
 
+async function clearAllVouchers() {
+  if (!window.confirm("Delete every discount code? Existing orders are not changed.")) return;
+  try {
+    clearVouchersButton.disabled = true;
+    setStatus("Deleting discount codes...");
+    const response = await request("/api/admin/vouchers", {
+      method: "PUT",
+      body: JSON.stringify({ vouchers: [] })
+    });
+    state.vouchers = response.vouchers || [];
+    renderVouchers();
+    setStatus("All previous discount codes were deleted. You can now create new ones.");
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    clearVouchersButton.disabled = false;
+  }
+}
+
 function addVoucher() {
   state.vouchers.push({
     code: "",
@@ -2645,6 +2730,7 @@ voucherList?.addEventListener("click", (event) => {
   state.vouchers.splice(Number(button.dataset.removeVoucher), 1);
   renderVouchers();
 });
+clearVouchersButton?.addEventListener("click", clearAllVouchers);
 adminNavButtons.forEach((button) => {
   button.addEventListener("click", () => showAdminSection(button.dataset.adminTarget));
 });
