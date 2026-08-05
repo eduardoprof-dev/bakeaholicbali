@@ -6554,9 +6554,11 @@ async function updateOrderPaymentStatusForSession(mode, orderId, session, option
 }
 
 async function sweepUnresolvedCardPayments(mode) {
+  const now = Date.now();
   const candidates = getStoreState(mode).orders.filter((order) => (
-    ["awaiting_payment", "expired", "payment_failed"].includes(order.status)
+    order.status === "awaiting_payment"
     && order.payment?.provider === "xendit_components"
+    && (!Number.isFinite(Date.parse(order.expiresAt || "")) || Date.parse(order.expiresAt) > now)
   ));
   for (const order of candidates) {
     try {
