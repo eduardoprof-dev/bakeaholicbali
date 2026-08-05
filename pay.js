@@ -320,23 +320,23 @@ function renderCancelled() {
   const refund = state.order.refund || {};
   const refundStatus = String(refund.status || "not_required");
   const refundPending = ["requested", "pending"].includes(refundStatus);
-  const refundSucceeded = refundStatus === "succeeded";
+  const refundProcessed = ["processed", "succeeded"].includes(refundStatus);
   const refundNeedsHelp = ["failed", "manual_required"].includes(refundStatus);
-  const refundTitle = refundSucceeded
-    ? "Refund completed"
+  const refundTitle = refundProcessed
+    ? "Refund sent to payment provider"
     : refundPending
       ? "Refund is processing"
       : refundNeedsHelp
         ? "Refund needs assistance"
         : "No refund required";
-  const refundMessage = refundSucceeded
-    ? "Xendit confirmed that your refund was completed. Your bank or card statement may take additional time to display it."
+  const refundMessage = refundProcessed
+    ? "Xendit processed the refund and sent it to your payment provider. Your bank or card issuer controls when it appears in your account."
     : refundPending
       ? "Your refund request was accepted by Xendit. This page updates automatically when its status changes."
       : refundNeedsHelp
         ? "Our team needs to review this refund. Contact Bakeaholic and include your order number."
         : "This order was cancelled before a completed payment, so no refund is due.";
-  const refundUpdatedAt = refund.updatedAt || refund.requestedAt || "";
+  const refundUpdatedAt = refund.processedAt || refund.updatedAt || refund.requestedAt || "";
   const refundReference = refund.referenceId || refund.id || "";
   paymentApp.innerHTML = `
     <section class="status-hero cancelled-hero">

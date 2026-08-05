@@ -64,7 +64,7 @@ Do not use `https://checkout.xendit.co/{{1}}` for receipt templates. The app sen
 
 For shipping updates, use a Meta-approved template whose body variables match the values the app sends: order id, courier name, waybill/tracking number, tracking link, and Biteship document/link. Add a dynamic website button with base URL `https://bakeaholicbali.com/invoice.html?{{1}}`; the app sends the order document query into that button so customer/admin can open tracking, invoice, and print details.
 
-Daily delivery approval can happen from WhatsApp. The admin alert template should include quick-reply buttons named `Approve` and `Cancel`; the app sends hidden payloads like `APPROVE BAK-0001` and `CANCEL BAK-0001`. After admin taps a button, the app waits 60 seconds and sends an `Undo` button. If admin does not undo, approve creates the Biteship delivery order; cancel cancels the order and attempts a Xendit refund when a payment id is available, otherwise it marks the refund as manual-required for the Xendit dashboard.
+Daily delivery approval can happen from WhatsApp. The admin alert template should include quick-reply buttons named `Approve` and `Cancel`; the app resolves the order from the replied-to Meta message and also accepts explicit payloads such as `APPROVE BAK-0001` and `CANCEL BAK-0001`. Approve creates the Biteship delivery order once; cancel cancels the order and attempts a Xendit refund when a payment id is available, otherwise it marks the refund as manual-required for the Xendit dashboard. Repeated actions are rejected by the saved order state.
 
 Text commands also work from the configured admin number: `APPROVE`, `READY`, `KIRIM`, `SEND`, `CANCEL`, or `REFUND`. If several orders are waiting, include the order number, for example `APPROVE BAK-0001`.
 
@@ -74,7 +74,7 @@ Online checkout is blocked outside store hours. Default hours are daily, 09:00-1
 
 Mount a Railway volume to:
 
-`/app/data`
+`/app/runtime-data` (the current production mount)
 
 This keeps these files persistent across deploys:
 
@@ -82,6 +82,11 @@ This keeps these files persistent across deploys:
 - `customers.json`
 - `orders-live.json`
 - `orders-test.json`
+- `integrations.json`
+- `vouchers.json`
+- `uploads/`
+
+The Railway volume is persistent storage, not a backup. Export or snapshot `/app/runtime-data` before a release and periodically thereafter; a restore test must be recorded before the backup/recovery checklist can be marked verified.
 
 ## Deploy steps on Railway
 
@@ -89,7 +94,7 @@ This keeps these files persistent across deploys:
 2. In Railway, set the service Root Directory to `/order-demo` if you connect the whole repository.
 3. Deploy using the included `Dockerfile`.
 4. If Railway does not detect the Dockerfile automatically, set `RAILWAY_DOCKERFILE_PATH=/order-demo/Dockerfile`.
-5. Add a volume mounted at `/app/data`.
+5. Add a volume mounted at `/app/runtime-data`, and set `DATA_DIR=/app/runtime-data`.
 6. Set the environment variables listed above.
 7. Add `bakeaholicbali.com` as a custom domain in Railway.
 8. In Namecheap, add the DNS records Railway provides.

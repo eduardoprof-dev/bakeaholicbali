@@ -3,4 +3,5 @@ data/customers.json
 data/integrations.json
 data/orders-live.json
 data/orders-test.json
+data/vouchers.json
 .DS_Store

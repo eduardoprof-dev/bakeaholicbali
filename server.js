@@ -479,7 +479,7 @@ function whatsappTemplateTestOrder(recipient) {
     },
     refund: {
       id: "rf_template_test",
-      status: "succeeded"
+      status: "processed"
     },
     fulfillment: {
       shipment: {
@@ -1225,6 +1225,16 @@ function updateAdminWhatsappDeliveryStatus(order, status = {}) {
     delete recipient.deliveryErrorCode;
   }
   return true;
+}
+
+function orderIdFromWhatsappReplyContext(message = {}, orders = stores.live.orders) {
+  const contextMessageId = String(message.context?.id || "").trim();
+  if (!contextMessageId) return "";
+  const order = orders.find((entry) => (
+    entry.adminWhatsappNotifications?.messageId === contextMessageId
+    || entry.adminWhatsappNotifications?.recipients?.some((recipient) => recipient.messageId === contextMessageId)
+  ));
+  return order?.id || "";
 }
 
 function refundWhatsappParameters(order) {
@@ -1986,16 +1996,16 @@ async function cancelPaidOrderFromAdmin(mode, orderId, reason = "Cancelled by ad
     recordedAt: new Date().toISOString()
   };
   if (order.mode !== "test" && isWhatsappCloudReady()) {
-    try {
-      order.adminRefundNotification = {
-        sentAt: new Date().toISOString(),
-        ...(await sendWhatsappAdminRefundUpdate(order))
-      };
-    } catch (error) {
-      order.adminRefundNotification = {
-        error: error.message,
-        attemptedAt: new Date().toISOString()
-      };
+    order.refund.notifications = order.refund.notifications || {};
+    if (!order.refund.notifications.adminRequestedAt) {
+      try {
+        const result = await sendWhatsappAdminRefundUpdate(order);
+        order.refund.notifications.adminRequestedAt = new Date().toISOString();
+        order.refund.notifications.adminRequestResults = result.results;
+      } catch (error) {
+        order.refund.notifications.adminRequestError = error.message;
+        order.refund.notifications.adminRequestAttemptedAt = new Date().toISOString();
+      }
     }
   }
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
@@ -2050,7 +2060,7 @@ function scheduleAdminActionTimer(mode, orderId, token) {
   pendingAdminActionTimers.set(key, timer);
 }
 
-async function scheduleAdminOrderAction(mode, orderId, action) {
+async function scheduleAdminOrderAction(mode, orderId, action, requestedBy = "") {
   const order = findOrder(mode, orderId);
   if (!order) {
     throw new Error("Order not found");
@@ -2082,7 +2092,7 @@ async function scheduleAdminOrderAction(mode, orderId, action) {
     token,
     requestedAt: new Date().toISOString(),
     executeAt: new Date(Date.now() + 60 * 1000).toISOString(),
-    requestedBy: "whatsapp_admin"
+    requestedBy: normalizePhoneNumber(requestedBy)
   };
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   scheduleAdminActionTimer(mode, orderId, token);
@@ -2165,6 +2175,7 @@ async function processWhatsappAdminCommand(message = {}) {
   }
   const cancelCommand = parseAdminCancelCommand(text);
   if (cancelCommand) {
+    cancelCommand.orderId = cancelCommand.orderId || orderIdFromWhatsappReplyContext(message);
     const cancelOrderId = resolveAdminCommandOrderId(cancelCommand, ["paid", "preparing"]);
     const order = await executeAdminOrderAction("live", cancelOrderId, "cancel", message.from);
     return { handled: true, action: "cancelled", orderId: order.id };
@@ -2173,6 +2184,7 @@ async function processWhatsappAdminCommand(message = {}) {
   if (!approveCommand) {
     return { handled: false, reason: "not_approve_command" };
   }
+  approveCommand.orderId = approveCommand.orderId || orderIdFromWhatsappReplyContext(message);
   const orderId = resolveAdminCommandOrderId(approveCommand, ["paid"]);
   const order = await executeAdminOrderAction("live", orderId, "approve", message.from);
   return { handled: true, action: "approved", orderId: order.id };
@@ -2205,6 +2217,16 @@ async function processWhatsappWebhook(payload) {
       await processWhatsappAdminCommand(message);
     } catch (error) {
       console.warn("Unable to process WhatsApp admin command:", error.message);
+      if (message.from && isWhatsappCloudReady()) {
+        try {
+          await sendWhatsappTextMessage(
+            message.from,
+            `Bakeaholic could not process that action: ${error.message}. Please open the admin Orders page to review the order.`
+          );
+        } catch (replyError) {
+          console.warn("Unable to send WhatsApp command error reply:", replyError.message);
+        }
+      }
     }
   }
 }
@@ -2548,8 +2570,9 @@ function normalizeVoucher(voucher = {}) {
 }
 
 function loadVouchers() {
+  const hasSavedFile = fs.existsSync(vouchersPath);
   const saved = loadJsonArray(vouchersPath);
-  const source = saved.length ? saved : DEFAULT_VOUCHERS;
+  const source = hasSavedFile ? saved : DEFAULT_VOUCHERS;
   try {
     return source.map((voucher) => normalizeVoucher(voucher));
   } catch (_error) {
@@ -5413,8 +5436,11 @@ function applyXenditRefundStatusToOrder(order, payload = {}) {
   const event = String(payload.event || "").toLowerCase();
   const rawStatus = String(payload.status || event.replace(/^refund\./, "") || "").toUpperCase();
   const statusMap = {
-    SUCCEEDED: "succeeded",
-    SUCCESS: "succeeded",
+    // Xendit documents refund.succeeded as processed by Xendit and sent to the
+    // payment channel. It does not prove that the issuer has posted the money
+    // to the customer's account, so never describe this stage as completed.
+    SUCCEEDED: "processed",
+    SUCCESS: "processed",
     PENDING: "pending",
     REQUESTED: "requested",
     FAILED: "failed",
@@ -5428,12 +5454,12 @@ function applyXenditRefundStatusToOrder(order, payload = {}) {
     paymentRequestId: payload.payment_request_id || order.refund?.paymentRequestId || "",
     referenceId: payload.reference_id || order.refund?.referenceId || "",
     status,
-    confirmedAt: status === "succeeded"
+    processedAt: status === "processed"
       ? (payload.updated || new Date().toISOString())
-      : order.refund?.confirmedAt || "",
+      : order.refund?.processedAt || "",
     failureCode: payload.failure_code || "",
-    message: status === "succeeded"
-      ? "Refund succeeded in Xendit."
+    message: status === "processed"
+      ? "Xendit sent the refund to the payment provider. The provider may need additional time to post it to the customer account."
       : status === "failed"
         ? (payload.failure_code || "Refund failed in Xendit.")
         : "Refund is processing in Xendit.",
@@ -6096,6 +6122,12 @@ function enrichOrder(order, options = {}) {
   ) {
     refund.status = "pending";
     refund.message = "Refund request accepted. Waiting for confirmation from Xendit.";
+  }
+  if (refund?.status === "succeeded" && (refund.confirmedAt || refund.updatedAt)) {
+    refund.status = "processed";
+    refund.processedAt = refund.processedAt || refund.confirmedAt || refund.updatedAt;
+    refund.message = "Xendit sent the refund to the payment provider. The provider may need additional time to post it to the customer account.";
+    delete refund.confirmedAt;
   }
   delete payment.componentsSdkKey;
   if (options.includeComponentsSdkKey && payment.provider === "xendit_components") {
@@ -7672,28 +7704,21 @@ function handleApi(requestUrl, request, response) {
           }
           if (refundOrder.refund.status !== previousRefundStatus) {
             if (refundOrder.mode !== "test" && isWhatsappCloudReady()) {
-              try {
-                refundOrder.adminRefundNotification = {
-                  sentAt: new Date().toISOString(),
-                  ...(await sendWhatsappAdminRefundUpdate(refundOrder))
-                };
-              } catch (error) {
-                refundOrder.adminRefundNotification = {
-                  error: error.message,
-                  attemptedAt: new Date().toISOString()
-                };
-              }
-              if (refundOrder.refund.status === "succeeded") {
+              // The request notification was already sent when the admin
+              // cancelled the order. Only a failure needs another alert.
+              if (refundOrder.refund.status === "failed" && !refundOrder.refund.notifications?.adminFailureSentAt) {
                 try {
-                  const customerResponse = await sendWhatsappRefundCompleted(refundOrder);
-                  refundOrder.customerRefundNotification = {
-                    sentAt: new Date().toISOString(),
-                    messageId: customerResponse?.messages?.[0]?.id || ""
+                  const adminResponse = await sendWhatsappAdminRefundUpdate(refundOrder);
+                  refundOrder.refund.notifications = {
+                    ...(refundOrder.refund.notifications || {}),
+                    adminFailureSentAt: new Date().toISOString(),
+                    adminFailureResults: adminResponse.results
                   };
                 } catch (error) {
-                  refundOrder.customerRefundNotification = {
-                    error: error.message,
-                    attemptedAt: new Date().toISOString()
+                  refundOrder.refund.notifications = {
+                    ...(refundOrder.refund.notifications || {}),
+                    adminFailureError: error.message,
+                    adminFailureAttemptedAt: new Date().toISOString()
                   };
                 }
               }
@@ -7965,6 +7990,7 @@ module.exports = {
   runWhatsappTemplateDiagnostics,
   sendWhatsappAdminAlert,
   sendWhatsappAdminRefundUpdate,
+  orderIdFromWhatsappReplyContext,
   securityTxtBody,
   selectXenditSecretKey,
   sendWhatsappTemplateMessage,

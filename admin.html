@@ -490,6 +490,15 @@
               </table>
             </div>
           </article>
+          <article class="admin-report-card admin-report-wide">
+            <div class="admin-card-heading"><div><span class="admin-card-kicker">Transaction detail</span><h3>Orders and products</h3><p>Every order in the selected period, including the exact products and quantities purchased.</p></div></div>
+            <div class="admin-table-scroll">
+              <table class="admin-report-table admin-order-detail-table">
+                <thead><tr><th>Order</th><th>Date</th><th>Customer</th><th>Products</th><th>Payment</th><th>Status</th><th>Total</th></tr></thead>
+                <tbody id="reportOrderTable"></tbody>
+              </table>
+            </div>
+          </article>
         </section>
 
         <section class="admin-panel" data-admin-section="discounts" hidden>
@@ -499,6 +508,7 @@
               <p class="helper-text">Codes are checked on the server. Product discounts leave the live delivery fee payable.</p>
             </div>
             <div class="admin-actions">
+              <button id="clearVouchersButton" class="admin-button secondary" type="button">Delete all discounts</button>
               <button id="addVoucherButton" class="admin-button secondary" type="button">Add discount</button>
               <button id="saveVouchersButton" class="admin-button" type="button">Save discounts</button>
             </div>
