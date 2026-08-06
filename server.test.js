@@ -26,6 +26,8 @@ const {
   orderIdFromWhatsappReplyContext,
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
+  maybeSendWhatsappPaymentReceipt,
+  maybeSendWhatsappAdminAlert,
   sendWhatsappAdminAlert,
   sendWhatsappAdminRefundUpdate,
   securityTxtBody,
@@ -128,6 +130,73 @@ test("admin alerts fan out to all three configured recipients", async () => {
       WHATSAPP_PHONE_NUMBER_ID: previousEnv.phoneId,
       WHATSAPP_ADMIN_NUMBER: previousEnv.adminNumbers,
       WHATSAPP_ADMIN_TEMPLATE_NAME: previousEnv.template
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test("concurrent paid-event processing sends each WhatsApp notification only once", async () => {
+  const previousFetch = global.fetch;
+  const previousEnv = {
+    token: process.env.WHATSAPP_ACCESS_TOKEN,
+    phoneId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    adminNumbers: process.env.WHATSAPP_ADMIN_NUMBER,
+    adminTemplate: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME,
+    receiptTemplate: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME
+  };
+  const recipients = [];
+  Object.assign(process.env, {
+    WHATSAPP_ACCESS_TOKEN: "test-token",
+    WHATSAPP_PHONE_NUMBER_ID: "123456",
+    WHATSAPP_ADMIN_NUMBER: "628111111111,628222222222,628333333333",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2",
+    WHATSAPP_RECEIPT_TEMPLATE_NAME: "payment_receipt"
+  });
+  global.fetch = async (_url, options) => {
+    const payload = JSON.parse(options.body);
+    recipients.push(payload.to);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ messages: [{ id: `wamid.${payload.to}` }] })
+    };
+  };
+  const order = {
+    id: "BAK-CONCURRENT",
+    mode: "test",
+    status: "paid",
+    customer: { name: "Customer", phone: "628999999999" },
+    pricing: { total: 18700 },
+    payment: { label: "QRIS" },
+    fulfillment: { shipment: {} },
+    receiptToken: "receipt-token"
+  };
+
+  try {
+    const receiptResults = await Promise.all([
+      maybeSendWhatsappPaymentReceipt(order, "order:BAK-CONCURRENT:receipt"),
+      maybeSendWhatsappPaymentReceipt(order, "order:BAK-CONCURRENT:receipt")
+    ]);
+    const adminResults = await Promise.all([
+      maybeSendWhatsappAdminAlert(order, "order:BAK-CONCURRENT:paid", "Payment received"),
+      maybeSendWhatsappAdminAlert(order, "order:BAK-CONCURRENT:paid", "Payment received")
+    ]);
+
+    assert.equal(receiptResults.filter((result) => result.sent).length, 1);
+    assert.equal(adminResults.filter((result) => result.sent).length, 1);
+    assert.equal(recipients.filter((recipient) => recipient === "628999999999").length, 1);
+    assert.equal(recipients.length, 4);
+  } finally {
+    global.fetch = previousFetch;
+    for (const [key, value] of Object.entries({
+      WHATSAPP_ACCESS_TOKEN: previousEnv.token,
+      WHATSAPP_PHONE_NUMBER_ID: previousEnv.phoneId,
+      WHATSAPP_ADMIN_NUMBER: previousEnv.adminNumbers,
+      WHATSAPP_ADMIN_TEMPLATE_NAME: previousEnv.adminTemplate,
+      WHATSAPP_RECEIPT_TEMPLATE_NAME: previousEnv.receiptTemplate
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;

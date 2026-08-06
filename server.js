@@ -1388,17 +1388,31 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
     return { sent: false, skipped: true, reason: skipReason };
   }
 
+  // Claim the event before the network request. Xendit can deliver a webhook at
+  // the same time that checkout is polling payment status; recording only after
+  // Meta responds allowed both requests to send the same receipt.
+  const previousNotification = order.whatsappReceiptNotification;
+  order.whatsappReceiptNotification = {
+    ...previousNotification,
+    lastNotificationKey: eventKey,
+    queuedAt: new Date().toISOString()
+  };
+  persistWhatsappNotificationClaim(order);
   try {
     const messageResponse = await sendWhatsappPaymentReceipt(order);
     order.whatsappReceiptNotification = {
+      ...order.whatsappReceiptNotification,
       lastNotificationKey: eventKey,
       lastSentAt: new Date().toISOString(),
       messageId: messageResponse?.messages?.[0]?.id || ""
     };
     delete order.whatsappReceiptNotificationError;
+    persistWhatsappNotificationClaim(order);
     return { sent: true, messageId: messageResponse?.messages?.[0]?.id || "" };
   } catch (error) {
+    order.whatsappReceiptNotification = previousNotification;
     order.whatsappReceiptNotificationError = error.message;
+    persistWhatsappNotificationClaim(order);
     return { sent: false, skipped: false, error: error.message };
   }
 }
@@ -1692,6 +1706,15 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
     return { sent: false, skipped: true, reason: skipReason };
   }
 
+  // See the customer receipt claim above. The paid webhook and checkout status
+  // refresh may run concurrently, so the claim must exist before calling Meta.
+  const previousNotification = order.adminWhatsappNotifications;
+  order.adminWhatsappNotifications = {
+    ...previousNotification,
+    lastNotificationKey: eventKey,
+    queuedAt: new Date().toISOString()
+  };
+  persistWhatsappNotificationClaim(order);
   try {
     const messageResponse = await sendWhatsappAdminAlert(order, eventLabel);
     order.adminWhatsappNotifications = {
@@ -1702,9 +1725,12 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
       recipients: messageResponse?.results || []
     };
     delete order.adminWhatsappNotificationError;
+    persistWhatsappNotificationClaim(order);
     return { sent: true, messageId: messageResponse?.messages?.[0]?.id || "" };
   } catch (error) {
+    order.adminWhatsappNotifications = previousNotification;
     order.adminWhatsappNotificationError = error.message;
+    persistWhatsappNotificationClaim(order);
     return { sent: false, skipped: false, error: error.message };
   }
 }
@@ -1931,11 +1957,15 @@ async function executeAdminOrderAction(mode, orderId, action, requestedBy = "") 
   if (action === "cancel") {
     await cancelPaidOrderFromAdmin(mode, orderId, "Cancelled from WhatsApp by admin");
     const cancelledOrder = findOrder(mode, orderId);
-    cancelledOrder.adminActionConfirmation = await sendAdminActionConfirmation(
-      requestedBy,
-      cancelledOrder,
-      action
-    );
+    // The Undo prompt already confirms that the admin action was accepted, and
+    // the customer receives the approved order_cancelled template. A second
+    // plain-text confirmation is redundant and can reach the customer when the
+    // same number is configured as both customer and administrator.
+    cancelledOrder.adminActionConfirmation = {
+      sent: false,
+      skipped: true,
+      reason: "formal_cancellation_notification_is_authoritative"
+    };
     saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
     return cancelledOrder;
   }
@@ -2616,6 +2646,15 @@ function ordersPathForMode(mode) {
 
 function cartsPathForMode(mode) {
   return mode === "test" ? cartsTestPath : cartsLivePath;
+}
+
+function persistWhatsappNotificationClaim(order) {
+  const mode = order?.mode === "test" ? "test" : "live";
+  const state = getStoreState(mode);
+  if (!order || !state.orders.includes(order)) {
+    return;
+  }
+  saveOrders(ordersPathForMode(mode), state.orders);
 }
 
 const stores = {
@@ -8176,6 +8215,8 @@ module.exports = {
   paymentReminderWhatsappParameters,
   receiptWhatsappParameters,
   runWhatsappTemplateDiagnostics,
+  maybeSendWhatsappPaymentReceipt,
+  maybeSendWhatsappAdminAlert,
   sendWhatsappAdminAlert,
   sendWhatsappAdminRefundUpdate,
   orderIdFromWhatsappReplyContext,
