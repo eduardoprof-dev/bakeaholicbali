@@ -879,7 +879,7 @@ function mountXenditCardComponents(order) {
       const disableSubmit = () => {
         submitButton.disabled = true;
       };
-      const confirmPaid = async ({ finalAttempt = false } = {}) => {
+      const confirmPaid = async () => {
         submitButton.disabled = true;
         submitButton.textContent = "Confirming payment...";
         const response = await request("/api/order/payment-status", {
@@ -906,13 +906,6 @@ function mountXenditCardComponents(order) {
           setCheckoutMessage("This card payment is no longer active.");
           return true;
         }
-        if (finalAttempt) {
-          submitButton.textContent = "Payment submitted";
-          setCheckoutMessage(
-            "Your card payment was submitted. We are still waiting for Xendit confirmation. Do not pay again; refresh this page in a moment.",
-            "success"
-          );
-        }
         return false;
       };
       const reconcileUntilSettled = async () => {
@@ -920,21 +913,28 @@ function mountXenditCardComponents(order) {
           return;
         }
         reconciliationStarted = true;
-        for (let attempt = 0; attempt < 20; attempt += 1) {
-          try {
-            const settled = await confirmPaid({ finalAttempt: attempt === 19 });
-            if (settled) {
-              return;
+        try {
+          for (let attempt = 0; attempt < 20; attempt += 1) {
+            try {
+              const settled = await confirmPaid();
+              if (settled) {
+                return;
+              }
+            } catch (error) {
+              if (attempt === 19) {
+                setCheckoutMessage(
+                  "We are still checking this payment with Xendit. Do not submit it again; this page will update automatically."
+                );
+              }
             }
-          } catch (error) {
-            if (attempt === 19) {
-              setCheckoutMessage(
-                error.message || "Payment submitted. Confirmation is delayed; do not pay again.",
-                "success"
-              );
-            }
+            await new Promise((resolve) => window.setTimeout(resolve, 1500));
           }
-          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+          submitButton.textContent = "Checking payment status…";
+          setCheckoutMessage(
+            "We are still checking this payment with Xendit. Do not submit it again; this page will update automatically."
+          );
+        } finally {
+          reconciliationStarted = false;
         }
       };
 
@@ -1057,6 +1057,15 @@ function startPaymentStatusPolling(order) {
         setCheckoutMessage("Payment received. Opening your confirmed order…", "success");
         clearCompletedCheckoutState();
         window.location.replace(orderStatusUrlForOrder(completedOrder));
+        return;
+      }
+      if (response.order.status === "payment_failed") {
+        stopPaymentStatusPolling();
+        renderEmbeddedPayment(response.order);
+        setCheckoutMessage(
+          response.order.payment?.failureMessage
+            || "The card payment failed. No successful payment was recorded. Please check the card details and try again."
+        );
         return;
       }
       if (response.order.status !== "awaiting_payment") {

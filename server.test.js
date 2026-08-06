@@ -20,6 +20,7 @@ const {
   hasBiteshipShipmentForMessaging,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
+  isFailedXenditPaymentEvent,
   isSupportedImageBuffer,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,
@@ -927,6 +928,14 @@ test("failed card callback ends confirmation instead of leaving the order pendin
   assert.equal(order.payment.status, "failed");
   assert.equal(order.payment.failureCode, "INVALID_CVV");
   assert.match(order.payment.failureMessage, /security code \(CVV\) is incorrect/i);
+});
+
+test("Xendit failed payment events are recognized during active reconciliation", () => {
+  assert.equal(isFailedXenditPaymentEvent({ status: "FAILED", failure_code: "INVALID_CVV" }), true);
+  assert.equal(isFailedXenditPaymentEvent({ event: "payment.failure" }), true);
+  assert.equal(isFailedXenditPaymentEvent({ status: "DECLINED" }), true);
+  assert.equal(isFailedXenditPaymentEvent({ status: "ACTIVE" }), false);
+  assert.equal(isFailedXenditPaymentEvent({ status: "SUCCEEDED" }), false);
 });
 
 test("card failures explain invalid card numbers and expiry dates", () => {

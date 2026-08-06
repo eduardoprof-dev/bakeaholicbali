@@ -5754,6 +5754,34 @@ async function fetchXenditPaymentSessionStatus(order) {
             amount: xenditPaymentAmount(capturedPayload) ?? payload.amount
           };
         }
+        if (capturedResponse.ok && isFailedXenditPaymentEvent(capturedPayload)) {
+          return {
+            ...payload,
+            ...capturedPayload,
+            status: "FAILED",
+            event: capturedPayload.event || "payment.failure",
+            payment_session_id: payload.payment_session_id || sessionId,
+            payment_request_id: capturedPayload.payment_request_id || paymentRequestId,
+            payment_id: capturedPayload.payment_id || capturedPayload.id || paymentId,
+            reference_id: capturedPayload.reference_id || payload.reference_id || order.payment?.externalId || order.id,
+            failure_code: capturedPayload.failure_code || paymentPayload.failure_code || "PAYMENT_FAILED",
+            amount: xenditPaymentAmount(capturedPayload) ?? payload.amount
+          };
+        }
+      }
+      if (paymentResponse.ok && isFailedXenditPaymentEvent(paymentPayload)) {
+        return {
+          ...payload,
+          ...paymentPayload,
+          status: "FAILED",
+          event: paymentPayload.event || "payment.failure",
+          payment_session_id: payload.payment_session_id || sessionId,
+          payment_request_id: paymentPayload.payment_request_id || paymentRequestId,
+          payment_id: paymentPayload.payment_id || paymentPayload.latest_payment_id || payload.payment_id || "",
+          reference_id: paymentPayload.reference_id || payload.reference_id || order.payment?.externalId || order.id,
+          failure_code: paymentPayload.failure_code || "PAYMENT_FAILED",
+          amount: xenditPaymentAmount(paymentPayload) ?? payload.amount
+        };
       }
     }
   }
@@ -6034,6 +6062,13 @@ function isSuccessfulXenditPaymentEvent(payload = {}) {
   return ["PAID", "SETTLED", "COMPLETED", "SUCCEEDED", "SUCCESS"].includes(status)
     || ["payment.succeeded", "payment.capture", "payment_session.completed", "qr.payment"].includes(event)
     || isLegacyVirtualAccountPayment;
+}
+
+function isFailedXenditPaymentEvent(payload = {}) {
+  const status = String(payload.status || payload.payment_status || "").toUpperCase();
+  const event = String(payload.event || "").toLowerCase();
+  return ["FAILED", "DECLINED"].includes(status)
+    || ["payment.failure", "payment.failed"].includes(event);
 }
 
 function isOrderPaymentWindowExpired(order, now = Date.now()) {
@@ -8208,6 +8243,7 @@ module.exports = {
   hasBiteshipShipmentForMessaging,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
+  isFailedXenditPaymentEvent,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,
   parsePublicOrderReference,
