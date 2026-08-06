@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  adminPermissions,
   applyXenditQrCodeStatusToOrder,
   applyXenditPaymentSessionStatusToOrder,
   applyXenditRefundStatusToOrder,
@@ -39,8 +40,48 @@ const {
   xenditPaymentSessionIds,
   xenditCallbackReferenceIds,
   xenditRefundRequestBody,
-  xenditKeyMode
+  xenditKeyMode,
+  hashAdminPassword,
+  verifyAdminPassword,
+  base32Encode,
+  totpCode,
+  verifyTotp,
+  productionCookieDomain,
+  serializeCookie
 } = require("./server");
+
+test("production sessions are shared between apex and www hosts", () => {
+  assert.equal(productionCookieDomain({ headers: { host: "bakeaholicbali.com" } }), ".bakeaholicbali.com");
+  assert.equal(productionCookieDomain({ headers: { host: "www.bakeaholicbali.com" } }), ".bakeaholicbali.com");
+  assert.equal(productionCookieDomain({ headers: { host: "localhost:4173" } }), "");
+  assert.match(
+    serializeCookie("session", "signed", { domain: ".bakeaholicbali.com", path: "/", httpOnly: true }),
+    /Domain=\.bakeaholicbali\.com/
+  );
+});
+
+test("staff roles are limited to their assigned business areas", () => {
+  assert.deepEqual(adminPermissions("storefront_manager"), ["storefront"]);
+  assert.deepEqual(adminPermissions("orders_manager"), ["orders", "reports"]);
+  assert.equal(adminPermissions("storefront_manager").includes("integrations"), false);
+  assert.equal(adminPermissions("orders_manager").includes("operations"), false);
+});
+
+test("staff passwords are salted and verified securely", () => {
+  const stored = hashAdminPassword("A-strong-password-2026");
+  assert.match(stored.salt, /^[a-f0-9]{32}$/);
+  assert.match(stored.hash, /^[a-f0-9]{128}$/);
+  const user = { passwordSalt: stored.salt, passwordHash: stored.hash };
+  assert.equal(verifyAdminPassword("A-strong-password-2026", user), true);
+  assert.equal(verifyAdminPassword("wrong-password", user), false);
+});
+
+test("staff two-step verification accepts only the current authenticator code", () => {
+  const secret = base32Encode(Buffer.from("bakeaholic-staff-test-secret"));
+  const now = Date.now();
+  assert.equal(verifyTotp(secret, totpCode(secret, now), now), true);
+  assert.equal(verifyTotp(secret, "000000", now), false);
+});
 
 test("admin alerts fan out to all three configured recipients", async () => {
   const previousFetch = global.fetch;

@@ -289,6 +289,7 @@ function request(path, options = {}) {
   }
   return fetch(`${requestUrl.pathname}${requestUrl.search}`, {
     ...fetchOptions,
+    credentials: "include",
     signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
@@ -299,7 +300,9 @@ function request(path, options = {}) {
   }).then(async (response) => {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload.error || `Request failed: ${response.status}`);
+      const error = new Error(payload.error || `Request failed: ${response.status}`);
+      error.status = response.status;
+      throw error;
     }
     rememberCartSession(payload);
     return payload;
@@ -1794,6 +1797,12 @@ async function syncSessionProfile() {
     if (payload.profile?.name && !state.draft.customer.name) {
       state.draft.customer.name = payload.profile.name;
     }
+    const addresses = Array.isArray(payload.profile?.addresses) ? payload.profile.addresses : [];
+    const defaultAddress = addresses.find((address) => address.id === payload.profile?.defaultAddressId) || addresses[0];
+    if (defaultAddress?.formattedAddress) {
+      state.draft.destination = { ...defaultAddress, locationConfirmed: true };
+      state.draft.customer.address = defaultAddress.formattedAddress;
+    }
     persistDraft();
     return true;
   } catch (_error) {
@@ -1928,6 +1937,19 @@ async function bootstrap() {
     onSave: async (destination) => {
       state.draft.destination = destination;
       state.draft.customer.address = destination.formattedAddress;
+      try {
+        const saved = await request("/api/customer/addresses", {
+          method: "POST",
+          body: JSON.stringify({ ...destination, setAsDefault: true })
+        });
+        const savedDefault = (saved.addresses || []).find((address) => address.id === saved.defaultAddressId);
+        if (savedDefault) {
+          state.draft.destination = { ...savedDefault, locationConfirmed: true };
+          state.draft.customer.address = savedDefault.formattedAddress;
+        }
+      } catch (_error) {
+        // Checkout can continue with the selected address; authenticated users retain it on the order.
+      }
       persistDraft();
       hydrateForm();
       closeModal(locationModal);

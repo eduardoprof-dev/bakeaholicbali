@@ -6864,6 +6864,8 @@ body.cart-is-empty .checkout-shell .cart-layout {
   overflow: hidden;
   border: 1px solid rgba(107, 66, 38, 0.12);
   margin-bottom: 14px;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .location-summary {
@@ -7652,5 +7654,82 @@ body.cart-is-empty .checkout-shell .cart-layout {
   .invoice-footer {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+}
+.admin-staff-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.admin-staff-form,
+.admin-staff-card,
+.admin-staff-setup {
+  padding: 1rem;
+  border: 1px solid rgba(113, 69, 39, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.admin-staff-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.admin-staff-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.8rem;
+}
+
+.admin-staff-card-head h3,
+.admin-staff-card-head p {
+  margin: 0;
+}
+
+.admin-staff-card-head p {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.admin-staff-status {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: #e9f8ee;
+  color: #16743c;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.admin-staff-status.is-blocked {
+  background: #fff0ed;
+  color: #bc3a2b;
+}
+
+.location-map-center-button {
+  touch-action: manipulation;
+}
+
+.admin-staff-setup {
+  margin-top: 1rem;
+  background: #fff8e8;
+}
+
+.admin-mfa-secret {
+  display: block;
+  padding: 0.7rem;
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+  background: rgba(255, 255, 255, 0.9);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (max-width: 900px) {
+  .admin-staff-layout {
+    grid-template-columns: 1fr;
   }
 }

@@ -2,6 +2,7 @@ const params = new URLSearchParams(window.location.search);
 const appMode = params.get("mode") === "test" ? "test" : "live";
 
 const state = {
+  adminSession: null,
   catalog: null,
   orders: [],
   vouchers: [],
@@ -35,8 +36,13 @@ const storefrontPreviewViewport = document.getElementById("storefrontPreviewView
 const storefrontPublishState = document.getElementById("storefrontPublishState");
 const adminLoginPanel = document.getElementById("adminLoginPanel");
 const adminLoginForm = document.getElementById("adminLoginForm");
+const adminEmailInput = document.getElementById("adminEmailInput");
 const adminPasswordInput = document.getElementById("adminPasswordInput");
+const adminOtpInput = document.getElementById("adminOtpInput");
 const adminLoginButton = document.getElementById("adminLoginButton");
+const adminStaffForm = document.getElementById("adminStaffForm");
+const adminStaffList = document.getElementById("adminStaffList");
+const staffSetupResult = document.getElementById("staffSetupResult");
 const categoryList = document.getElementById("categoryList");
 const productList = document.getElementById("productList");
 const adminOrderList = document.getElementById("adminOrderList");
@@ -74,8 +80,35 @@ const sectionHeadings = {
   categories: ["Catalog", "Product categories"],
   catalog: ["Catalog", "Products and stock"],
   integrations: ["System", "Connected services"],
+  staff: ["Security", "Staff and access"],
   documentation: ["Knowledge base", "How Bakeaholic works"]
 };
+
+const sectionPermissions = {
+  dashboard: "operations",
+  store: "storefront", promo: "storefront", discounts: "storefront", story: "storefront", categories: "storefront", catalog: "storefront",
+  "checkout-page": "storefront", "orders-page": "storefront", "addresses-page": "storefront", "invoice-page": "storefront", "terms-page": "storefront", "privacy-page": "storefront",
+  orders: "orders", reports: "reports", "operations-settings": "operations", integrations: "integrations", staff: "staff"
+};
+
+function canAdmin(permission) {
+  return !permission || Boolean(state.adminSession?.permissions?.includes(permission));
+}
+
+function sectionAllowed(sectionName) {
+  return canAdmin(sectionPermissions[sectionName]);
+}
+
+function applyAdminPermissions() {
+  document.querySelectorAll("[data-admin-target]").forEach((node) => {
+    node.hidden = !sectionAllowed(node.dataset.adminTarget);
+  });
+  Array.from(adminSectionSelect?.options || []).forEach((option) => {
+    option.hidden = !sectionAllowed(option.value);
+    option.disabled = !sectionAllowed(option.value);
+  });
+  document.body.dataset.adminRole = state.adminSession?.role || "";
+}
 
 const storeFields = {
   name: document.getElementById("storeName"),
@@ -346,9 +379,11 @@ async function request(path, options = {}) {
 
 async function ensureAdminSession() {
   try {
-    await request("/api/admin/session");
+    const payload = await request("/api/admin/session");
+    state.adminSession = payload.session;
     adminLoginPanel.hidden = true;
-    return;
+    applyAdminPermissions();
+    return payload.session;
   } catch (error) {
     if (error.status !== 401) {
       throw error;
@@ -356,13 +391,15 @@ async function ensureAdminSession() {
   }
 
   adminLoginPanel.hidden = false;
-  adminPasswordInput.focus();
-  setStatus("Enter the admin password to continue.");
+  adminEmailInput?.focus();
+  setStatus("Enter your admin credentials to continue.");
 
   await new Promise((resolve) => {
     adminLoginForm.onsubmit = async (event) => {
       event.preventDefault();
+      const email = adminEmailInput?.value.trim() || "";
       const password = adminPasswordInput.value.trim();
+      const otp = adminOtpInput?.value.trim() || "";
       if (!password) {
         setStatus("Please enter the admin password.");
         return;
@@ -371,12 +408,16 @@ async function ensureAdminSession() {
       adminLoginButton.disabled = true;
       setStatus("Checking admin password...");
       try {
-        await request("/api/admin/login", {
+        const payload = await request("/api/admin/login", {
           method: "POST",
-          body: JSON.stringify({ password })
+          body: JSON.stringify({ email, password, otp })
         });
+        state.adminSession = payload.session;
+        if (adminEmailInput) adminEmailInput.value = "";
         adminPasswordInput.value = "";
+        if (adminOtpInput) adminOtpInput.value = "";
         adminLoginPanel.hidden = true;
+        applyAdminPermissions();
         resolve();
       } catch (error) {
         adminLoginButton.disabled = false;
@@ -387,6 +428,7 @@ async function ensureAdminSession() {
 
   adminLoginButton.disabled = false;
   setStatus("Admin login successful. Session lasts 15 minutes.");
+  return state.adminSession;
 }
 
 async function logoutAdmin() {
@@ -406,6 +448,9 @@ function setStatus(message) {
 }
 
 function showAdminSection(sectionName) {
+  if (!sectionAllowed(sectionName)) {
+    sectionName = canAdmin("orders") ? "orders" : (canAdmin("storefront") ? "store" : "dashboard");
+  }
   const isStorefrontStudio = storefrontStudioSections.has(sectionName);
   const isCatalogEditor = catalogActionSections.has(sectionName);
   adminSections.forEach((section) => {
@@ -441,6 +486,9 @@ function showAdminSection(sectionName) {
   }
   if (sectionName === "dashboard") {
     renderDashboard();
+  }
+  if (sectionName === "staff") {
+    loadAdminStaff();
   }
   if (sectionName === "store" && kitchenMapState.mapsApi && kitchenMapState.map) {
     window.setTimeout(() => {
@@ -2647,21 +2695,77 @@ function addStorySlide() {
   markCatalogDirty();
 }
 
+function roleLabel(role) {
+  return role === "storefront_manager" ? "Storefront manager" : "Orders manager";
+}
+
+function showStaffSetup(setup, user) {
+  if (!staffSetupResult || !setup?.secret) return;
+  staffSetupResult.hidden = false;
+  staffSetupResult.innerHTML = `
+    <h3>Set up two-step authentication for ${escapeHtml(user.name)}</h3>
+    <p>Before giving access, ask this staff member to add the following setup key in Google Authenticator, Microsoft Authenticator, Authy, or 1Password.</p>
+    <code class="admin-mfa-secret">${escapeHtml(setup.secret)}</code>
+    <p class="helper-text">Account: ${escapeHtml(user.email)} · Type: time based · 6 digits. This key is only shown now. Store it securely until setup is confirmed.</p>`;
+}
+
+async function loadAdminStaff() {
+  if (!canAdmin("staff") || !adminStaffList) return;
+  try {
+    const payload = await request("/api/admin/staff");
+    const users = payload.users || [];
+    adminStaffList.innerHTML = users.length ? users.map((user) => `
+      <article class="admin-card admin-staff-card" data-staff-id="${escapeHtml(user.id)}">
+        <div class="admin-staff-card-head"><div><h3>${escapeHtml(user.name)}</h3><p>${escapeHtml(user.email)}</p></div><span class="admin-staff-status ${user.blocked ? "is-blocked" : "is-active"}">${user.blocked ? "Blocked" : "Active"}</span></div>
+        <div class="admin-form-grid two-column">
+          <label class="admin-field"><span>Role</span><select data-staff-role><option value="storefront_manager" ${user.role === "storefront_manager" ? "selected" : ""}>Storefront manager</option><option value="orders_manager" ${user.role === "orders_manager" ? "selected" : ""}>Orders manager</option></select></label>
+          <label class="admin-field"><span>New password (optional)</span><input type="password" minlength="10" data-staff-password autocomplete="new-password" /></label>
+        </div>
+        <p class="helper-text">${escapeHtml(roleLabel(user.role))} · Two-step authentication required</p>
+        <div class="admin-provider-actions">
+          <button class="admin-button secondary" type="button" data-staff-action="save">Save access</button>
+          <button class="admin-button secondary" type="button" data-staff-action="mfa">Reset 2-step setup</button>
+          <button class="admin-button secondary" type="button" data-staff-action="block">${user.blocked ? "Unblock" : "Block access"}</button>
+          <button class="admin-button danger" type="button" data-staff-action="delete">Delete staff</button>
+        </div>
+      </article>`).join("") : '<div class="admin-card"><p class="helper-text">No staff accounts yet.</p></div>';
+  } catch (error) {
+    adminStaffList.innerHTML = `<div class="admin-card"><p class="admin-error">${escapeHtml(error.message)}</p></div>`;
+  }
+}
+
+async function updateStaffCard(card, action) {
+  const id = card.dataset.staffId;
+  if (action === "delete") {
+    if (!window.confirm("Delete this staff account permanently?")) return;
+    await request(`/api/admin/staff/${encodeURIComponent(id)}`, { method: "DELETE" });
+  } else {
+    const body = { role: card.querySelector("[data-staff-role]").value };
+    const password = card.querySelector("[data-staff-password]").value;
+    if (password) body.password = password;
+    if (action === "mfa") body.resetMfa = true;
+    if (action === "block") body.blocked = !card.querySelector(".admin-staff-card-head span").classList.contains("is-blocked");
+    const payload = await request(`/api/admin/staff/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(body) });
+    showStaffSetup(payload.setup, payload.user);
+  }
+  await loadAdminStaff();
+}
+
 async function bootstrap() {
-  await ensureAdminSession();
+  const session = await ensureAdminSession();
   const [catalog, integrations, voucherResponse, publicConfig, orderResponse] = await Promise.all([
     request("/api/admin/catalog"),
-    request("/api/admin/integrations"),
+    canAdmin("integrations") ? request("/api/admin/integrations") : Promise.resolve({}),
     request("/api/admin/vouchers"),
     request("/api/public-config"),
-    request("/api/orders")
+    canAdmin("orders") ? request("/api/orders") : Promise.resolve({ orders: [] })
   ]);
   state.catalog = catalog;
   state.vouchers = voucherResponse.vouchers || [];
   state.integrations = integrations;
   state.orders = Array.isArray(orderResponse.orders) ? orderResponse.orders : [];
   renderAll();
-  renderIntegrations(integrations);
+  if (canAdmin("integrations")) renderIntegrations(integrations);
   renderAdminOrders();
   renderReports();
   restoreLiveTestChecklist();
@@ -2671,12 +2775,42 @@ async function bootstrap() {
     // cannot initialize. The Storefront section still exposes the saved address.
   });
   const requestedSection = window.location.hash.slice(1);
+  const preferredSection = session?.role === "orders_manager" ? "orders" : (session?.role === "storefront_manager" ? "store" : "dashboard");
   const initialSection = requestedSection.startsWith("docs-")
     ? "documentation"
-    : (sectionHeadings[requestedSection] ? requestedSection : "dashboard");
+    : (sectionHeadings[requestedSection] && sectionAllowed(requestedSection) ? requestedSection : preferredSection);
   showAdminSection(initialSection);
   setStatus("Operations console ready.");
 }
+
+adminStaffForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = adminStaffForm.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    const payload = await request("/api/admin/staff", { method: "POST", body: JSON.stringify({
+      name: document.getElementById("staffNameInput").value.trim(),
+      email: document.getElementById("staffEmailInput").value.trim(),
+      role: document.getElementById("staffRoleInput").value,
+      password: document.getElementById("staffPasswordInput").value
+    }) });
+    showStaffSetup(payload.setup, payload.user);
+    adminStaffForm.reset();
+    await loadAdminStaff();
+    setStatus("Staff account created. Complete its two-step setup before sharing access.");
+  } catch (error) { setStatus(error.message); }
+  finally { submit.disabled = false; }
+});
+
+adminStaffList?.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-staff-action]");
+  const card = button?.closest("[data-staff-id]");
+  if (!button || !card) return;
+  button.disabled = true;
+  try { await updateStaffCard(card, button.dataset.staffAction); setStatus("Staff access updated."); }
+  catch (error) { setStatus(error.message); }
+  finally { button.disabled = false; }
+});
 
 saveCatalogButton.addEventListener("click", saveCatalog);
 saveIntegrationsButton.addEventListener("click", saveIntegrations);
