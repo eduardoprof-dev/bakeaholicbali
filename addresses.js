@@ -220,6 +220,21 @@ async function bootstrap() {
     }
   });
 
+  try {
+    const sessionPayload = await accountCommon.request(appMode, "/api/session");
+    state.draft.customer = state.draft.customer || {};
+    state.draft.customer.phone = sessionPayload.customer?.phone || sessionPayload.session?.phone || "";
+    state.draft.customer.phoneVerifiedAt = sessionPayload.customer?.verifiedAt || sessionPayload.session?.verifiedAt || "";
+    if (sessionPayload.profile?.name) state.draft.customer.name = sessionPayload.profile.name;
+    if (sessionPayload.profile?.email) state.draft.customer.email = sessionPayload.profile.email;
+    accountCommon.saveDraft(draftKey, state.draft);
+  } catch (error) {
+    if (error?.status === 401) {
+      state.draft.customer = state.draft.customer || {};
+      state.draft.customer.phoneVerifiedAt = "";
+    }
+  }
+
   if (!state.draft?.customer?.phoneVerifiedAt || !state.draft?.customer?.phone) {
     addressesApp.innerHTML = `
       <section class="empty-state-card account-empty-state">

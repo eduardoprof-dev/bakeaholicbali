@@ -44,6 +44,7 @@
           <button class="admin-nav-button" type="button" data-admin-target="reports">Reports</button>
           <button class="admin-nav-button" type="button" data-admin-target="operations-settings">Operations settings</button>
           <button class="admin-nav-button" type="button" data-admin-target="integrations">Integrations</button>
+          <button class="admin-nav-button" type="button" data-admin-target="staff">Staff &amp; access</button>
           <button class="admin-nav-button" type="button" data-admin-target="documentation">Documentation</button>
         </nav>
         <div class="admin-sidebar-links">
@@ -78,6 +79,7 @@
               <option value="terms-page">Pages · Terms</option>
               <option value="privacy-page">Pages · Privacy</option>
               <option value="integrations">Integrations</option>
+              <option value="staff">Staff &amp; access</option>
               <option value="documentation">Documentation</option>
             </select>
             <span id="storefrontPublishState" class="admin-publish-state" hidden><span></span>All changes published</span>
@@ -90,11 +92,19 @@
           <form id="adminLoginForm" class="admin-login-form">
             <div>
               <h2>Admin Login</h2>
-              <p class="helper-text">Enter the admin password to manage catalog, orders, and integrations.</p>
+              <p class="helper-text">Staff enter their email, password, and six-digit authenticator code. The owner may use the existing owner password without email.</p>
             </div>
+            <label class="admin-field" for="adminEmailInput">
+              <span>Email <small>(staff accounts)</small></span>
+              <input id="adminEmailInput" type="email" autocomplete="username" placeholder="staff@bakeaholicbali.com" />
+            </label>
             <label class="admin-field" for="adminPasswordInput">
               <span>Password</span>
               <input id="adminPasswordInput" type="password" autocomplete="current-password" />
+            </label>
+            <label class="admin-field" for="adminOtpInput">
+              <span>Authenticator code <small>(staff accounts)</small></span>
+              <input id="adminOtpInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" />
             </label>
             <button class="admin-button" id="adminLoginButton" type="submit">Log in</button>
           </form>
@@ -636,6 +646,31 @@
               </div>
               <pre class="helper-text" id="whatsappTemplateTestResults" hidden></pre>
             </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="staff" hidden>
+          <div class="admin-section-head">
+            <div>
+              <span class="admin-card-kicker">Owner controls</span>
+              <h2>Staff &amp; access</h2>
+              <p class="helper-text">Create role-limited accounts, block access immediately, reset passwords or two-step authentication, and remove former staff.</p>
+            </div>
+          </div>
+          <div class="admin-staff-layout">
+            <form id="adminStaffForm" class="admin-card admin-staff-form">
+              <h3>Add staff member</h3>
+              <label class="admin-field"><span>Name</span><input id="staffNameInput" required autocomplete="name" /></label>
+              <label class="admin-field"><span>Email</span><input id="staffEmailInput" type="email" required autocomplete="email" /></label>
+              <label class="admin-field"><span>Role</span><select id="staffRoleInput"><option value="storefront_manager">Storefront manager</option><option value="orders_manager">Orders manager</option></select></label>
+              <label class="admin-field"><span>Temporary password</span><input id="staffPasswordInput" type="password" minlength="10" required autocomplete="new-password" /></label>
+              <button class="admin-button" type="submit">Add staff &amp; set up 2-step authentication</button>
+              <p class="helper-text">Storefront managers can edit products, prices, stock, promotions, images and storefront pages. Orders managers can access orders, reports, invoices, delivery and cancellations. Neither role can access integrations, operations settings or staff controls.</p>
+            </form>
+            <div>
+              <div id="staffSetupResult" class="admin-card admin-staff-setup" hidden></div>
+              <div id="adminStaffList" class="admin-staff-list"><p class="helper-text">Loading staff…</p></div>
+            </div>
           </div>
         </section>
 

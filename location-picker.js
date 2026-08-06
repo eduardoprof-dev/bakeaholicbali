@@ -149,6 +149,11 @@
     const notesToggle = root.querySelector("#locationNotesToggle");
     const currentLocationButton = root.querySelector("#useCurrentLocationButton");
     const saveButton = root.querySelector("#saveLocationButton");
+    const useMapCenterButton = document.createElement("button");
+    useMapCenterButton.type = "button";
+    useMapCenterButton.className = "secondary-button location-map-center-button";
+    useMapCenterButton.textContent = "Use pin at map center";
+    saveButton?.parentElement?.insertBefore(useMapCenterButton, saveButton);
 
     let map = null;
     let mapApi = null;
@@ -252,7 +257,9 @@
         zoom: 13,
         mapTypeControl: false,
         streetViewControl: false,
-        fullscreenControl: false
+        fullscreenControl: false,
+        gestureHandling: "greedy",
+        clickableIcons: false
       });
 
       new mapsApi.Marker({
@@ -516,6 +523,18 @@
           currentLocationButton.textContent = "Use Current Location";
         }
       );
+    });
+
+    useMapCenterButton.addEventListener("click", async () => {
+      useMapCenterButton.disabled = true;
+      useMapCenterButton.textContent = "Confirming pin...";
+      try {
+        const center = currentMapCenter();
+        await chooseLatLng(Number(center.lat), Number(center.lng));
+      } finally {
+        useMapCenterButton.disabled = false;
+        useMapCenterButton.textContent = "Use pin at map center";
+      }
     });
 
     saveButton.addEventListener("click", () => {

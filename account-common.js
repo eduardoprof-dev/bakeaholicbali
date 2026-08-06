@@ -9,6 +9,7 @@ window.BakeaholicAccountCommon = (() => {
 
   function request(appMode, path, options = {}) {
     return fetch(path, {
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         "X-App-Mode": appMode
@@ -17,7 +18,9 @@ window.BakeaholicAccountCommon = (() => {
     }).then(async (response) => {
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error || `Request failed: ${response.status}`);
+        const error = new Error(payload.error || `Request failed: ${response.status}`);
+        error.status = response.status;
+        throw error;
       }
       return response.json();
     });

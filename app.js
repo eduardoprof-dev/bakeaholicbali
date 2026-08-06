@@ -262,6 +262,12 @@ function applyCustomerProfile(profile) {
   state.draft.customer.lastName = profile.lastName || "";
   state.draft.customer.email = profile.email || "";
   state.draft.customer.name = profile.name || customerFullName();
+  const addresses = Array.isArray(profile.addresses) ? profile.addresses : [];
+  const defaultAddress = addresses.find((address) => address.id === profile.defaultAddressId) || addresses[0];
+  if (defaultAddress?.formattedAddress) {
+    state.draft.destination = { ...defaultAddress, locationConfirmed: true };
+    state.draft.customer.address = defaultAddress.formattedAddress;
+  }
 }
 
 function createCartSessionId() {
@@ -344,6 +350,7 @@ function request(path, options = {}) {
   }
   return fetch(`${requestUrl.pathname}${requestUrl.search}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       "X-App-Mode": appMode,
@@ -353,7 +360,9 @@ function request(path, options = {}) {
   }).then(async (response) => {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload.error || `Request failed: ${response.status}`);
+      const error = new Error(payload.error || `Request failed: ${response.status}`);
+      error.status = response.status;
+      throw error;
     }
     rememberCartSession(payload);
     return payload;
@@ -372,14 +381,16 @@ async function syncSessionProfile() {
     applyCustomerProfile(payload.profile);
     persistDraft();
     return true;
-  } catch (_error) {
-    state.draft.customer.phone = "";
-    state.draft.customer.phoneVerifiedAt = "";
-    state.draft.customer.firstName = "";
-    state.draft.customer.lastName = "";
-    state.draft.customer.email = "";
-    state.draft.customer.name = "";
-    persistDraft();
+  } catch (error) {
+    if (error?.status === 401) {
+      state.draft.customer.phone = "";
+      state.draft.customer.phoneVerifiedAt = "";
+      state.draft.customer.firstName = "";
+      state.draft.customer.lastName = "";
+      state.draft.customer.email = "";
+      state.draft.customer.name = "";
+      persistDraft();
+    }
     return false;
   }
 }
@@ -1571,11 +1582,9 @@ async function bootstrap() {
   renderOrderBanner();
   await refreshCart();
 
-  if (state.draft.customer.phoneVerifiedAt) {
-    await syncSessionProfile();
-    renderAccountMenu();
-    hydrateDetailsForm();
-  }
+  await syncSessionProfile();
+  renderAccountMenu();
+  hydrateDetailsForm();
 
   if (isAdminPreview) {
     window.parent.postMessage({ type: "bakeaholic:preview-ready" }, window.location.origin);

@@ -56,6 +56,7 @@ const catalogPath = path.join(dataDir, "catalog.json");
 const uploadsDir = path.join(dataDir, "uploads");
 fs.mkdirSync(uploadsDir, { recursive: true });
 const integrationsPath = path.join(dataDir, "integrations.json");
+const adminUsersPath = path.join(dataDir, "admin-users.json");
 
 const DEFAULT_BRAND_STORY = {
   kicker: "Bakeaholic Bali",
@@ -2660,6 +2661,11 @@ const SESSION_SECRET = process.env.SESSION_SECRET
   || process.env.XENDIT_SECRET_KEY
   || crypto.randomBytes(32).toString("hex");
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
+const ADMIN_ROLES = Object.freeze({
+  owner: ["storefront", "orders", "reports", "operations", "integrations", "staff"],
+  storefront_manager: ["storefront"],
+  orders_manager: ["orders", "reports"]
+});
 const rateLimitBuckets = new Map();
 const MAX_RATE_LIMIT_BUCKETS = 10000;
 let lastRateLimitSweepAt = 0;
@@ -2932,6 +2938,9 @@ function parseCookies(request) {
 function serializeCookie(name, value, options = {}) {
   const parts = [`${name}=${encodeURIComponent(value)}`];
   parts.push(`Path=${options.path || "/"}`);
+  if (options.domain) {
+    parts.push(`Domain=${options.domain}`);
+  }
   parts.push(`SameSite=${options.sameSite || "Lax"}`);
   if (options.maxAge != null) {
     parts.push(`Max-Age=${Math.max(0, Math.floor(options.maxAge))}`);
@@ -2959,6 +2968,13 @@ function isSecureRequest(request) {
   return String(request.headers["x-forwarded-proto"] || "").toLowerCase() === "https";
 }
 
+function productionCookieDomain(request) {
+  const hostname = String(request.headers.host || "").split(":")[0].toLowerCase();
+  return hostname === "bakeaholicbali.com" || hostname.endsWith(".bakeaholicbali.com")
+    ? ".bakeaholicbali.com"
+    : "";
+}
+
 function setSignedSessionCookie(response, request, cookieName, payload, maxAgeSeconds) {
   const token = createSignedSession({
     ...payload,
@@ -2966,14 +2982,16 @@ function setSignedSessionCookie(response, request, cookieName, payload, maxAgeSe
   });
   appendSetCookie(response, serializeCookie(cookieName, token, {
     maxAge: maxAgeSeconds,
-    secure: isSecureRequest(request)
+    secure: isSecureRequest(request),
+    domain: productionCookieDomain(request)
   }));
 }
 
 function clearSessionCookie(response, request, cookieName) {
   appendSetCookie(response, serializeCookie(cookieName, "", {
     maxAge: 0,
-    secure: isSecureRequest(request)
+    secure: isSecureRequest(request),
+    domain: productionCookieDomain(request)
   }));
 }
 
@@ -2992,7 +3010,8 @@ function ensureCartSession(request, response) {
   appendSetCookie(response, serializeCookie(CART_SESSION_COOKIE, sessionId, {
     maxAge: SESSION_TTL_SECONDS,
     secure: isSecureRequest(request),
-    httpOnly: false
+    httpOnly: false,
+    domain: productionCookieDomain(request)
   }));
   return sessionId;
 }
@@ -3030,6 +3049,93 @@ function currentAdminSession(request) {
     return null;
   }
   return payload;
+}
+
+function adminPermissions(role = "owner") {
+  return ADMIN_ROLES[role] || [];
+}
+
+function publicAdminSession(session) {
+  const staffRole = session.staffRole || "owner";
+  return {
+    role: staffRole,
+    email: session.email || "owner",
+    name: session.name || "Owner",
+    permissions: adminPermissions(staffRole)
+  };
+}
+
+function requireAdminPermission(request, response, permission) {
+  const session = requireAdminSession(request, response);
+  if (!session) return null;
+  if (!adminPermissions(session.staffRole || "owner").includes(permission)) {
+    sendJson(response, 403, { error: "Your staff role does not allow this action" });
+    return null;
+  }
+  return session;
+}
+
+function normalizeAdminEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function loadAdminUsers() {
+  const payload = readJsonFileSafely(adminUsersPath, { users: [] });
+  return Array.isArray(payload.users) ? payload.users : [];
+}
+
+function saveAdminUsers(users) {
+  writeJsonFile(adminUsersPath, { users });
+  return users;
+}
+
+function hashAdminPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  const hash = crypto.scryptSync(String(password), salt, 64).toString("hex");
+  return { salt, hash };
+}
+
+function verifyAdminPassword(password, user) {
+  if (!user?.passwordSalt || !user?.passwordHash) return false;
+  const candidate = hashAdminPassword(password, user.passwordSalt).hash;
+  return timingSafeEqualString(candidate, user.passwordHash);
+}
+
+const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+function base32Encode(buffer) {
+  let bits = "";
+  for (const byte of buffer) bits += byte.toString(2).padStart(8, "0");
+  let result = "";
+  for (let index = 0; index < bits.length; index += 5) {
+    result += BASE32_ALPHABET[parseInt(bits.slice(index, index + 5).padEnd(5, "0"), 2)];
+  }
+  return result;
+}
+
+function base32Decode(value) {
+  const cleaned = String(value || "").toUpperCase().replace(/[^A-Z2-7]/g, "");
+  let bits = "";
+  for (const character of cleaned) bits += BASE32_ALPHABET.indexOf(character).toString(2).padStart(5, "0");
+  const bytes = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) bytes.push(parseInt(bits.slice(index, index + 8), 2));
+  return Buffer.from(bytes);
+}
+
+function totpCode(secret, timestamp = Date.now()) {
+  const counter = Math.floor(timestamp / 30000);
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeBigUInt64BE(BigInt(counter));
+  const digest = crypto.createHmac("sha1", base32Decode(secret)).update(counterBuffer).digest();
+  const offset = digest[digest.length - 1] & 15;
+  return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1000000).padStart(6, "0");
+}
+
+function verifyTotp(secret, code) {
+  const normalized = String(code || "").replace(/\D/g, "");
+  return normalized.length === 6 && [-30000, 0, 30000].some((offset) => timingSafeEqualString(totpCode(secret, Date.now() + offset), normalized));
+}
+
+function publicAdminUser(user) {
+  return { id: user.id, email: user.email, name: user.name, role: user.role, blocked: Boolean(user.blocked), mfaEnabled: Boolean(user.totpSecret), createdAt: user.createdAt };
 }
 
 function requireCustomerSession(request, response) {
@@ -7006,11 +7112,14 @@ function handleApi(requestUrl, request, response) {
       sendJson(response, 401, { error: "Not logged in" });
       return true;
     }
+    const customer = {
+      phone: session.phone,
+      verifiedAt: session.verifiedAt
+    };
     sendJson(response, 200, {
-      session: {
-        phone: session.phone,
-        verifiedAt: session.verifiedAt
-      },
+      authenticated: true,
+      customer,
+      session: customer,
       profile: getCustomerProfileFromSession(session)
     });
     return true;
@@ -7027,7 +7136,7 @@ function handleApi(requestUrl, request, response) {
     if (!session) {
       return true;
     }
-    sendJson(response, 200, { authenticated: true, session });
+    sendJson(response, 200, { authenticated: true, session: publicAdminSession(session) });
     return true;
   }
 
@@ -7041,15 +7150,30 @@ function handleApi(requestUrl, request, response) {
     parseBody(request)
       .then((body) => {
         const password = String(body.password || "");
-        if (!ADMIN_PASSWORD || !timingSafeEqualString(password, ADMIN_PASSWORD)) {
-          sendJson(response, 401, { error: "Incorrect admin password" });
-          return;
+        const email = normalizeAdminEmail(body.email);
+        let sessionPayload;
+        if (email) {
+          const user = loadAdminUsers().find((entry) => entry.email === email);
+          if (!user || user.blocked || !verifyAdminPassword(password, user)) {
+            sendJson(response, 401, { error: user?.blocked ? "This staff account is blocked" : "Incorrect email or password" });
+            return;
+          }
+          if (!verifyTotp(user.totpSecret, body.otp)) {
+            sendJson(response, 401, { error: "Enter the current 6-digit authenticator code" });
+            return;
+          }
+          sessionPayload = { role: "admin", staffRole: user.role, staffId: user.id, email: user.email, name: user.name, createdAt: new Date().toISOString() };
+        } else {
+          if (!ADMIN_PASSWORD || !timingSafeEqualString(password, ADMIN_PASSWORD)) {
+            sendJson(response, 401, { error: "Incorrect admin password" });
+            return;
+          }
+          sessionPayload = { role: "admin", staffRole: "owner", email: "owner", name: "Owner", createdAt: new Date().toISOString() };
         }
         setSignedSessionCookie(response, request, ADMIN_SESSION_COOKIE, {
-          role: "admin",
-          createdAt: new Date().toISOString()
+          ...sessionPayload
         }, ADMIN_SESSION_TTL_SECONDS);
-        sendJson(response, 200, { ok: true });
+        sendJson(response, 200, { ok: true, session: publicAdminSession(sessionPayload) });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
@@ -7058,6 +7182,67 @@ function handleApi(requestUrl, request, response) {
   if (request.method === "POST" && pathname === "/api/admin/logout") {
     clearSessionCookie(response, request, ADMIN_SESSION_COOKIE);
     sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/staff") {
+    const session = requireAdminPermission(request, response, "staff");
+    if (!session) return true;
+    sendJson(response, 200, { users: loadAdminUsers().map(publicAdminUser) });
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/staff") {
+    const session = requireAdminPermission(request, response, "staff");
+    if (!session) return true;
+    parseBody(request).then((body) => {
+      const email = normalizeAdminEmail(body.email);
+      const name = String(body.name || "").trim();
+      const password = String(body.password || "");
+      const role = String(body.role || "");
+      if (!email.includes("@") || !name) throw new Error("Name and a valid email are required");
+      if (!ADMIN_ROLES[role] || role === "owner") throw new Error("Choose Storefront Manager or Orders Manager");
+      if (password.length < 10) throw new Error("Temporary password must be at least 10 characters");
+      const users = loadAdminUsers();
+      if (users.some((entry) => entry.email === email)) throw new Error("A staff account already uses this email");
+      const passwordRecord = hashAdminPassword(password);
+      const totpSecret = base32Encode(crypto.randomBytes(20));
+      const user = { id: crypto.randomUUID(), email, name, role, blocked: false, passwordSalt: passwordRecord.salt, passwordHash: passwordRecord.hash, totpSecret, createdAt: new Date().toISOString() };
+      users.push(user);
+      saveAdminUsers(users);
+      const issuer = encodeURIComponent("Bakeaholic Admin");
+      sendJson(response, 201, { user: publicAdminUser(user), setup: { secret: totpSecret, otpauthUrl: `otpauth://totp/${issuer}:${encodeURIComponent(email)}?secret=${totpSecret}&issuer=${issuer}` } });
+    }).catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if ((request.method === "PUT" || request.method === "DELETE") && pathname.startsWith("/api/admin/staff/")) {
+    const session = requireAdminPermission(request, response, "staff");
+    if (!session) return true;
+    const staffId = decodeURIComponent(pathname.replace("/api/admin/staff/", ""));
+    const users = loadAdminUsers();
+    const index = users.findIndex((entry) => entry.id === staffId);
+    if (index < 0) { sendJson(response, 404, { error: "Staff account not found" }); return true; }
+    if (request.method === "DELETE") {
+      users.splice(index, 1);
+      saveAdminUsers(users);
+      sendJson(response, 200, { ok: true });
+      return true;
+    }
+    parseBody(request).then((body) => {
+      const role = body.role == null ? users[index].role : String(body.role);
+      if (!ADMIN_ROLES[role] || role === "owner") throw new Error("Invalid staff role");
+      users[index] = { ...users[index], name: String(body.name ?? users[index].name).trim(), role, blocked: body.blocked == null ? users[index].blocked : Boolean(body.blocked) };
+      if (String(body.password || "")) {
+        if (String(body.password).length < 10) throw new Error("Password must be at least 10 characters");
+        const passwordRecord = hashAdminPassword(body.password);
+        users[index].passwordSalt = passwordRecord.salt;
+        users[index].passwordHash = passwordRecord.hash;
+      }
+      if (body.resetMfa) users[index].totpSecret = base32Encode(crypto.randomBytes(20));
+      saveAdminUsers(users);
+      sendJson(response, 200, { user: publicAdminUser(users[index]), setup: body.resetMfa ? { secret: users[index].totpSecret } : undefined });
+    }).catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
   }
 
@@ -7141,7 +7326,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/orders") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "orders");
     if (!session) {
       return true;
     }
@@ -7156,7 +7341,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/approve-delivery")) {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "orders");
     if (!session) {
       return true;
     }
@@ -7168,7 +7353,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/reconcile-payment")) {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "orders");
     if (!session) {
       return true;
     }
@@ -7185,7 +7370,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/rebook-delivery")) {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "orders");
     if (!session) {
       return true;
     }
@@ -7197,7 +7382,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/cancel-delivery")) {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "orders");
     if (!session) {
       return true;
     }
@@ -7209,7 +7394,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/cancel-order")) {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "orders");
     if (!session) {
       return true;
     }
@@ -7221,7 +7406,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/sync-delivery")) {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "orders");
     if (!session) {
       return true;
     }
@@ -7267,7 +7452,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/admin/integrations") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "integrations");
     if (!session) {
       return true;
     }
@@ -7290,7 +7475,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/admin/biteship-webhook-log") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "integrations");
     if (!session) {
       return true;
     }
@@ -7301,7 +7486,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/admin/whatsapp-health") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "integrations");
     if (!session) {
       return true;
     }
@@ -7312,7 +7497,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/admin/whatsapp-template-tests") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "integrations");
     if (!session) {
       return true;
     }
@@ -7323,7 +7508,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/admin/whatsapp-template-schemas") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "integrations");
     if (!session) {
       return true;
     }
@@ -7334,7 +7519,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "GET" && pathname === "/api/admin/xendit-health") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "integrations");
     if (!session) {
       return true;
     }
@@ -7356,7 +7541,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "PUT" && pathname === "/api/admin/catalog") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "storefront");
     if (!session) {
       return true;
     }
@@ -7374,7 +7559,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "POST" && pathname === "/api/admin/upload-image") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "storefront");
     if (!session) return true;
     parseRawBody(request, 9e6).then((raw) => {
       const body = JSON.parse(raw || "{}");
@@ -7394,7 +7579,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "PUT" && pathname === "/api/admin/vouchers") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "storefront");
     if (!session) {
       return true;
     }
@@ -7408,7 +7593,7 @@ function handleApi(requestUrl, request, response) {
   }
 
   if (request.method === "PUT" && pathname === "/api/admin/integrations") {
-    const session = requireAdminSession(request, response);
+    const session = requireAdminPermission(request, response, "integrations");
     if (!session) {
       return true;
     }
@@ -7965,6 +8150,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  adminPermissions,
   adminWhatsappParameters,
   adminWhatsappNumbers,
   applyXenditQrCodeStatusToOrder,
@@ -8007,5 +8193,12 @@ module.exports = {
   xenditPaymentSessionIds,
   xenditCallbackReferenceIds,
   xenditRefundRequestBody,
-  xenditKeyMode
+  xenditKeyMode,
+  hashAdminPassword,
+  verifyAdminPassword,
+  base32Encode,
+  totpCode,
+  verifyTotp,
+  productionCookieDomain,
+  serializeCookie
 };
