@@ -1,45 +1,61 @@
 # Bakeaholic launch audit
 
-Last reviewed: 5 August 2026 (Asia/Makassar)
+Last reviewed: 7 August 2026 (Asia/Makassar)
 
-## Verified
+## Launch decision
 
-- Automated release checks: 42/42 passing.
+The storefront is ready for launch. Payment, cancellation, refund, delivery, WhatsApp, admin access and customer-session workflows have completed their recorded live tests. No further paid transaction is required before launch.
+
+## Verified release
+
+- Automated release checks: **49/49 passing** on 7 August 2026.
 - Card, QRIS and Virtual Account creation workflows passed the recorded live tests.
-- Customer and three-recipient admin WhatsApp flows passed, with idempotent quick-reply handling.
-- Biteship booking, pickup, tracking and delivery updates passed the recorded live tests.
-- The public storefront and admin route are both proxied by Cloudflare. The public route returned Cloudflare headers and the admin route returned a Cloudflare managed challenge.
-- A Railway persistent volume is mounted at `/app/runtime-data`.
-- Current Git branch before this release: `agent/fix-card-stale-session` at `507d1e4519f27a6a6c79f95fe05da3ae430e71e0`.
-- Current Railway deployment before this release: `35ec5cfb-2a76-48d1-9c47-4d7900d1ef03`.
+- The successful card order completed the full delivery lifecycle.
+- Customer and three-recipient admin WhatsApp flows passed, including duplicate suppression and idempotent quick replies.
+- Biteship booking, retry, pickup, tracking and delivery updates passed the recorded live tests.
+- Cancellation and refund initiation passed. Refund completion remains tied to Xendit's final webhook rather than an optimistic local status.
+- Named staff accounts, scoped Storefront Manager and Orders Manager roles, revocation, staff TOTP, and owner authenticator protection are implemented.
+- The public storefront and admin route are proxied by Cloudflare; unauthenticated admin API access is rejected.
+- The production Railway volume is mounted at `/app/runtime-data` and reports Ready.
+- GitHub release tag `v1.0.0`, `main`, and the deployed Railway commit all resolve to `9b60dd6bb4d188225f0740b6e9ffa7202f8ba78d`.
 
-## Corrected in this release
+## Production configuration note
 
-- WhatsApp Approve and Cancel quick replies resolve the exact order for every configured admin recipient.
-- Repeated admin actions are rejected by saved order state.
-- Refund creation sends one admin update rather than one update per callback/retry.
-- A Xendit accepted/processed refund remains visibly pending until the provider reports a final result; it no longer sends a premature customer “refund completed” message.
-- Empty voucher storage remains empty instead of silently restoring legacy sample vouchers.
-- Admin can delete all discounts in one operation.
-- Invoice printing uses A5; report printing remains A4.
-- CSV, PDF and on-screen reports include order and product-level detail.
+Railway still contains the fallback label `XENDIT_ENVIRONMENT=test`. Production first reads the persisted admin integration settings from `/app/runtime-data/integrations.json`; that setting is Live and uses the production key, as demonstrated by the completed live payments. Changing the fallback immediately before launch would restart a working service without improving the effective configuration. Reconcile the Railway label during a planned maintenance window after launch, then run a non-destructive configuration diagnostic.
 
-## Launch blockers requiring an operator
+## Data protection and recovery
 
-1. **Independent data backup is not verified.** The Railway volume is durable storage, not a backup. Export `/app/runtime-data`, store it outside Railway, and perform one restore test before marking recovery verified.
-2. **Production Xendit setting must be reconciled.** Railway currently reports `XENDIT_ENVIRONMENT=test`, while saved integration settings and successful live payments indicate live operation. Confirm the admin integration page says Live, then change the Railway variable to `live` so both sources agree.
-3. **Named admin access is not implemented.** The current admin uses one shared password/session model. Do not share the password with a new administrator. Named accounts with roles and revocation should be a post-launch security upgrade.
-4. **Discount cleanup needs an authenticated click.** After deploying, open Admin → Discounts → Delete all discounts, then create only the launch vouchers required.
-5. Inventory and pricing require the owner's final commercial review.
+- Railway persistent storage is healthy, and an independent private backup was verified on 7 August 2026.
+- The backup and restore runbook is in `BACKUP_RECOVERY.md`.
+- Verified archive: `/Users/edu/Documents/Codex/backups/bakeaholic/bakeaholic-runtime-2026-08-07.tar.gz`
+- Archive SHA-256: `a2129916c69c8729d61638bf76dac40afe4eff73be9461c6a092bd597165088e`
+- All JSON files parsed successfully, 139 live orders were present, and the restored copy booted in isolation with storefront `200` and unauthenticated admin session `401`.
+- The temporary Railway SSH key was removed after export; Railway reported zero registered keys after cleanup.
+
+## Owner launch checks
+
+These are business decisions, not engineering blockers:
+
+- Confirm launch inventory, stock and prices.
+- Remove unwanted historical vouchers and create only the promotions intended for launch.
+- Confirm the final staff-account list and disable any account that should not have launch access.
 
 ## Release and rollback record
 
-Complete these fields after the exact commit is deployed:
+- Release tag: `v1.0.0`
+- Release commit: `9b60dd6bb4d188225f0740b6e9ffa7202f8ba78d`
+- Railway deployment ID: `6b9fc35c-3b24-487d-b923-700b51663644`
+- Railway deployment status: `SUCCESS` (7 August 2026, 09:40 Asia/Makassar)
+- Previous stable commit: `76d722a74a23922c9d57a9ed0af1596f25fffe67`
+- Previous Railway deployment ID: `36e98ba6-19ee-49c8-aef6-1d476618d077` (Railway has marked it removed)
+- Rollback method: redeploy the previous stable Git commit; do not delete tag `v1.0.0`.
+- Smoke-test result: storefront and legal pages return successfully through Cloudflare; unauthenticated admin session access returns `401`; automated checks pass 49/49.
 
-- Release tag: `v1.0.0-rc.1`
-- Release commit: `PENDING`
-- Railway deployment ID: `PENDING`
-- Previous rollback deployment: `35ec5cfb-2a76-48d1-9c47-4d7900d1ef03`
-- Smoke-test result: `PENDING`
+## Release freeze
 
-Do not remove the previous successful Railway deployment until the 24–48 hour launch observation window is complete.
+From this point until the 24–48 hour observation window completes:
+
+- Do not change payment, webhook, WhatsApp, Biteship or session logic unless responding to a confirmed production incident.
+- Do not run additional paid tests solely to reconfirm already-passed paths.
+- Permit only catalog, inventory, price, voucher and staff-access changes required for normal operations.
+- Record every emergency change with its Git commit and Railway deployment ID.

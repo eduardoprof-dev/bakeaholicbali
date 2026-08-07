@@ -23,7 +23,7 @@ At minimum:
 
 - `HOST=0.0.0.0`
 - `PORT=4173`
-- `DATA_DIR=/app/data`
+- `DATA_DIR=/app/runtime-data`
 - `PUBLIC_SITE_URL=https://bakeaholicbali.com`
 - `GOOGLE_MAPS_API_KEY=...`
 - `BITESHIP_API_KEY=...`
@@ -101,6 +101,10 @@ The Railway volume is persistent storage, not a backup. Export or snapshot `/app
 9. After the public URL is live, set your Xendit invoice callback URL to:
 
 `https://your-domain/api/xendit/invoice-callback`
+
+## Backup and recovery
+
+Follow `BACKUP_RECOVERY.md` before launch and on the documented schedule. A Railway volume is durable application storage, not an independent backup.
 
 ## Recommended production follow-up
 
