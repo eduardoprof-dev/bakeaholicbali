@@ -43,6 +43,16 @@ const adminLoginButton = document.getElementById("adminLoginButton");
 const adminStaffForm = document.getElementById("adminStaffForm");
 const adminStaffList = document.getElementById("adminStaffList");
 const staffSetupResult = document.getElementById("staffSetupResult");
+const ownerSecurityStatus = document.getElementById("ownerSecurityStatus");
+const ownerSecurityEnrollment = document.getElementById("ownerSecurityEnrollment");
+const ownerSecurityEmail = document.getElementById("ownerSecurityEmail");
+const startOwnerMfaButton = document.getElementById("startOwnerMfaButton");
+const ownerSecurityConfirm = document.getElementById("ownerSecurityConfirm");
+const ownerMfaSecret = document.getElementById("ownerMfaSecret");
+const ownerMfaOpenLink = document.getElementById("ownerMfaOpenLink");
+const ownerMfaCode = document.getElementById("ownerMfaCode");
+const confirmOwnerMfaButton = document.getElementById("confirmOwnerMfaButton");
+const ownerRecoveryCodes = document.getElementById("ownerRecoveryCodes");
 const categoryList = document.getElementById("categoryList");
 const productList = document.getElementById("productList");
 const adminOrderList = document.getElementById("adminOrderList");
@@ -2734,6 +2744,56 @@ async function loadAdminStaff() {
   }
 }
 
+async function loadOwnerSecurity() {
+  if (!canAdmin("staff") || !ownerSecurityStatus) return;
+  try {
+    const payload = await request("/api/admin/owner-security");
+    ownerSecurityStatus.textContent = payload.configured ? "2-step active" : "Action required";
+    ownerSecurityStatus.className = `admin-staff-status ${payload.configured ? "is-active" : "is-blocked"}`;
+    if (ownerSecurityEmail && payload.email) ownerSecurityEmail.value = payload.email;
+    if (ownerSecurityEnrollment) ownerSecurityEnrollment.hidden = payload.configured;
+  } catch (error) {
+    ownerSecurityStatus.textContent = "Unavailable";
+    setStatus(error.message);
+  }
+}
+
+startOwnerMfaButton?.addEventListener("click", async () => {
+  startOwnerMfaButton.disabled = true;
+  try {
+    const payload = await request("/api/admin/owner-security/setup", { method: "POST", body: JSON.stringify({ email: ownerSecurityEmail.value.trim() }) });
+    ownerMfaSecret.textContent = payload.secret;
+    ownerMfaOpenLink.href = payload.otpauthUrl;
+    ownerSecurityConfirm.hidden = false;
+    ownerMfaCode.focus();
+    setStatus("Owner setup key created. Confirm the code before logging out.");
+  } catch (error) { setStatus(error.message); }
+  finally { startOwnerMfaButton.disabled = false; }
+});
+
+confirmOwnerMfaButton?.addEventListener("click", async () => {
+  confirmOwnerMfaButton.disabled = true;
+  try {
+    const payload = await request("/api/admin/owner-security/confirm", { method: "POST", body: JSON.stringify({ code: ownerMfaCode.value.trim() }) });
+    ownerSecurityConfirm.hidden = true;
+    ownerRecoveryCodes.hidden = false;
+    ownerRecoveryCodes.innerHTML = `<h3>Save these recovery codes now</h3><p>Each code works once if your authenticator is unavailable. They will not be shown again.</p><pre class="admin-recovery-code-list">${payload.recoveryCodes.map((code) => escapeHtml(code)).join("\n")}</pre><button class="admin-button secondary" type="button" data-copy-recovery>Copy recovery codes</button>`;
+    await loadOwnerSecurity();
+    setStatus("Owner two-step authentication is active. Future logins require the owner email and a code.");
+  } catch (error) { setStatus(error.message); }
+  finally { confirmOwnerMfaButton.disabled = false; }
+});
+
+ownerRecoveryCodes?.addEventListener("click", async (event) => {
+  if (!event.target.closest("[data-copy-recovery]")) return;
+  try {
+    await navigator.clipboard.writeText(ownerRecoveryCodes.querySelector("pre")?.textContent || "");
+    setStatus("Recovery codes copied. Store them in a password manager.");
+  } catch {
+    setStatus("Copy was blocked by this browser. Select the recovery codes and save them manually.");
+  }
+});
+
 async function updateStaffCard(card, action) {
   const id = card.dataset.staffId;
   if (action === "delete") {
@@ -2765,6 +2825,7 @@ async function bootstrap() {
   state.integrations = integrations;
   state.orders = Array.isArray(orderResponse.orders) ? orderResponse.orders : [];
   renderAll();
+  await loadOwnerSecurity();
   if (canAdmin("integrations")) renderIntegrations(integrations);
   renderAdminOrders();
   renderReports();

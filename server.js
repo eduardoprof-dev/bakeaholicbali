@@ -3173,6 +3173,32 @@ function verifyTotp(secret, code) {
   return normalized.length === 6 && [-30000, 0, 30000].some((offset) => timingSafeEqualString(totpCode(secret, Date.now() + offset), normalized));
 }
 
+function hashRecoveryCode(code) {
+  return crypto.createHash("sha256").update(String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "")).digest("hex");
+}
+
+function generateRecoveryCodes(count = 10) {
+  return Array.from({ length: count }, () => {
+    const value = crypto.randomBytes(6).toString("hex").toUpperCase();
+    return `${value.slice(0, 4)}-${value.slice(4, 8)}-${value.slice(8, 12)}`;
+  });
+}
+
+function consumeAdminSecondFactor(user, value, users) {
+  if (verifyTotp(user?.totpSecret, value)) return true;
+  const candidate = hashRecoveryCode(value);
+  const recoveryCodes = Array.isArray(user?.recoveryCodeHashes) ? user.recoveryCodeHashes : [];
+  const index = recoveryCodes.findIndex((hash) => timingSafeEqualString(hash, candidate));
+  if (index < 0) return false;
+  user.recoveryCodeHashes.splice(index, 1);
+  saveAdminUsers(users);
+  return true;
+}
+
+function ownerAdminUser(users = loadAdminUsers()) {
+  return users.find((entry) => entry.role === "owner") || null;
+}
+
 function publicAdminUser(user) {
   return { id: user.id, email: user.email, name: user.name, role: user.role, blocked: Boolean(user.blocked), mfaEnabled: Boolean(user.totpSecret), createdAt: user.createdAt };
 }
@@ -3187,7 +3213,7 @@ function requireCustomerSession(request, response) {
 }
 
 function requireAdminSession(request, response) {
-  if (!ADMIN_PASSWORD) {
+  if (!ADMIN_PASSWORD && !loadAdminUsers().length) {
     sendJson(response, 503, { error: "Admin access is disabled until ADMIN_PASSWORD is configured" });
     return null;
   }
@@ -7227,17 +7253,22 @@ function handleApi(requestUrl, request, response) {
         const email = normalizeAdminEmail(body.email);
         let sessionPayload;
         if (email) {
-          const user = loadAdminUsers().find((entry) => entry.email === email);
+          const users = loadAdminUsers();
+          const user = users.find((entry) => entry.email === email);
           if (!user || user.blocked || !verifyAdminPassword(password, user)) {
             sendJson(response, 401, { error: user?.blocked ? "This staff account is blocked" : "Incorrect email or password" });
             return;
           }
-          if (!verifyTotp(user.totpSecret, body.otp)) {
-            sendJson(response, 401, { error: "Enter the current 6-digit authenticator code" });
+          if (!consumeAdminSecondFactor(user, body.otp, users)) {
+            sendJson(response, 401, { error: "Enter the current 6-digit authenticator code or an unused recovery code" });
             return;
           }
           sessionPayload = { role: "admin", staffRole: user.role, staffId: user.id, email: user.email, name: user.name, createdAt: new Date().toISOString() };
         } else {
+          if (ownerAdminUser()?.totpSecret) {
+            sendJson(response, 401, { error: "Owner two-step authentication is active. Enter the owner email, password and authenticator code." });
+            return;
+          }
           if (!ADMIN_PASSWORD || !timingSafeEqualString(password, ADMIN_PASSWORD)) {
             sendJson(response, 401, { error: "Incorrect admin password" });
             return;
@@ -7262,7 +7293,67 @@ function handleApi(requestUrl, request, response) {
   if (request.method === "GET" && pathname === "/api/admin/staff") {
     const session = requireAdminPermission(request, response, "staff");
     if (!session) return true;
-    sendJson(response, 200, { users: loadAdminUsers().map(publicAdminUser) });
+    sendJson(response, 200, { users: loadAdminUsers().filter((entry) => entry.role !== "owner").map(publicAdminUser) });
+    return true;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/owner-security") {
+    const session = requireAdminPermission(request, response, "staff");
+    if (!session) return true;
+    const owner = ownerAdminUser();
+    sendJson(response, 200, { configured: Boolean(owner?.totpSecret), pending: Boolean(owner?.pendingTotpSecret), email: owner?.email || "" });
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/owner-security/setup") {
+    const session = requireAdminPermission(request, response, "staff");
+    if (!session) return true;
+    parseBody(request).then((body) => {
+      const email = normalizeAdminEmail(body.email);
+      if (!email.includes("@")) throw new Error("Enter a valid owner email");
+      if (!ADMIN_PASSWORD) throw new Error("The owner password is not configured on the server");
+      const users = loadAdminUsers();
+      const duplicate = users.find((entry) => entry.email === email && entry.role !== "owner");
+      if (duplicate) throw new Error("A staff account already uses this email");
+      const existing = ownerAdminUser(users);
+      const passwordRecord = hashAdminPassword(ADMIN_PASSWORD);
+      const pendingTotpSecret = base32Encode(crypto.randomBytes(20));
+      const owner = {
+        ...(existing || {}),
+        id: existing?.id || "owner",
+        email,
+        name: existing?.name || "Owner",
+        role: "owner",
+        blocked: false,
+        passwordSalt: passwordRecord.salt,
+        passwordHash: passwordRecord.hash,
+        pendingTotpSecret,
+        createdAt: existing?.createdAt || new Date().toISOString()
+      };
+      if (existing) users[users.indexOf(existing)] = owner; else users.push(owner);
+      saveAdminUsers(users);
+      const issuer = encodeURIComponent("Bakeaholic Admin");
+      sendJson(response, 200, { email, secret: pendingTotpSecret, otpauthUrl: `otpauth://totp/${issuer}:${encodeURIComponent(email)}?secret=${pendingTotpSecret}&issuer=${issuer}` });
+    }).catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/admin/owner-security/confirm") {
+    const session = requireAdminPermission(request, response, "staff");
+    if (!session) return true;
+    parseBody(request).then((body) => {
+      const users = loadAdminUsers();
+      const owner = ownerAdminUser(users);
+      if (!owner?.pendingTotpSecret) throw new Error("Start owner two-step setup first");
+      if (!verifyTotp(owner.pendingTotpSecret, body.code)) throw new Error("That authenticator code is incorrect or expired");
+      const recoveryCodes = generateRecoveryCodes();
+      owner.totpSecret = owner.pendingTotpSecret;
+      delete owner.pendingTotpSecret;
+      owner.recoveryCodeHashes = recoveryCodes.map(hashRecoveryCode);
+      owner.mfaConfirmedAt = new Date().toISOString();
+      saveAdminUsers(users);
+      sendJson(response, 200, { ok: true, recoveryCodes });
+    }).catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
   }
 
@@ -7297,6 +7388,7 @@ function handleApi(requestUrl, request, response) {
     const users = loadAdminUsers();
     const index = users.findIndex((entry) => entry.id === staffId);
     if (index < 0) { sendJson(response, 404, { error: "Staff account not found" }); return true; }
+    if (users[index].role === "owner") { sendJson(response, 403, { error: "The owner account cannot be changed through staff controls" }); return true; }
     if (request.method === "DELETE") {
       users.splice(index, 1);
       saveAdminUsers(users);
@@ -8272,6 +8364,8 @@ module.exports = {
   xenditRefundRequestBody,
   xenditKeyMode,
   hashAdminPassword,
+  hashRecoveryCode,
+  generateRecoveryCodes,
   verifyAdminPassword,
   base32Encode,
   totpCode,

@@ -45,6 +45,8 @@ const {
   xenditRefundRequestBody,
   xenditKeyMode,
   hashAdminPassword,
+  hashRecoveryCode,
+  generateRecoveryCodes,
   verifyAdminPassword,
   base32Encode,
   totpCode,
@@ -77,6 +79,17 @@ test("staff passwords are salted and verified securely", () => {
   const user = { passwordSalt: stored.salt, passwordHash: stored.hash };
   assert.equal(verifyAdminPassword("A-strong-password-2026", user), true);
   assert.equal(verifyAdminPassword("wrong-password", user), false);
+});
+
+test("owner recovery codes are random, normalized and stored only as hashes", () => {
+  const codes = generateRecoveryCodes();
+  assert.equal(codes.length, 10);
+  assert.equal(new Set(codes).size, 10);
+  for (const code of codes) {
+    assert.match(code, /^[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/);
+    assert.match(hashRecoveryCode(code), /^[a-f0-9]{64}$/);
+    assert.equal(hashRecoveryCode(code), hashRecoveryCode(code.toLowerCase().replaceAll("-", " ")));
+  }
 });
 
 test("staff two-step verification accepts only the current authenticator code", () => {

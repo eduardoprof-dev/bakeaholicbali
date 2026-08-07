@@ -92,7 +92,7 @@
           <form id="adminLoginForm" class="admin-login-form">
             <div>
               <h2>Admin Login</h2>
-              <p class="helper-text">Staff enter their email, password, and six-digit authenticator code. The owner may use the existing owner password without email.</p>
+              <p class="helper-text">Staff and the protected owner account enter their email, password, and authenticator code. Until owner two-step setup is completed, the existing owner password remains available without email.</p>
             </div>
             <label class="admin-field" for="adminEmailInput">
               <span>Email <small>(staff accounts)</small></span>
@@ -103,8 +103,8 @@
               <input id="adminPasswordInput" type="password" autocomplete="current-password" />
             </label>
             <label class="admin-field" for="adminOtpInput">
-              <span>Authenticator code <small>(staff accounts)</small></span>
-              <input id="adminOtpInput" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" />
+              <span>Authenticator or recovery code</span>
+              <input id="adminOtpInput" type="text" autocomplete="one-time-code" maxlength="14" placeholder="000000 or recovery code" />
             </label>
             <button class="admin-button" id="adminLoginButton" type="submit">Log in</button>
           </form>
@@ -657,6 +657,27 @@
               <p class="helper-text">Create role-limited accounts, block access immediately, reset passwords or two-step authentication, and remove former staff.</p>
             </div>
           </div>
+          <article id="ownerSecurityCard" class="admin-card admin-owner-security">
+            <div class="admin-staff-card-head">
+              <div><span class="admin-card-kicker">Owner security</span><h3>Google Authenticator</h3></div>
+              <span id="ownerSecurityStatus" class="admin-staff-status">Checking…</span>
+            </div>
+            <p class="helper-text">Protect the owner account with a time-based code from Google Authenticator, Microsoft Authenticator, Authy or 1Password. After confirmation, password-only owner login is permanently disabled.</p>
+            <div id="ownerSecurityEnrollment">
+              <label class="admin-field"><span>Owner email</span><input id="ownerSecurityEmail" type="email" autocomplete="email" placeholder="owner@example.com" /></label>
+              <button id="startOwnerMfaButton" class="admin-button" type="button">Set up owner 2-step authentication</button>
+            </div>
+            <div id="ownerSecurityConfirm" hidden>
+              <p>Add this setup key to Google Authenticator, then enter the current six-digit code to confirm.</p>
+              <code id="ownerMfaSecret" class="admin-mfa-secret"></code>
+              <a id="ownerMfaOpenLink" class="admin-button secondary admin-owner-authenticator-link" href="#">Open in authenticator app</a>
+              <div class="admin-form-grid two-column">
+                <label class="admin-field"><span>Authenticator code</span><input id="ownerMfaCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" /></label>
+                <div class="admin-provider-actions"><button id="confirmOwnerMfaButton" class="admin-button" type="button">Confirm and activate</button></div>
+              </div>
+            </div>
+            <div id="ownerRecoveryCodes" hidden></div>
+          </article>
           <div class="admin-staff-layout">
             <form id="adminStaffForm" class="admin-card admin-staff-form">
               <h3>Add staff member</h3>
