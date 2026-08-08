@@ -678,6 +678,33 @@
             </div>
             <div id="ownerRecoveryCodes" hidden></div>
           </article>
+          <article class="admin-card admin-permission-matrix" aria-labelledby="staffPermissionTitle">
+            <div class="admin-permission-matrix-head">
+              <div>
+                <span class="admin-card-kicker">Secure role presets</span>
+                <h3 id="staffPermissionTitle">Who can access what</h3>
+              </div>
+              <span class="admin-permission-lock">Owner controlled</span>
+            </div>
+            <p class="helper-text">Permissions are fixed by role to prevent accidental access to payments, credentials and staff security. Changing a staff member's role updates their access after their next login.</p>
+            <div class="admin-permission-table-wrap">
+              <table class="admin-permission-table">
+                <thead>
+                  <tr><th scope="col">Admin area</th><th scope="col">Owner</th><th scope="col">Storefront manager</th><th scope="col">Orders manager</th></tr>
+                </thead>
+                <tbody>
+                  <tr><th scope="row">Storefront, pages and homepage</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                  <tr><th scope="row">Products, categories, prices and stock</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                  <tr><th scope="row">Promotions and discounts</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                  <tr><th scope="row">Orders, invoices, delivery and cancellations</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-denied">No access</span></td><td data-role="Orders manager"><span class="permission-chip is-allowed">Allowed</span></td></tr>
+                  <tr><th scope="row">Sales reports and customer exports</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-denied">No access</span></td><td data-role="Orders manager"><span class="permission-chip is-allowed">Allowed</span></td></tr>
+                  <tr><th scope="row">Operations settings</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-denied">No access</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                  <tr><th scope="row">Integrations and API credentials</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-denied">No access</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                  <tr><th scope="row">Staff accounts and security</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-denied">No access</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
           <div class="admin-staff-layout">
             <form id="adminStaffForm" class="admin-card admin-staff-form">
               <h3>Add staff member</h3>

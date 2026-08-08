@@ -7733,6 +7733,105 @@ body.cart-is-empty .checkout-shell .cart-layout {
   padding: clamp(1rem, 2vw, 1.4rem);
 }
 
+.admin-permission-matrix {
+  margin-bottom: 1rem;
+  padding: clamp(1rem, 2vw, 1.4rem);
+}
+
+.admin-permission-matrix-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-permission-matrix-head h3 {
+  margin: 0.2rem 0 0;
+}
+
+.admin-permission-lock {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid rgba(113, 69, 39, 0.14);
+  border-radius: 999px;
+  background: rgba(113, 69, 39, 0.07);
+  color: var(--brand-dark);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.admin-permission-table-wrap {
+  margin-top: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(113, 69, 39, 0.14);
+  border-radius: 14px;
+}
+
+.admin-permission-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.admin-permission-table th,
+.admin-permission-table td {
+  padding: 0.78rem 0.9rem;
+  border-bottom: 1px solid rgba(113, 69, 39, 0.1);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.admin-permission-table thead th {
+  background: rgba(113, 69, 39, 0.06);
+  color: var(--brand-dark);
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+}
+
+.admin-permission-table tbody th {
+  width: 38%;
+  color: var(--ink);
+  font-size: 0.84rem;
+}
+
+.admin-permission-table tbody tr:last-child th,
+.admin-permission-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.permission-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.28rem 0.52rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.permission-chip::before {
+  font-size: 0.8rem;
+}
+
+.permission-chip.is-allowed {
+  background: #e9f8ee;
+  color: #16743c;
+}
+
+.permission-chip.is-allowed::before {
+  content: "✓";
+}
+
+.permission-chip.is-denied {
+  background: rgba(113, 69, 39, 0.07);
+  color: #78695f;
+}
+
+.permission-chip.is-denied::before {
+  content: "—";
+}
+
 .admin-owner-security > div:not(.admin-staff-card-head) {
   display: grid;
   gap: 0.8rem;
@@ -7766,5 +7865,71 @@ body.cart-is-empty .checkout-shell .cart-layout {
 @media (max-width: 900px) {
   .admin-staff-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .admin-permission-matrix-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-permission-table-wrap {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .admin-permission-table,
+  .admin-permission-table tbody,
+  .admin-permission-table tr,
+  .admin-permission-table th,
+  .admin-permission-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-permission-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .admin-permission-table tr {
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+    border: 1px solid rgba(113, 69, 39, 0.14);
+    border-radius: 13px;
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  .admin-permission-table tbody th {
+    width: 100%;
+    padding: 0.75rem;
+    border-bottom: 1px solid rgba(113, 69, 39, 0.1);
+    background: rgba(113, 69, 39, 0.05);
+  }
+
+  .admin-permission-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.58rem 0.75rem;
+    font-size: 0.78rem;
+  }
+
+  .admin-permission-table td::before {
+    content: attr(data-role);
+    color: var(--muted);
+    font-weight: 700;
+  }
+
+  .admin-permission-table tbody tr:last-child th,
+  .admin-permission-table tbody tr:last-child td:not(:last-child) {
+    border-bottom: 1px solid rgba(113, 69, 39, 0.1);
   }
 }
