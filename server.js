@@ -51,6 +51,8 @@ const envPath = process.env.ENV_FILE_PATH
 
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4173);
+const metaPixelId = process.env.META_PIXEL_ID || "967025552846418";
+const metaConversionsAccessToken = process.env.META_CONVERSIONS_ACCESS_TOKEN || "";
 const bundledCatalogPath = path.join(bundledDataDir, "catalog.json");
 const catalogPath = path.join(dataDir, "catalog.json");
 const uploadsDir = path.join(dataDir, "uploads");
@@ -1417,6 +1419,49 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   }
 }
 
+function hashMetaUserValue(value = "") {
+  const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+  return normalized ? crypto.createHash("sha256").update(normalized).digest("hex") : "";
+}
+
+async function maybeSendMetaPurchase(order) {
+  const total = Number(order?.pricing?.total || 0);
+  if (!order?.id || order.mode === "test" || total <= 0 || order.metaPurchase?.sentAt) return { sent: false, skipped: true };
+  if (!metaPixelId || !metaConversionsAccessToken) return { sent: false, skipped: true, reason: "meta_not_configured" };
+  const emailHash = hashMetaUserValue(order.customer?.email);
+  const phoneHash = hashMetaUserValue(String(order.customer?.phone || "").replace(/^\+/, ""));
+  const eventId = `purchase_${order.id}`;
+  const event = {
+    event_name: "Purchase",
+    event_time: Math.floor(Date.now() / 1000),
+    event_id: eventId,
+    action_source: "website",
+    event_source_url: `https://bakeaholicbali.com/orders.html?order=${encodeURIComponent(order.id)}`,
+    user_data: { ...(emailHash ? { em: [emailHash] } : {}), ...(phoneHash ? { ph: [phoneHash] } : {}) },
+    custom_data: {
+      currency: "IDR",
+      value: total,
+      content_ids: (order.items || []).map((item) => item.itemId || item.id).filter(Boolean),
+      content_type: "product",
+      num_items: Number(order.itemCount || 0)
+    }
+  };
+  order.metaPurchase = { eventId, attemptedAt: new Date().toISOString() };
+  try {
+    const endpoint = new URL(`https://graph.facebook.com/v25.0/${encodeURIComponent(metaPixelId)}/events`);
+    endpoint.searchParams.set("access_token", metaConversionsAccessToken);
+    const result = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: [event] }) });
+    const payload = await result.json().catch(() => ({}));
+    if (!result.ok || payload.error) throw new Error(payload.error?.message || `Meta CAPI returned ${result.status}`);
+    order.metaPurchase.sentAt = new Date().toISOString();
+    order.metaPurchase.eventsReceived = Number(payload.events_received || 0);
+    return { sent: true, eventId };
+  } catch (error) {
+    order.metaPurchase.error = error.message;
+    return { sent: false, error: error.message };
+  }
+}
+
 function paymentTimerKey(mode, orderId, step) {
   return `${mode}:${orderId}:${step}`;
 }
@@ -1484,6 +1529,7 @@ async function refreshUnpaidOrderFromXendit(order) {
   if (previousStatus !== order.status && order.status === "paid") {
     clearPaymentReminderTimers(order.mode || "live", order.id);
     clearPaidOrderCart(order);
+    await maybeSendMetaPurchase(order);
     await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
   }
@@ -6740,6 +6786,7 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
   await maybeSendWhatsappOrderStatus(order, previousStatus);
   if (previousStatus !== order.status) {
     if (order.status === "paid") {
+      await maybeSendMetaPurchase(order);
       await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     }
     if (order.status === "paid") {
@@ -8166,6 +8213,7 @@ function handleApi(requestUrl, request, response) {
         if (previousStatus !== order.status) {
           if (order.status === "paid") {
             clearPaidOrderCart(order);
+            await maybeSendMetaPurchase(order);
             await maybeSendWhatsappOrderStatus(order, previousStatus);
             await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
             await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));

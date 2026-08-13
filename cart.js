@@ -1017,6 +1017,9 @@ function mountXenditCardComponents(order) {
 }
 
 function clearCompletedCheckoutState() {
+  if (["paid", "preparing", "shipped", "delivered"].includes(state.currentOrder?.status)) {
+    window.BakeaholicAnalytics?.purchase(state.currentOrder);
+  }
   stopPaymentStatusPolling();
   state.pendingPaymentUrl = "";
   state.currentOrder = null;
@@ -1855,6 +1858,15 @@ async function submitOrder() {
     }
 
     syncDraftFromForm();
+    if (!state.currentOrder) {
+      window.BakeaholicAnalytics?.track("InitiateCheckout", {
+        currency: "IDR",
+        value: Number(state.cart?.pricing?.total || state.cart?.total || 0),
+        content_ids: (state.cart?.items || []).map((item) => item.itemId || item.id).filter(Boolean),
+        content_type: "product",
+        num_items: Number(state.cart?.itemCount || 0)
+      });
+    }
     setCheckoutMessage("");
     syncAfterHoursMessage();
     if (!state.draft.customer.phoneVerifiedAt) {

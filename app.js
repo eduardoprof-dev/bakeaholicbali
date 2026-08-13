@@ -1098,6 +1098,11 @@ async function addToCart(itemId, triggerButton = null) {
     });
     state.cart = cartPayload;
     renderCartSummary();
+    window.BakeaholicAnalytics?.track("AddToCart", {
+      content_ids: [itemId],
+      content_type: "product",
+      currency: "IDR"
+    });
   } catch (error) {
     adjustVisibleAddBadges(itemId, -1);
     throw error;
