@@ -691,11 +691,7 @@ function renderCatalog() {
   catalog.querySelectorAll("[data-item-id]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      if ((state.cart?.itemCount || 0) > 0) {
-        addToCart(button.dataset.itemId, button);
-        return;
-      }
-      openProductModal(button.dataset.itemId);
+      addToCart(button.dataset.itemId, button);
     });
   });
 
