@@ -7860,6 +7860,7 @@ function handleApi(requestUrl, request, response) {
           action_source: "website",
           event_source_url: sourceUrl.slice(0, 500),
           user_data: {
+            client_ip_address: requestIpAddress(request),
             client_user_agent: String(request.headers["user-agent"] || "Unknown browser").slice(0, 500)
           },
           custom_data: customData
