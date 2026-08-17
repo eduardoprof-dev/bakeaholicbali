@@ -51,8 +51,9 @@ const envPath = process.env.ENV_FILE_PATH
 
 const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 4173);
-const metaPixelId = process.env.META_PIXEL_ID || "967025552846418";
+const metaPixelId = process.env.META_PIXEL_ID || "1091370950045158";
 const metaConversionsAccessToken = process.env.META_CONVERSIONS_ACCESS_TOKEN || "";
+const metaTestEventCode = process.env.META_TEST_EVENT_CODE || "";
 const bundledCatalogPath = path.join(bundledDataDir, "catalog.json");
 const catalogPath = path.join(dataDir, "catalog.json");
 const uploadsDir = path.join(dataDir, "uploads");
@@ -1419,25 +1420,38 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   }
 }
 
-function hashMetaUserValue(value = "") {
-  const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "");
-  return normalized ? crypto.createHash("sha256").update(normalized).digest("hex") : "";
+async function sendMetaConversionEvent(event) {
+  if (!metaPixelId || !metaConversionsAccessToken) {
+    return { sent: false, skipped: true, reason: "meta_not_configured" };
+  }
+  const endpoint = new URL(`https://graph.facebook.com/v25.0/${encodeURIComponent(metaPixelId)}/events`);
+  endpoint.searchParams.set("access_token", metaConversionsAccessToken);
+  const requestBody = { data: [event] };
+  if (metaTestEventCode) requestBody.test_event_code = metaTestEventCode;
+  const result = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody)
+  });
+  const payload = await result.json().catch(() => ({}));
+  if (!result.ok || payload.error) {
+    throw new Error(payload.error?.message || `Meta CAPI returned ${result.status}`);
+  }
+  return { sent: true, eventsReceived: Number(payload.events_received || 0) };
 }
 
 async function maybeSendMetaPurchase(order) {
   const total = Number(order?.pricing?.total || 0);
   if (!order?.id || order.mode === "test" || total <= 0 || order.metaPurchase?.sentAt) return { sent: false, skipped: true };
   if (!metaPixelId || !metaConversionsAccessToken) return { sent: false, skipped: true, reason: "meta_not_configured" };
-  const emailHash = hashMetaUserValue(order.customer?.email);
-  const phoneHash = hashMetaUserValue(String(order.customer?.phone || "").replace(/^\+/, ""));
   const eventId = `purchase_${order.id}`;
   const event = {
     event_name: "Purchase",
     event_time: Math.floor(Date.now() / 1000),
     event_id: eventId,
     action_source: "website",
-    event_source_url: `https://bakeaholicbali.com/orders.html?order=${encodeURIComponent(order.id)}`,
-    user_data: { ...(emailHash ? { em: [emailHash] } : {}), ...(phoneHash ? { ph: [phoneHash] } : {}) },
+    event_source_url: "https://bakeaholicbali.com/orders.html",
+    user_data: { client_user_agent: "Bakeaholic payment confirmation server" },
     custom_data: {
       currency: "IDR",
       value: total,
@@ -1448,13 +1462,9 @@ async function maybeSendMetaPurchase(order) {
   };
   order.metaPurchase = { eventId, attemptedAt: new Date().toISOString() };
   try {
-    const endpoint = new URL(`https://graph.facebook.com/v25.0/${encodeURIComponent(metaPixelId)}/events`);
-    endpoint.searchParams.set("access_token", metaConversionsAccessToken);
-    const result = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: [event] }) });
-    const payload = await result.json().catch(() => ({}));
-    if (!result.ok || payload.error) throw new Error(payload.error?.message || `Meta CAPI returned ${result.status}`);
+    const payload = await sendMetaConversionEvent(event);
     order.metaPurchase.sentAt = new Date().toISOString();
-    order.metaPurchase.eventsReceived = Number(payload.events_received || 0);
+    order.metaPurchase.eventsReceived = payload.eventsReceived;
     return { sent: true, eventId };
   } catch (error) {
     order.metaPurchase.error = error.message;
@@ -7816,6 +7826,51 @@ function handleApi(requestUrl, request, response) {
         sendJson(response, 200, { ok: true, integrations: saved });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && pathname === "/api/meta/events") {
+    parseBody(request)
+      .then(async (body) => {
+        const allowedEvents = new Set(["PageView", "ViewContent", "AddToCart", "InitiateCheckout", "Purchase"]);
+        const eventName = String(body.eventName || "");
+        if (!allowedEvents.has(eventName)) {
+          sendJson(response, 400, { error: "Unsupported analytics event" });
+          return;
+        }
+        const eventId = String(body.eventId || "").slice(0, 100);
+        if (!eventId) {
+          sendJson(response, 400, { error: "Missing analytics event ID" });
+          return;
+        }
+        let sourceUrl = "https://bakeaholicbali.com/";
+        try {
+          const requestedSource = new URL(String(body.sourceUrl || sourceUrl));
+          sourceUrl = `https://bakeaholicbali.com${requestedSource.pathname}`;
+        } catch (_error) {}
+        const customData = body.customData && typeof body.customData === "object"
+          ? Object.fromEntries(Object.entries(body.customData).filter(([key]) => [
+            "currency", "value", "content_ids", "content_type", "num_items"
+          ].includes(key)))
+          : {};
+        const event = {
+          event_name: eventName,
+          event_time: Math.floor(Date.now() / 1000),
+          event_id: eventId,
+          action_source: "website",
+          event_source_url: sourceUrl.slice(0, 500),
+          user_data: {
+            client_user_agent: String(request.headers["user-agent"] || "Unknown browser").slice(0, 500)
+          },
+          custom_data: customData
+        };
+        const result = await sendMetaConversionEvent(event);
+        sendJson(response, 202, { ok: true, sent: result.sent, eventId: event.event_id });
+      })
+      .catch((error) => {
+        console.warn(`Meta CAPI browser event failed: ${error.message}`);
+        sendJson(response, 202, { ok: false });
+      });
     return true;
   }
 

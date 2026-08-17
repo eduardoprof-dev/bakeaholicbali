@@ -14,10 +14,28 @@
     document.head.appendChild(script);
   }
   window.fbq("init", pixelId);
-  window.fbq("track", "PageView");
+
+  function createEventId(name) {
+    const random = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return `${name.toLowerCase()}_${random}`;
+  }
+
+  function sendServerEvent(name, parameters, eventId) {
+    const sourceUrl = `${window.location.origin}${window.location.pathname}`;
+    window.fetch("/api/meta/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventName: name, eventId, sourceUrl, customData: parameters }),
+      keepalive: true
+    }).catch(() => {});
+  }
+
   window.BakeaholicAnalytics = {
     track(name, parameters = {}, eventId = "") {
-      window.fbq("track", name, parameters, eventId ? { eventID: eventId } : undefined);
+      const resolvedEventId = eventId || createEventId(name);
+      window.fbq("track", name, parameters, { eventID: resolvedEventId });
+      sendServerEvent(name, parameters, resolvedEventId);
+      return resolvedEventId;
     },
     purchase(order) {
       if (!order?.id || !order?.pricing) return;
@@ -35,4 +53,5 @@
       }, `purchase_${order.id}`);
     }
   };
+  window.BakeaholicAnalytics.track("PageView");
 })(window, document);
