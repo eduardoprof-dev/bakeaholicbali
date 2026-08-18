@@ -22,6 +22,8 @@ const {
   isSuccessfulXenditPaymentEvent,
   isFailedXenditPaymentEvent,
   isSupportedImageBuffer,
+  metaAttributionFromRequest,
+  metaUserDataFromOrder,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,
   orderIdFromWhatsappReplyContext,
@@ -54,6 +56,34 @@ const {
   productionCookieDomain,
   serializeCookie
 } = require("./server");
+
+test("Meta Purchase attribution uses checkout network data without customer details", () => {
+  const attribution = metaAttributionFromRequest({
+    headers: {
+      "cf-connecting-ip": "203.0.113.8",
+      "user-agent": "Bakeaholic customer browser",
+      cookie: "_fbp=fb.1.1234567890.123456789; _fbc=fb.1.1234567890.AbCdEf"
+    },
+    socket: {}
+  });
+  assert.deepEqual(attribution, {
+    clientIpAddress: "203.0.113.8",
+    clientUserAgent: "Bakeaholic customer browser",
+    fbp: "fb.1.1234567890.123456789",
+    fbc: "fb.1.1234567890.AbCdEf"
+  });
+  const userData = metaUserDataFromOrder({
+    metaAttribution: attribution,
+    customer: { name: "Private", email: "private@example.com", phone: "+62000", address: "Private" }
+  });
+  assert.deepEqual(userData, {
+    client_ip_address: "203.0.113.8",
+    client_user_agent: "Bakeaholic customer browser",
+    fbp: "fb.1.1234567890.123456789",
+    fbc: "fb.1.1234567890.AbCdEf"
+  });
+  assert.equal(JSON.stringify(userData).includes("private@example.com"), false);
+});
 
 test("production sessions are shared between apex and www hosts", () => {
   assert.equal(productionCookieDomain({ headers: { host: "bakeaholicbali.com" } }), ".bakeaholicbali.com");

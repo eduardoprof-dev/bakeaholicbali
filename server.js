@@ -1435,9 +1435,41 @@ async function sendMetaConversionEvent(event) {
   });
   const payload = await result.json().catch(() => ({}));
   if (!result.ok || payload.error) {
-    throw new Error(payload.error?.message || `Meta CAPI returned ${result.status}`);
+    const metaError = payload.error || {};
+    const details = [
+      metaError.message || `Meta CAPI returned ${result.status}`,
+      metaError.error_user_title,
+      metaError.error_user_msg,
+      metaError.code ? `code ${metaError.code}` : "",
+      metaError.error_subcode ? `subcode ${metaError.error_subcode}` : ""
+    ].filter(Boolean);
+    throw new Error(details.join(" | "));
   }
   return { sent: true, eventsReceived: Number(payload.events_received || 0) };
+}
+
+function metaAttributionFromRequest(request) {
+  const cookies = parseCookies(request);
+  const clientIpAddress = requestIpAddress(request);
+  const clientUserAgent = String(request.headers["user-agent"] || "").trim().slice(0, 500);
+  const fbp = String(cookies._fbp || "").trim().slice(0, 255);
+  const fbc = String(cookies._fbc || "").trim().slice(0, 255);
+  return {
+    ...(clientIpAddress && clientIpAddress !== "unknown" ? { clientIpAddress } : {}),
+    ...(clientUserAgent ? { clientUserAgent } : {}),
+    ...(fbp ? { fbp } : {}),
+    ...(fbc ? { fbc } : {})
+  };
+}
+
+function metaUserDataFromOrder(order) {
+  const attribution = order?.metaAttribution || {};
+  return {
+    ...(attribution.clientIpAddress ? { client_ip_address: attribution.clientIpAddress } : {}),
+    ...(attribution.clientUserAgent ? { client_user_agent: attribution.clientUserAgent } : {}),
+    ...(attribution.fbp ? { fbp: attribution.fbp } : {}),
+    ...(attribution.fbc ? { fbc: attribution.fbc } : {})
+  };
 }
 
 async function maybeSendMetaPurchase(order) {
@@ -1445,13 +1477,17 @@ async function maybeSendMetaPurchase(order) {
   if (!order?.id || order.mode === "test" || total <= 0 || order.metaPurchase?.sentAt) return { sent: false, skipped: true };
   if (!metaPixelId || !metaConversionsAccessToken) return { sent: false, skipped: true, reason: "meta_not_configured" };
   const eventId = `purchase_${order.id}`;
+  const userData = metaUserDataFromOrder(order);
+  if (!Object.keys(userData).length) {
+    return { sent: false, skipped: true, reason: "meta_attribution_missing" };
+  }
   const event = {
     event_name: "Purchase",
     event_time: Math.floor(Date.now() / 1000),
     event_id: eventId,
     action_source: "website",
     event_source_url: "https://bakeaholicbali.com/orders.html",
-    user_data: { client_user_agent: "Bakeaholic payment confirmation server" },
+    user_data: userData,
     custom_data: {
       currency: "IDR",
       value: total,
@@ -6371,6 +6407,7 @@ function paymentHasPresentValue(payment) {
 
 function enrichOrder(order, options = {}) {
   if (!order) return null;
+  const { metaAttribution: _privateMetaAttribution, ...publicOrder } = order;
   const payment = { ...(order.payment || {}) };
   const refund = order.refund ? { ...order.refund } : null;
   // A successful refund-request response is not the same as confirmation from
@@ -6399,7 +6436,7 @@ function enrichOrder(order, options = {}) {
     }
   }
   return {
-    ...order,
+    ...publicOrder,
     payment,
     ...(refund ? { refund } : {}),
     documentUrl: getPublicDocumentUrl(order),
@@ -6595,7 +6632,7 @@ function verifyRegistration(storeState, input = {}) {
   };
 }
 
-async function createOrder(mode, payload, cartOverride = null, cartSessionId = "") {
+async function createOrder(mode, payload, cartOverride = null, cartSessionId = "", metaAttribution = {}) {
   const draft = normalizeCheckoutDraft(payload);
   const storeState = getStoreState(mode);
   const cartState = cartOverride
@@ -6632,6 +6669,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
     status: isZeroTotalOrder ? "paid" : "awaiting_payment",
     paidAt: isZeroTotalOrder ? now.toISOString() : "",
     receiptToken: crypto.randomBytes(18).toString("hex"),
+    metaAttribution,
     cartSessionId: /^[a-f0-9]{32}$/i.test(cartSessionId) ? cartSessionId.toLowerCase() : "",
     itemCount: summary.itemCount,
     items: summary.items,
@@ -6691,7 +6729,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
   return enrichCheckoutOrder(order);
 }
 
-async function createOrderForSession(mode, payload, session, cartOverride = null, cartSessionId = "") {
+async function createOrderForSession(mode, payload, session, cartOverride = null, cartSessionId = "", metaAttribution = {}) {
   if (!session?.phone) {
     throw new Error("Please log in again to continue");
   }
@@ -6703,7 +6741,7 @@ async function createOrderForSession(mode, payload, session, cartOverride = null
       phoneVerifiedAt: session.verifiedAt || new Date().toISOString()
     }
   };
-  return createOrder(mode, body, cartOverride, cartSessionId);
+  return createOrder(mode, body, cartOverride, cartSessionId, metaAttribution);
 }
 
 function findOrder(mode, orderId) {
@@ -8014,7 +8052,14 @@ function handleApi(requestUrl, request, response) {
     const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
       .then(async (body) => {
-        const order = await createOrderForSession(mode, body, session, cartState.cart, sessionId);
+        const order = await createOrderForSession(
+          mode,
+          body,
+          session,
+          cartState.cart,
+          sessionId,
+          metaAttributionFromRequest(request)
+        );
         sendJson(response, 201, { order });
       })
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -8459,6 +8504,8 @@ module.exports = {
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   isSupportedImageBuffer,
+  metaAttributionFromRequest,
+  metaUserDataFromOrder,
   whatsappTemplateTestOrder,
   xenditPaymentAmount,
   xenditOrderReferenceIds,
