@@ -1721,6 +1721,13 @@ function bindPaymentMethodButtons(container) {
       renderPaymentChoice();
       setCheckoutMessage("");
       closeModal(paymentModal);
+      window.BakeaholicAnalytics?.track("AddPaymentInfo", {
+        currency: "IDR",
+        value: Number(state.cart?.pricing?.total || state.cart?.total || 0),
+        content_ids: (state.cart?.items || []).map((item) => item.itemId || item.id).filter(Boolean),
+        content_type: "product",
+        num_items: Number(state.cart?.itemCount || 0)
+      });
       try {
         if (state.currentOrder && ["paid", "preparing", "shipped", "delivered"].includes(state.currentOrder.status)) {
           const completedOrder = state.currentOrder;

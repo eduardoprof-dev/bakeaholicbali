@@ -718,6 +718,13 @@ function openProductModal(itemId) {
   const item = state.items.find((candidate) => candidate.id === itemId);
   if (!item) return;
 
+  window.BakeaholicAnalytics?.track("ViewContent", {
+    content_ids: [item.id],
+    content_type: "product",
+    currency: "IDR",
+    value: Number(item.price || 0)
+  });
+
   selectedProductId = item.id;
   productModalImage.src = versionedAsset(item.imagePath);
   productModalImage.alt = item.name;

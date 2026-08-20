@@ -2928,6 +2928,7 @@ const publicStaticFiles = new Set([
   "invoice.html",
   "invoice.js",
   "location-picker.js",
+  "meta-pixel.js",
   "orders.html",
   "orders.js",
   "pay.html",
@@ -7870,7 +7871,7 @@ function handleApi(requestUrl, request, response) {
   if (request.method === "POST" && pathname === "/api/meta/events") {
     parseBody(request)
       .then(async (body) => {
-        const allowedEvents = new Set(["PageView", "ViewContent", "AddToCart", "InitiateCheckout", "Purchase"]);
+        const allowedEvents = new Set(["PageView", "ViewContent", "AddToCart", "InitiateCheckout", "AddPaymentInfo", "Purchase"]);
         const eventName = String(body.eventName || "");
         if (!allowedEvents.has(eventName)) {
           sendJson(response, 400, { error: "Unsupported analytics event" });
