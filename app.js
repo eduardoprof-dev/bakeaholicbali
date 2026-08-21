@@ -224,11 +224,21 @@ function setMessage(element, text, tone = "error") {
 }
 
 function normalizeWhatsAppPhone(input) {
-  const digits = String(input || "").replace(/[^\d]/g, "");
+  const raw = String(input || "").trim();
+  const digits = raw.replace(/[^\d]/g, "");
   if (!digits) {
     return "";
   }
+  if (raw.startsWith("+") || raw.startsWith("00")) {
+    return raw.startsWith("00") ? digits.replace(/^00/, "") : digits;
+  }
   return digits.startsWith("62") ? digits : `62${digits.replace(/^0+/, "")}`;
+}
+
+function editableWhatsAppPhone(input) {
+  const phone = normalizeWhatsAppPhone(input);
+  if (!phone) return "";
+  return phone.startsWith("62") ? phone.slice(2) : `+${phone}`;
 }
 
 function formatWhatsAppPhone(input) {
@@ -858,8 +868,8 @@ function showOtpModal(registration) {
 
 async function requestOtp() {
   const phone = normalizeWhatsAppPhone(whatsappInput.value);
-  if (!phone) {
-    setMessage(whatsappMessage, "Please enter your WhatsApp number");
+  if (!phone || phone.length < 8 || phone.length > 15) {
+    setMessage(whatsappMessage, "Enter a valid WhatsApp number with country code");
     return;
   }
 
@@ -957,9 +967,7 @@ function openAccountMenu() {
 
 function openAccount() {
   if (!state.draft.customer.phoneVerifiedAt) {
-    whatsappInput.value = state.draft.customer.phone
-      ? state.draft.customer.phone.replace(/^\+?62/, "")
-      : "";
+    whatsappInput.value = editableWhatsAppPhone(state.draft.customer.phone);
     setMessage(whatsappMessage, "");
     openModal(whatsappModal);
     return;
@@ -1819,12 +1827,12 @@ otpInput.addEventListener("keydown", (event) => {
   }
 });
 resendOtpButton.addEventListener("click", async () => {
-  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
+  whatsappInput.value = editableWhatsAppPhone(pendingOtpPhone);
   await requestOtp();
 });
 changePhoneButton.addEventListener("click", () => {
   closeModal(otpModal);
-  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
+  whatsappInput.value = editableWhatsAppPhone(pendingOtpPhone);
   openModal(whatsappModal);
 });
 copyOtpButton.addEventListener("click", async () => {

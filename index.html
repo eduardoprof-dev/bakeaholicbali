@@ -12,7 +12,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260725-frame-controls-v21" />
+    <link rel="stylesheet" href="styles.css?v=20260821-international-whatsapp" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -217,6 +217,20 @@
         </section>
 
         <section class="catalog-list" id="catalog"></section>
+
+        <section class="offline-stockists" aria-labelledby="offlineStockistsTitle">
+          <p class="feature-kicker">Shop offline</p>
+          <h2 id="offlineStockistsTitle">Find Bakeaholic around Bali</h2>
+          <p>Prefer to pick up your treats today? Find Bakeaholic at selected locations of our leading retail partners.</p>
+          <div class="offline-stockist-grid">
+            <a href="https://www.google.com/maps/search/Circle+K+Bali" target="_blank" rel="noreferrer"><strong>Circle K</strong><span>Selected Bali locations</span></a>
+            <a href="https://www.google.com/maps/search/MMart+Bali" target="_blank" rel="noreferrer"><strong>MMart Bali</strong><span>Selected Bali locations</span></a>
+            <a href="https://www.google.com/maps/search/Box+Mart+Bali" target="_blank" rel="noreferrer"><strong>Box Mart</strong><span>Uluwatu, Bingin &amp; Padang Padang</span></a>
+            <a href="https://www.google.com/maps/search/WHSmith+Bali" target="_blank" rel="noreferrer"><strong>WHSmith</strong><span>Selected Bali locations</span></a>
+            <a href="https://www.google.com/maps/search/Island+Food+Uluwatu" target="_blank" rel="noreferrer"><strong>Island Food</strong><span>Uluwatu &amp; Pecatu</span></a>
+          </div>
+          <small>Product availability varies by location. Tap a store to find the nearest branch.</small>
+        </section>
       </main>
 
       <footer class="site-footer">
@@ -283,9 +297,9 @@
       <label class="modal-field">
         <span>WhatsApp Number</span>
         <div class="phone-input-row">
-          <span class="phone-prefix">+62</span>
-          <input id="whatsappInput" type="tel" placeholder="Enter your WhatsApp number" />
+          <input id="whatsappInput" type="tel" inputmode="tel" autocomplete="tel" placeholder="e.g. +62 812… or +44 7700…" />
         </div>
+        <small class="phone-input-help">Indonesian numbers can start with 08. International numbers must include + and the country code.</small>
       </label>
       <button class="primary-button full-width" id="saveWhatsappButton" type="button">
         Continue

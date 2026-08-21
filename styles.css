@@ -2949,6 +2949,63 @@ body::before {
   color: var(--text);
 }
 
+.offline-stockists {
+  margin: 18px 16px 28px;
+  padding: 24px 20px;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+  border-radius: 22px;
+  background: linear-gradient(145deg, #fffaf5, #f5ebe1);
+  box-shadow: 0 14px 30px rgba(77, 42, 12, 0.08);
+}
+
+.offline-stockists h2,
+.offline-stockists > p {
+  margin: 0 0 10px;
+}
+
+.offline-stockists > small,
+.phone-input-help {
+  display: block;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.offline-stockist-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.offline-stockist-grid a {
+  display: grid;
+  gap: 3px;
+  min-height: 76px;
+  padding: 13px;
+  border: 1px solid rgba(107, 66, 38, 0.12);
+  border-radius: 14px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+}
+
+.offline-stockist-grid a:last-child {
+  grid-column: 1 / -1;
+}
+
+.offline-stockist-grid a:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.offline-stockist-grid span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .cart-site-footer {
   margin-top: 0;
   padding-bottom: 78px;
@@ -5404,6 +5461,10 @@ body.has-cart-items .storefront-content {
   background: #f4f0eb;
   color: var(--muted);
   font-weight: 700;
+}
+
+.phone-input-row input {
+  width: 100%;
 }
 
 .primary-button,
