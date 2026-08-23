@@ -7358,7 +7358,8 @@ function handleApi(requestUrl, request, response) {
 
   if (request.method === "GET" && pathname === "/api/public-config") {
     sendJson(response, 200, {
-      googleMapsApiKey: getIntegrationConfig().googleMapsApiKey
+      googleMapsApiKey: getIntegrationConfig().googleMapsApiKey,
+      whatsappOtpAvailable: isWhatsappCloudReady()
     });
     return true;
   }
