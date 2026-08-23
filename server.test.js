@@ -23,6 +23,7 @@ const {
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
   isValidWhatsAppPhone,
+  isBaliDeliveryLocation,
   isFailedXenditPaymentEvent,
   isSupportedImageBuffer,
   metaAttributionFromRequest,
@@ -69,6 +70,13 @@ test("WhatsApp normalization supports international and Indonesian registrations
   assert.equal(formatPhoneWithCountryCode("+55 21 97021 6750", "62"), "");
   assert.equal(formatIndonesianPhone("5521970216750"), "5521970216750");
   assert.equal(isValidWhatsAppPhone("5521970216750"), true);
+});
+
+test("delivery geofence accepts Bali and rejects international destinations", () => {
+  assert.equal(isBaliDeliveryLocation({ lat: -8.66425, lng: 115.176172 }), true);
+  assert.equal(isBaliDeliveryLocation({ lat: -8.7275, lng: 115.5444 }), true);
+  assert.equal(isBaliDeliveryLocation({ lat: -23.55052, lng: -46.633308 }), false);
+  assert.equal(isBaliDeliveryLocation({ lat: 3.139, lng: 101.6869 }), false);
 });
 
 test("Meta Purchase attribution uses checkout network data without customer details", () => {

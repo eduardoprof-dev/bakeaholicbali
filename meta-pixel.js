@@ -30,12 +30,24 @@
     }).catch(() => {});
   }
 
+  function sendFunnelEvent(event) {
+    window.fetch("/api/funnel/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event }),
+      keepalive: true
+    }).catch(() => {});
+  }
+
   window.BakeaholicAnalytics = {
     track(name, parameters = {}, eventId = "") {
       const resolvedEventId = eventId || createEventId(name);
       window.fbq("track", name, parameters, { eventID: resolvedEventId });
       sendServerEvent(name, parameters, resolvedEventId);
       return resolvedEventId;
+    },
+    funnel(event) {
+      sendFunnelEvent(event);
     },
     purchase(order) {
       if (!order?.id || !order?.pricing) return;
@@ -53,5 +65,6 @@
       }, `purchase_${order.id}`);
     }
   };
+  window.BakeaholicAnalytics.funnel("page_view");
   window.BakeaholicAnalytics.track("PageView");
 })(window, document);

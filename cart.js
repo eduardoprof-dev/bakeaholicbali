@@ -1290,8 +1290,9 @@ function applyCartPayload(cartPayload) {
   renderSummary();
   renderPaymentChoice();
   if (!state.pendingPaymentUrl) {
-    setSubmitButtonState(submitButtonLabel(), state.cart.itemCount === 0);
+    setSubmitButtonState(submitButtonLabel(), state.cart.itemCount === 0 || Boolean(state.cart.quoteError));
   }
+  if (state.cart?.quoteError) setCheckoutMessage(state.cart.quoteError);
   syncFulfillmentUi();
   syncCheckoutVisibility();
 }
@@ -1358,6 +1359,11 @@ function syncFulfillmentUi() {
 
   if (!hasDeliveryDestination()) {
     deliveryFeeLine.textContent = "Add your address to estimate delivery fee.";
+    return;
+  }
+
+  if (state.cart?.quoteError) {
+    deliveryFeeLine.textContent = state.cart.quoteError;
     return;
   }
 
@@ -1487,6 +1493,7 @@ function startOtpTimer(seconds) {
 }
 
 async function openWhatsappModal() {
+  window.BakeaholicAnalytics?.funnel("login_opened");
   await whatsappCountryCodesReady;
   syncDraftFromForm();
   whatsappInput.value = editableWhatsAppPhone(state.draft.customer.phone);
@@ -2049,7 +2056,7 @@ async function bootstrap() {
   renderPaymentChoice();
   await refreshCart();
   syncAfterHoursMessage();
-  setSubmitButtonState(submitButtonLabel(), (state.cart?.itemCount || 0) === 0);
+  setSubmitButtonState(submitButtonLabel(), (state.cart?.itemCount || 0) === 0 || Boolean(state.cart?.quoteError));
 }
 
 [

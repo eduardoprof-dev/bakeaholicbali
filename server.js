@@ -119,6 +119,9 @@ const ordersLivePath = path.join(dataDir, "orders-live.json");
 const ordersTestPath = path.join(dataDir, "orders-test.json");
 const cartsLivePath = path.join(dataDir, "carts-live.json");
 const cartsTestPath = path.join(dataDir, "carts-test.json");
+const registrationsLivePath = path.join(dataDir, "registrations-live.json");
+const registrationsTestPath = path.join(dataDir, "registrations-test.json");
+const funnelEventsPath = path.join(dataDir, "funnel-events.json");
 const biteshipWebhookLogPath = path.join(dataDir, "biteship-webhook-log.json");
 const vouchersPath = path.join(dataDir, "vouchers.json");
 const PAYMENT_METHODS = [
@@ -160,6 +163,17 @@ function availablePaymentMethods(mode = "live") {
   return PAYMENT_METHODS.filter((method) => mode === "test" || method.liveEnabled !== false);
 }
 const MAX_DELIVERY_DISTANCE_KM = 100;
+const BALI_ONLY_MESSAGE = "Delivery is available only for addresses in Bali.";
+
+// A conservative geofence for Bali's main island plus the Nusa islands. The
+// server is authoritative; client-side checks only improve the message timing.
+const BALI_MAIN_ISLAND_POLYGON = [
+  [114.41, -8.16], [114.50, -8.06], [114.76, -8.08], [115.15, -8.08],
+  [115.45, -8.18], [115.72, -8.34], [115.72, -8.52], [115.54, -8.67],
+  [115.30, -8.82], [115.04, -8.86], [114.78, -8.75], [114.57, -8.55],
+  [114.42, -8.31]
+];
+const BALI_NUSA_BOUNDS = Object.freeze({ minLat: -8.91, maxLat: -8.57, minLng: 115.34, maxLng: 115.73 });
 
 const DEFAULT_VOUCHERS = [
   { code: "SWEET10", label: "10% off products", type: "percent", value: 10, maxDiscount: 15000, active: true, expiresAt: "", usageLimit: 0 },
@@ -2671,6 +2685,27 @@ function saveSessionCarts(targetPath, carts) {
   writeJsonFile(targetPath, payload);
 }
 
+function loadRegistrations(targetPath) {
+  const payload = readJsonFileSafely(targetPath, {});
+  const now = Date.now();
+  return new Map(
+    Object.entries(payload || {}).filter(([phone, registration]) => (
+      isValidWhatsAppPhone(phone)
+      && registration?.codeHash
+      && Date.parse(registration.expiresAt) > now
+    ))
+  );
+}
+
+function saveRegistrations(targetPath, registrations) {
+  const now = Date.now();
+  const payload = {};
+  for (const [phone, registration] of registrations.entries()) {
+    if (Date.parse(registration.expiresAt) > now) payload[phone] = registration;
+  }
+  writeJsonFile(targetPath, payload);
+}
+
 function loadJsonArray(targetPath) {
   if (!fs.existsSync(targetPath)) {
     return [];
@@ -2773,6 +2808,10 @@ function cartsPathForMode(mode) {
   return mode === "test" ? cartsTestPath : cartsLivePath;
 }
 
+function registrationsPathForMode(mode) {
+  return mode === "test" ? registrationsTestPath : registrationsLivePath;
+}
+
 function persistWhatsappNotificationClaim(order) {
   const mode = order?.mode === "test" ? "test" : "live";
   const state = getStoreState(mode);
@@ -2787,13 +2826,13 @@ const stores = {
     cart: new Map(),
     carts: loadSessionCarts(cartsLivePath),
     orders: loadOrders(ordersLivePath),
-    registrations: new Map()
+    registrations: loadRegistrations(registrationsLivePath)
   },
   test: {
     cart: new Map(),
     carts: loadSessionCarts(cartsTestPath),
     orders: loadOrders(ordersTestPath),
-    registrations: new Map()
+    registrations: loadRegistrations(registrationsTestPath)
   }
 };
 const pendingAdminActionTimers = new Map();
@@ -3360,6 +3399,63 @@ function requestIpAddress(request) {
   return candidate.slice(0, 128);
 }
 
+function funnelActorHash(request) {
+  return crypto.createHmac("sha256", SESSION_SECRET)
+    .update(requestIpAddress(request))
+    .digest("hex")
+    .slice(0, 20);
+}
+
+function recordFunnelEvent(request, mode, event, outcome = "", reason = "") {
+  const allowedEvents = new Set([
+    "page_view", "login_opened", "otp_requested", "otp_verified",
+    "profile_saved", "cart_changed", "checkout_attempted", "checkout_completed"
+  ]);
+  if (!allowedEvents.has(event)) return;
+  const entries = loadJsonArray(funnelEventsPath);
+  entries.push({
+    timestamp: new Date().toISOString(),
+    event,
+    outcome: String(outcome || "").slice(0, 32),
+    reason: String(reason || "").replace(/[\r\n]+/g, " ").slice(0, 180),
+    mode: mode === "test" ? "test" : "live",
+    actor: funnelActorHash(request)
+  });
+  const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  writeJsonFile(funnelEventsPath, entries.filter((entry) => Date.parse(entry.timestamp) >= cutoff).slice(-20000));
+}
+
+function funnelReport(days = 7) {
+  const boundedDays = Math.max(1, Math.min(90, Number(days) || 7));
+  const cutoff = Date.now() - boundedDays * 24 * 60 * 60 * 1000;
+  const entries = loadJsonArray(funnelEventsPath)
+    .filter((entry) => entry.mode === "live" && Date.parse(entry.timestamp) >= cutoff);
+  const groups = new Map();
+  for (const entry of entries) {
+    const key = `${entry.event}|${entry.outcome || ""}|${entry.reason || ""}`;
+    const group = groups.get(key) || {
+      event: entry.event,
+      outcome: entry.outcome || "",
+      reason: entry.reason || "",
+      count: 0,
+      actors: new Set()
+    };
+    group.count += 1;
+    group.actors.add(entry.actor);
+    groups.set(key, group);
+  }
+  return {
+    days: boundedDays,
+    events: [...groups.values()].map((group) => ({
+      event: group.event,
+      outcome: group.outcome,
+      reason: group.reason,
+      count: group.count,
+      uniqueActors: group.actors.size
+    }))
+  };
+}
+
 function checkRateLimit(key, limit, windowMs) {
   const now = Date.now();
   if (now - lastRateLimitSweepAt > 60 * 1000 || rateLimitBuckets.size >= MAX_RATE_LIMIT_BUCKETS) {
@@ -3785,6 +3881,7 @@ function saveCustomerAddress(input = {}, verifiedPhone = "") {
   if (!entry.formattedAddress) {
     throw new Error("Address is required");
   }
+  assertBaliDeliveryLocation(entry);
 
   const existingAddresses = Array.isArray(customer.addresses) ? customer.addresses : [];
   const nextAddresses = existingAddresses.filter((address) => address.id !== entry.id);
@@ -3828,6 +3925,35 @@ function normalizeDestination(input = {}) {
     locationNotes: String(input.locationNotes || "").trim(),
     routeDistanceKm: Number.isFinite(routeDistanceKm) ? routeDistanceKm : null
   };
+}
+
+function pointInPolygon(lng, lat, polygon) {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const [currentLng, currentLat] = polygon[index];
+    const [previousLng, previousLat] = polygon[previous];
+    const intersects = ((currentLat > lat) !== (previousLat > lat))
+      && (lng < ((previousLng - currentLng) * (lat - currentLat)) / (previousLat - currentLat) + currentLng);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function isBaliDeliveryLocation(input = {}) {
+  const destination = normalizeDestination(input);
+  if (destination.lat == null || destination.lng == null) return false;
+  const inMainIsland = pointInPolygon(destination.lng, destination.lat, BALI_MAIN_ISLAND_POLYGON);
+  const inNusaIslands = destination.lat >= BALI_NUSA_BOUNDS.minLat
+    && destination.lat <= BALI_NUSA_BOUNDS.maxLat
+    && destination.lng >= BALI_NUSA_BOUNDS.minLng
+    && destination.lng <= BALI_NUSA_BOUNDS.maxLng;
+  return inMainIsland || inNusaIslands;
+}
+
+function assertBaliDeliveryLocation(destination) {
+  if (!isBaliDeliveryLocation(destination)) {
+    throw new Error(BALI_ONLY_MESSAGE);
+  }
 }
 
 function hasCompleteDestination(destination) {
@@ -4277,9 +4403,28 @@ async function getCartSummaryPayload(storeState, options = {}) {
     return summary;
   }
 
+  if (!isBaliDeliveryLocation(destination)) {
+    if (options.reportQuoteFailure) {
+      return {
+        ...recalculateSummary(summary, { deliveryFee: 0, shipping: { distanceKm: 0, bikeFare: 0, serviceFee: 0, total: 0 } }),
+        quoteError: BALI_ONLY_MESSAGE
+      };
+    }
+    assertBaliDeliveryLocation(destination);
+  }
+
   try {
     const liveQuote = await fetchBiteshipLiveQuote(storeState, destination);
     if (!liveQuote) {
+      if (options.requireLiveQuote && summary.itemCount) {
+        throw new Error("No delivery driver is available for this Bali address right now. Please try again shortly.");
+      }
+      if (options.reportQuoteFailure && summary.itemCount) {
+        return {
+          ...recalculateSummary(summary, { deliveryFee: 0, shipping: { distanceKm: 0, bikeFare: 0, serviceFee: 0, total: 0 } }),
+          quoteError: "No delivery driver is available for this Bali address right now. Please try again shortly."
+        };
+      }
       return summary;
     }
     return {
@@ -4290,7 +4435,17 @@ async function getCartSummaryPayload(storeState, options = {}) {
       }),
       quoteSource: "biteship"
     };
-  } catch (_error) {
+  } catch (error) {
+    if (options.requireLiveQuote && summary.itemCount) {
+      if (String(error.message || "").startsWith("No delivery driver")) throw error;
+      throw new Error("We could not get a delivery quote for this Bali address. Please try again shortly.");
+    }
+    if (options.reportQuoteFailure && summary.itemCount) {
+      return {
+        ...recalculateSummary(summary, { deliveryFee: 0, shipping: { distanceKm: 0, bikeFare: 0, serviceFee: 0, total: 0 } }),
+        quoteError: "We could not get a delivery quote for this Bali address. Please try again shortly."
+      };
+    }
     return summary;
   }
 }
@@ -6605,10 +6760,17 @@ function validateCheckoutDraft(draft, summary) {
   if (draft.destination.lat == null || draft.destination.lng == null) {
     throw new Error("Please choose a delivery location from the map");
   }
+  assertBaliDeliveryLocation(draft.destination);
 }
 
 function createOtpCode() {
   return String(crypto.randomInt(100000, 1000000));
+}
+
+function hashOtpCode(phone, code) {
+  return crypto.createHmac("sha256", SESSION_SECRET)
+    .update(`${formatIndonesianPhone(phone)}:${String(code || "").replace(/\D/g, "")}`)
+    .digest("hex");
 }
 
 async function startRegistration(mode, storeState, input = {}) {
@@ -6629,7 +6791,7 @@ async function startRegistration(mode, storeState, input = {}) {
   const code = createOtpCode();
   const registration = {
     phone,
-    code,
+    codeHash: hashOtpCode(phone, code),
     attempts: 0,
     createdAt: new Date(now).toISOString(),
     expiresAt: new Date(now + 10 * 60 * 1000).toISOString(),
@@ -6638,18 +6800,21 @@ async function startRegistration(mode, storeState, input = {}) {
   };
 
   storeState.registrations.set(phone, registration);
+  saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
 
   let message = `Sandbox code: ${code}`;
 
   if (mode !== "test") {
     if (!isWhatsappCloudReady()) {
       storeState.registrations.delete(phone);
+      saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
       throw new Error("WhatsApp verification is temporarily unavailable. Please try again shortly.");
     }
     try {
       await sendWhatsappOtpCode(phone, code);
     } catch (error) {
       storeState.registrations.delete(phone);
+      saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
       console.warn(`WhatsApp OTP delivery failed: ${error.message}`);
       throw new Error("We could not send the WhatsApp verification code. Check the number and try again.");
     }
@@ -6666,7 +6831,7 @@ async function startRegistration(mode, storeState, input = {}) {
   };
 }
 
-function verifyRegistration(storeState, input = {}) {
+function verifyRegistration(mode, storeState, input = {}) {
   const phone = formatIndonesianPhone(input.phone);
   const code = String(input.code || "").replace(/[^\d]/g, "");
   const registration = storeState.registrations.get(phone);
@@ -6676,16 +6841,19 @@ function verifyRegistration(storeState, input = {}) {
 
   if (new Date(registration.expiresAt).getTime() < Date.now()) {
     storeState.registrations.delete(phone);
+    saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
     throw new Error("This verification code expired. Please request a new code");
   }
 
   registration.attempts += 1;
   if (registration.attempts > 5) {
     storeState.registrations.delete(phone);
+    saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
     throw new Error("Too many attempts. Please request a new code");
   }
 
-  if (registration.code !== code) {
+  if (!timingSafeEqualString(registration.codeHash, hashOtpCode(phone, code))) {
+    saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
     throw new Error("Incorrect verification code");
   }
 
@@ -6695,11 +6863,14 @@ function verifyRegistration(storeState, input = {}) {
     customers[phone].lastLoginAt = registration.verifiedAt;
     saveCustomers(customers);
   }
-  return {
+  const result = {
     phone,
     verifiedAt: registration.verifiedAt,
     profile
   };
+  storeState.registrations.delete(phone);
+  saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
+  return result;
 }
 
 async function createOrder(mode, payload, cartOverride = null, cartSessionId = "", metaAttribution = {}) {
@@ -6714,7 +6885,8 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
   const summary = await getCartSummaryPayload(cartState, {
     fulfillmentType: draft.fulfillmentType,
     voucherCode: draft.voucherCode,
-    destination: draft.destination
+    destination: draft.destination,
+    requireLiveQuote: mode !== "test"
   });
 
   validateCheckoutDraft(draft, summary);
@@ -7604,7 +7776,8 @@ function handleApi(requestUrl, request, response) {
       fulfillmentType: requestUrl.searchParams.get("fulfillment"),
       voucherCode: requestUrl.searchParams.get("voucher"),
       cartSessionId: sessionId,
-      destination
+      destination,
+      reportQuoteFailure: mode !== "test"
     })
       .then((payload) => sendJson(response, 200, payload))
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -7984,30 +8157,62 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "POST" && pathname === "/api/funnel/events") {
+    parseBody(request)
+      .then((body) => {
+        const event = String(body.event || "");
+        if (!new Set(["page_view", "login_opened"]).has(event)) {
+          sendJson(response, 400, { error: "Unsupported funnel event" });
+          return;
+        }
+        recordFunnelEvent(request, mode, event, "observed");
+        sendJson(response, 202, { ok: true });
+      })
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "GET" && pathname === "/api/admin/funnel") {
+    const session = requireAdminPermission(request, response, "reports");
+    if (!session) return true;
+    sendJson(response, 200, funnelReport(requestUrl.searchParams.get("days")));
+    return true;
+  }
+
   if (request.method === "POST" && pathname === "/api/cart") {
     const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
-      .then((body) =>
-        handleCartUpsert(
+      .then((body) => {
+        const result = handleCartUpsert(
           mode,
           cartState,
           response,
           body,
           (item, quantity) => (cartState.cart.get(item.id) || 0) + quantity,
           sessionId
-        )
-      )
-      .catch((error) => sendJson(response, 400, { error: error.message }));
+        );
+        recordFunnelEvent(request, mode, "cart_changed", "success");
+        return result;
+      })
+      .catch((error) => {
+        recordFunnelEvent(request, mode, "cart_changed", "failed", error.message);
+        sendJson(response, 400, { error: error.message });
+      });
     return true;
   }
 
   if (request.method === "PATCH" && pathname === "/api/cart") {
     const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
-      .then((body) =>
-        handleCartUpsert(mode, cartState, response, body, (_item, quantity) => quantity, sessionId)
-      )
-      .catch((error) => sendJson(response, 400, { error: error.message }));
+      .then((body) => {
+        const result = handleCartUpsert(mode, cartState, response, body, (_item, quantity) => quantity, sessionId);
+        recordFunnelEvent(request, mode, "cart_changed", "success");
+        return result;
+      })
+      .catch((error) => {
+        recordFunnelEvent(request, mode, "cart_changed", "failed", error.message);
+        sendJson(response, 400, { error: error.message });
+      });
     return true;
   }
 
@@ -8015,16 +8220,23 @@ function handleApi(requestUrl, request, response) {
     const ipAddress = requestIpAddress(request);
     parseBody(request)
       .then(async (body) => {
-        const phone = formatIndonesianPhone(body.phone);
+        const phone = body.countryCode
+          ? formatPhoneWithCountryCode(body.phone, body.countryCode)
+          : formatIndonesianPhone(body.phone);
         if (!checkRateLimit(`otp-start-ip:${ipAddress}`, 8, 15 * 60 * 1000)
           || !checkRateLimit(`otp-start-phone:${phone}`, 5, 15 * 60 * 1000)) {
+          recordFunnelEvent(request, mode, "otp_requested", "failed", "rate_limited");
           sendJson(response, 429, { error: "Too many verification requests. Please try again later." });
           return;
         }
         const registration = await startRegistration(mode, storeState, body);
+        recordFunnelEvent(request, mode, "otp_requested", "success");
         sendJson(response, 200, { registration });
       })
-      .catch((error) => sendJson(response, 400, { error: error.message }));
+      .catch((error) => {
+        recordFunnelEvent(request, mode, "otp_requested", "failed", error.message);
+        sendJson(response, 400, { error: error.message });
+      });
     return true;
   }
 
@@ -8035,18 +8247,23 @@ function handleApi(requestUrl, request, response) {
         const phone = formatIndonesianPhone(body.phone);
         if (!checkRateLimit(`otp-verify-ip:${ipAddress}`, 20, 15 * 60 * 1000)
           || !checkRateLimit(`otp-verify-phone:${phone}`, 10, 15 * 60 * 1000)) {
+          recordFunnelEvent(request, mode, "otp_verified", "failed", "rate_limited");
           sendJson(response, 429, { error: "Too many verification attempts. Please try again later." });
           return;
         }
-        const registration = verifyRegistration(storeState, body);
+        const registration = verifyRegistration(mode, storeState, body);
         setSignedSessionCookie(response, request, CUSTOMER_SESSION_COOKIE, {
           role: "customer",
           phone: registration.phone,
           verifiedAt: registration.verifiedAt
         }, SESSION_TTL_SECONDS);
+        recordFunnelEvent(request, mode, "otp_verified", "success");
         sendJson(response, 200, { registration });
       })
-      .catch((error) => sendJson(response, 400, { error: error.message }));
+      .catch((error) => {
+        recordFunnelEvent(request, mode, "otp_verified", "failed", error.message);
+        sendJson(response, 400, { error: error.message });
+      });
     return true;
   }
 
@@ -8072,9 +8289,13 @@ function handleApi(requestUrl, request, response) {
     parseBody(request)
       .then((body) => {
         const profile = saveCustomerProfile(body, session.phone);
+        recordFunnelEvent(request, mode, "profile_saved", "success");
         sendJson(response, 200, { profile });
       })
-      .catch((error) => sendJson(response, 400, { error: error.message }));
+      .catch((error) => {
+        recordFunnelEvent(request, mode, "profile_saved", "failed", error.message);
+        sendJson(response, 400, { error: error.message });
+      });
     return true;
   }
 
@@ -8118,11 +8339,13 @@ function handleApi(requestUrl, request, response) {
   if (request.method === "POST" && pathname === "/api/checkout") {
     const session = requireCustomerSession(request, response);
     if (!session) {
+      recordFunnelEvent(request, mode, "checkout_attempted", "failed", "login_required");
       return true;
     }
     const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
       .then(async (body) => {
+        recordFunnelEvent(request, mode, "checkout_attempted", "started");
         const order = await createOrderForSession(
           mode,
           body,
@@ -8131,9 +8354,13 @@ function handleApi(requestUrl, request, response) {
           sessionId,
           metaAttributionFromRequest(request)
         );
+        recordFunnelEvent(request, mode, "checkout_completed", "success");
         sendJson(response, 201, { order });
       })
-      .catch((error) => sendJson(response, 400, { error: error.message }));
+      .catch((error) => {
+        recordFunnelEvent(request, mode, "checkout_completed", "failed", error.message);
+        sendJson(response, 400, { error: error.message });
+      });
     return true;
   }
 
@@ -8558,6 +8785,7 @@ module.exports = {
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
   isValidWhatsAppPhone,
+  isBaliDeliveryLocation,
   isFailedXenditPaymentEvent,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,

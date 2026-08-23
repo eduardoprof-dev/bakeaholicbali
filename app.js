@@ -475,6 +475,11 @@ function syncFulfillmentUi() {
     return;
   }
 
+  if (state.cart?.quoteError) {
+    deliveryFeeLine.textContent = state.cart.quoteError;
+    return;
+  }
+
   const feeAmount = state.cart?.deliveryFee || state.draft.destination.deliveryFee || 0;
   if (state.cart?.quoteSource === "biteship") {
     const courierLabel = state.cart.shipping?.courierName || "courier";
@@ -1832,6 +1837,7 @@ brandStoryNext?.addEventListener("click", () => changeBrandStorySlide(1));
 enableBrandStorySwipe();
 enableBrandStoryAutoplayPause();
 loginButton?.addEventListener("click", () => {
+  window.BakeaholicAnalytics?.funnel("login_opened");
   openAccount();
 });
 accountSummaryButton?.addEventListener("click", () => {

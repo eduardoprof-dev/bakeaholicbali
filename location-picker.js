@@ -5,6 +5,33 @@
     maximumFractionDigits: 0
   });
   let googleMapsLoaderPromise;
+  const BALI_ONLY_MESSAGE = "Delivery is available only for addresses in Bali.";
+  const BALI_MAIN_ISLAND_POLYGON = [
+    [114.41, -8.16], [114.50, -8.06], [114.76, -8.08], [115.15, -8.08],
+    [115.45, -8.18], [115.72, -8.34], [115.72, -8.52], [115.54, -8.67],
+    [115.30, -8.82], [115.04, -8.86], [114.78, -8.75], [114.57, -8.55],
+    [114.42, -8.31]
+  ];
+
+  function pointInPolygon(lng, lat, polygon) {
+    let inside = false;
+    for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+      const [currentLng, currentLat] = polygon[index];
+      const [previousLng, previousLat] = polygon[previous];
+      const intersects = ((currentLat > lat) !== (previousLat > lat))
+        && (lng < ((previousLng - currentLng) * (lat - currentLat)) / (previousLat - currentLat) + currentLng);
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  }
+
+  function isBaliLocation(nextValue = {}) {
+    const lat = Number(nextValue.lat);
+    const lng = Number(nextValue.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    return pointInPolygon(lng, lat, BALI_MAIN_ISLAND_POLYGON)
+      || (lat >= -8.91 && lat <= -8.57 && lng >= 115.34 && lng <= 115.73);
+  }
 
   function estimateGoSendFee(distanceKm) {
     if (!distanceKm || distanceKm <= 0) {
@@ -175,7 +202,7 @@
         !addressText
         || /^Pinned/i.test(addressText)
         || /^Pinned/i.test(labelText);
-      return hasCoordinates && nextValue.locationConfirmed !== false && !isPlaceholderAddress;
+      return hasCoordinates && nextValue.locationConfirmed !== false && !isPlaceholderAddress && isBaliLocation(nextValue);
     }
 
     function canUseGoogleMap() {
@@ -205,24 +232,6 @@
         lat: kitchen.lat,
         lng: kitchen.lng
       };
-    }
-
-    async function useTypedAddressFallback() {
-      const query = searchInput.value.trim();
-      if (!query) {
-        return false;
-      }
-      const center = currentMapCenter();
-      await setSelectedLocation({
-        lat: center.lat,
-        lng: center.lng,
-        label: query,
-        formattedAddress: query,
-        locationConfirmed: true,
-        locationNotes: notesInput.value.trim()
-      });
-      selectedFee.textContent = "Address saved from typed text. Please confirm the pin if the map becomes available.";
-      return true;
     }
 
     function initializeLeafletMap() {
@@ -333,6 +342,12 @@
 
       selectedLabel.textContent = value.label || value.formattedAddress || "Pinned location";
       selectedAddress.textContent = value.formattedAddress || "Pinned map location";
+      if (!isBaliLocation(value)) {
+        selectedFee.textContent = BALI_ONLY_MESSAGE;
+        notesInput.value = value.locationNotes || "";
+        notesInput.hidden = !value.locationNotes;
+        return;
+      }
       if (!hasConfirmedLocation(value)) {
         selectedFee.textContent = `Estimated delivery fee: ${formatRupiah.format(0)} for 0 km`;
         notesInput.value = value.locationNotes || "";
@@ -349,6 +364,11 @@
     }
 
     async function setSelectedLocation(nextValue) {
+      if (!isBaliLocation(nextValue)) {
+        value = { ...nextValue, deliveryFee: 0, routeDistanceKm: null };
+        renderSelectedLocation();
+        return;
+      }
       const routeDistanceKm = await fetchRouteDistanceKm(kitchen, nextValue)
         .catch(() => haversineDistanceKm(kitchen, nextValue) * 1.18);
       const fee = estimateGoSendFee(routeDistanceKm);
@@ -458,7 +478,7 @@
         const results = await geocode(query);
         const bestMatch = results[0];
         if (!bestMatch) {
-          await useTypedAddressFallback();
+          selectedFee.textContent = "Address not found in Bali. Search for a Bali address or place the pin on the map.";
           return;
         }
 
@@ -471,7 +491,7 @@
           locationNotes: notesInput.value.trim()
         });
       } catch (_error) {
-        await useTypedAddressFallback();
+        selectedFee.textContent = "Address search is unavailable. Please place the pin on a Bali location on the map.";
       } finally {
         searchButton.disabled = false;
         searchButton.textContent = "Find";
@@ -538,17 +558,12 @@
     });
 
     saveButton.addEventListener("click", () => {
+      if (value && !isBaliLocation(value)) {
+        selectedFee.textContent = BALI_ONLY_MESSAGE;
+        return;
+      }
       if (!hasConfirmedLocation()) {
-        useTypedAddressFallback()
-          .then((usedFallback) => {
-            if (!usedFallback || !hasConfirmedLocation()) {
-              selectedFee.textContent = "Please pin an address on the map before saving.";
-              return;
-            }
-            value.locationNotes = notesInput.value.trim();
-            renderSelectedLocation();
-            onSave?.(value);
-          });
+        selectedFee.textContent = "Please pin a valid Bali address on the map before saving.";
         return;
       }
 
