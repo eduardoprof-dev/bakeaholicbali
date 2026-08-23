@@ -1396,7 +1396,6 @@ function changeBrandStorySlide(direction, options = {}) {
   if (!options.auto) {
     restartBrandStoryAutoplay();
   }
-  document.activeElement?.blur?.();
   if (!options.auto && window.matchMedia("(max-width: 620px)").matches) {
     const card = brandStoryTrack.closest(".brand-story-card");
     const headerHeight = document.querySelector(".app-header")?.offsetHeight || 0;
@@ -1410,7 +1409,10 @@ function startBrandStoryAutoplay() {
   const slides = brandStoryTrack.querySelectorAll(".brand-story-slide");
   if (slides.length <= 1 || brandStoryTimer) return;
   brandStoryTimer = window.setInterval(() => {
-    if (brandStoryPaused) return;
+    // Never let decorative background motion interfere with checkout forms.
+    // In particular, advancing the carousel used to blur the active input,
+    // which interrupted OTP and profile entry every 5.2 seconds.
+    if (brandStoryPaused || hasActiveFormModal()) return;
     changeBrandStorySlide(1, { auto: true });
   }, 5200);
 }
