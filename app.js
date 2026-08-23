@@ -864,6 +864,23 @@ function closeModal(modal) {
   }
 }
 
+function hasActiveFormModal() {
+  return !whatsappModal.hidden
+    || !otpModal.hidden
+    || !profileModal.hidden
+    || !detailsModal.hidden
+    || !locationModal.hidden;
+}
+
+let preservedFormFocus = null;
+// iOS can dispatch a delayed pointer event to the backdrop after opening or
+// resizing its keyboard. Cancel it before it blurs the field being edited.
+modalScrim.addEventListener("pointerdown", (event) => {
+  if (!hasActiveFormModal()) return;
+  preservedFormFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  event.preventDefault();
+});
+
 function updateOtpTimer() {
   const remainingSeconds = Math.max(0, Math.ceil((otpResendAvailableAt - Date.now()) / 1000));
   resendOtpButton.disabled = remainingSeconds > 0;
@@ -1836,11 +1853,16 @@ closeDetailsModal.addEventListener("click", () => closeModal(detailsModal));
 closeProductModal.addEventListener("click", () => closeModal(productModal));
 closeCartDrawer?.addEventListener("click", () => closeModal(cartDrawer));
 document.getElementById("closeLocationModal")?.addEventListener("click", () => closeModal(locationModal));
-modalScrim.addEventListener("click", () => {
+modalScrim.addEventListener("click", (event) => {
   closeAccountMenu();
   // Never dismiss form dialogs from the scrim. Mobile keyboards can dispatch
   // a delayed background tap and discard data while the customer is typing.
   // Each form keeps its explicit close button.
+  if (hasActiveFormModal()) {
+    event.preventDefault();
+    preservedFormFocus?.focus({ preventScroll: true });
+    return;
+  }
   closeModal(productModal);
   closeModal(cartDrawer);
 });

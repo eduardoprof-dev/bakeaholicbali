@@ -1449,6 +1449,22 @@ function closeModal(modal) {
   }
 }
 
+function hasActiveFormModal() {
+  return !whatsappModal.hidden
+    || !otpModal.hidden
+    || !detailsModal.hidden
+    || !locationModal.hidden;
+}
+
+let preservedFormFocus = null;
+// Preserve input focus when iOS sends a delayed backdrop pointer event while
+// its keyboard is opening or resizing the viewport.
+modalScrim.addEventListener("pointerdown", (event) => {
+  if (!hasActiveFormModal()) return;
+  preservedFormFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  event.preventDefault();
+});
+
 function updateOtpTimer() {
   const remainingSeconds = Math.max(0, Math.ceil((otpResendAvailableAt - Date.now()) / 1000));
   resendOtpButton.disabled = remainingSeconds > 0;
@@ -2141,7 +2157,12 @@ saveDetailsButton.addEventListener("click", async () => {
   closeModal(detailsModal);
   await refreshCart();
 });
-modalScrim.addEventListener("click", () => {
+modalScrim.addEventListener("click", (event) => {
+  if (hasActiveFormModal()) {
+    event.preventDefault();
+    preservedFormFocus?.focus({ preventScroll: true });
+    return;
+  }
   closeModal(paymentModal);
   // Form dialogs close only from their visible controls. This prevents mobile
   // keyboard tap-through from discarding checkout information.
