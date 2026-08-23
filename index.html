@@ -12,7 +12,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260823-emergency-otp-restore" />
+    <link rel="stylesheet" href="styles.css?v=20260823-international-otp" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -297,9 +297,12 @@
       <label class="modal-field">
         <span>WhatsApp Number</span>
         <div class="phone-input-row">
-          <span class="phone-prefix">+62</span>
-          <input id="whatsappInput" type="tel" inputmode="tel" autocomplete="tel" placeholder="Enter your WhatsApp number" />
+          <select id="whatsappCountryCode" aria-label="WhatsApp country code">
+            <option value="62" selected>🇮🇩 +62</option>
+          </select>
+          <input id="whatsappInput" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="e.g. 0812 3456 7890" />
         </div>
+        <small class="phone-input-help">Choose your country, then enter your phone number.</small>
       </label>
       <button class="primary-button full-width" id="saveWhatsappButton" type="button">
         Continue
@@ -445,6 +448,7 @@
     ></script>
     <script src="location-picker.js?v=20260618-address-fallback"></script>
     <script src="meta-pixel.js?v=20260817-bakeaholic-dataset"></script>
-    <script src="app.js?v=20260823-emergency-otp-restore"></script>
+    <script src="country-picker.js?v=20260823-international-otp-v2"></script>
+    <script src="app.js?v=20260823-international-otp"></script>
   </body>
 </html>

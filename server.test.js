@@ -17,9 +17,12 @@ const {
   customerShippingWhatsappParameters,
   defaultSecurityHeaders,
   findOrderPaymentByXenditReference,
+  formatIndonesianPhone,
+  formatPhoneWithCountryCode,
   hasBiteshipShipmentForMessaging,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
+  isValidWhatsAppPhone,
   isFailedXenditPaymentEvent,
   isSupportedImageBuffer,
   metaAttributionFromRequest,
@@ -56,6 +59,17 @@ const {
   productionCookieDomain,
   serializeCookie
 } = require("./server");
+
+test("WhatsApp normalization supports international and Indonesian registrations", () => {
+  assert.equal(formatPhoneWithCountryCode("0812 3456 7890", "62"), "6281234567890");
+  assert.equal(formatPhoneWithCountryCode("62812 3456 7890", "62"), "6281234567890");
+  assert.equal(formatPhoneWithCountryCode("21 97021 6750", "55"), "5521970216750");
+  assert.equal(formatPhoneWithCountryCode("55 219 702 1675", "55"), "55552197021675");
+  assert.equal(formatPhoneWithCountryCode("+55 21 97021 6750", "55"), "5521970216750");
+  assert.equal(formatPhoneWithCountryCode("+55 21 97021 6750", "62"), "");
+  assert.equal(formatIndonesianPhone("5521970216750"), "5521970216750");
+  assert.equal(isValidWhatsAppPhone("5521970216750"), true);
+});
 
 test("Meta Purchase attribution uses checkout network data without customer details", () => {
   const attribution = metaAttributionFromRequest({

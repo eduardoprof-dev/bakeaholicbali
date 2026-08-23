@@ -2957,6 +2957,8 @@ const publicStaticFiles = new Set([
   "app.js",
   "cart.html",
   "cart.js",
+  "country-picker.js",
+  "data/countries.json",
   "index.html",
   "invoice.html",
   "invoice.js",
@@ -3571,6 +3573,7 @@ function normalizePhoneNumber(input) {
 }
 
 function formatIndonesianPhone(input) {
+  const raw = String(input || "").trim();
   const digits = normalizePhoneNumber(input);
   if (!digits) {
     return "";
@@ -3578,7 +3581,30 @@ function formatIndonesianPhone(input) {
   if (digits.startsWith("62")) {
     return digits;
   }
-  return `62${digits.replace(/^0+/, "")}`;
+  if (raw.startsWith("+") || raw.startsWith("00")) {
+    return raw.startsWith("00") ? digits.replace(/^00/, "") : digits;
+  }
+  return digits.startsWith("0") ? `62${digits.replace(/^0+/, "")}` : digits;
+}
+
+function formatPhoneWithCountryCode(input, countryCode) {
+  const raw = String(input || "").trim();
+  const digits = normalizePhoneNumber(raw);
+  const selectedCode = normalizePhoneNumber(countryCode);
+  if (!digits || !selectedCode) return "";
+  const explicitPhone = raw.startsWith("00") ? digits.replace(/^00/, "") : digits;
+  if (raw.startsWith("+") || raw.startsWith("00")) {
+    return explicitPhone.startsWith(selectedCode) ? explicitPhone : "";
+  }
+  if (selectedCode === "62") {
+    const indonesianNumber = digits.replace(/^0+/, "");
+    return indonesianNumber.startsWith("62") ? indonesianNumber : `62${indonesianNumber}`;
+  }
+  return `${selectedCode}${digits}`;
+}
+
+function isValidWhatsAppPhone(phone) {
+  return /^[1-9]\d{7,14}$/.test(String(phone || ""));
 }
 
 function normalizeCustomerDetails(input = {}) {
@@ -6586,9 +6612,11 @@ function createOtpCode() {
 }
 
 async function startRegistration(mode, storeState, input = {}) {
-  const phone = formatIndonesianPhone(input.phone);
-  if (!phone || phone.length < 10) {
-    throw new Error("Please enter a valid WhatsApp number");
+  const phone = input.countryCode
+    ? formatPhoneWithCountryCode(input.phone, input.countryCode)
+    : formatIndonesianPhone(input.phone);
+  if (!isValidWhatsAppPhone(phone)) {
+    throw new Error("Please enter a valid WhatsApp number with country code");
   }
 
   const now = Date.now();
@@ -8515,9 +8543,12 @@ module.exports = {
   defaultSecurityHeaders,
   customerShippingWhatsappParameters,
   findOrderPaymentByXenditReference,
+  formatIndonesianPhone,
+  formatPhoneWithCountryCode,
   hasBiteshipShipmentForMessaging,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
+  isValidWhatsAppPhone,
   isFailedXenditPaymentEvent,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,

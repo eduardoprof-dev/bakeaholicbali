@@ -104,6 +104,28 @@ const closeWhatsappModal = document.getElementById("closeWhatsappModal");
 const whatsappPrompt = document.getElementById("whatsappPrompt");
 const whatsappMessage = document.getElementById("whatsappMessage");
 const whatsappInput = document.getElementById("whatsappInput");
+const whatsappCountryCode = document.getElementById("whatsappCountryCode");
+
+async function populateWhatsAppCountryCodes() {
+  const response = await fetch("/data/countries.json");
+  if (!response.ok) throw new Error("Country codes are unavailable");
+  const countries = await response.json();
+  const options = countries.map((country) => {
+    const option = document.createElement("option");
+    option.value = country.code;
+    option.textContent = `${country.flag} +${country.code}`;
+    option.dataset.countryName = country.name;
+    option.dataset.flag = country.flag;
+    option.selected = country.country === "ID";
+    return option;
+  });
+  const selectedCode = whatsappCountryCode.value || "62";
+  whatsappCountryCode.replaceChildren(...options);
+  if (options.some((option) => option.value === selectedCode)) whatsappCountryCode.value = selectedCode;
+  window.BakeaholicCountryPicker?.enhance(whatsappCountryCode, whatsappInput);
+}
+
+const whatsappCountryCodesReady = populateWhatsAppCountryCodes().catch(() => null);
 const saveWhatsappButton = document.getElementById("saveWhatsappButton");
 const otpModal = document.getElementById("otpModal");
 const closeOtpModal = document.getElementById("closeOtpModal");
@@ -331,12 +353,32 @@ function setMessage(element, text, tone = "error") {
   element.hidden = !text;
 }
 
-function normalizeWhatsAppPhone(input) {
-  const digits = String(input || "").replace(/[^\d]/g, "");
-  if (!digits) {
-    return "";
+function normalizeWhatsAppPhone(input, countryCode = whatsappCountryCode?.value || "62") {
+  const raw = String(input || "").trim();
+  const digits = raw.replace(/[^\d]/g, "");
+  const selectedCode = String(countryCode || "").replace(/[^\d]/g, "");
+  if (!digits || !selectedCode) return "";
+  const explicitPhone = raw.startsWith("00") ? digits.replace(/^00/, "") : digits;
+  if (raw.startsWith("+") || raw.startsWith("00")) {
+    return explicitPhone.startsWith(selectedCode) ? explicitPhone : "";
   }
-  return digits.startsWith("62") ? digits : `62${digits.replace(/^0+/, "")}`;
+  if (selectedCode === "62") {
+    const nationalNumber = digits.replace(/^0+/, "");
+    return nationalNumber.startsWith("62") ? nationalNumber : `62${nationalNumber}`;
+  }
+  return `${selectedCode}${digits}`;
+}
+
+function editableWhatsAppPhone(input) {
+  const phone = String(input || "").replace(/[^\d]/g, "");
+  if (!phone) return "";
+  const countryCodes = Array.from(whatsappCountryCode?.options || [])
+    .map((option) => option.value)
+    .sort((a, b) => b.length - a.length);
+  const matchedCode = countryCodes.find((code) => phone.startsWith(code)) || "62";
+  whatsappCountryCode.value = matchedCode;
+  const nationalNumber = phone.slice(matchedCode.length);
+  return matchedCode === "62" ? `0${nationalNumber}` : nationalNumber;
 }
 
 function withVerificationPrompt(prompt) {
@@ -1428,10 +1470,10 @@ function startOtpTimer(seconds) {
   otpTimerId = window.setInterval(updateOtpTimer, 1000);
 }
 
-function openWhatsappModal() {
+async function openWhatsappModal() {
+  await whatsappCountryCodesReady;
   syncDraftFromForm();
-  const phone = normalizeWhatsAppPhone(state.draft.customer.phone);
-  whatsappInput.value = phone ? phone.replace(/^62/, "") : "";
+  whatsappInput.value = editableWhatsAppPhone(state.draft.customer.phone);
   setMessage(whatsappMessage, "");
   openModal(whatsappModal);
   whatsappInput.focus();
@@ -1451,9 +1493,11 @@ function showOtpModal(registration) {
 }
 
 async function requestOtp() {
-  const phone = normalizeWhatsAppPhone(whatsappInput.value);
-  if (!phone) {
-    setMessage(whatsappMessage, "Please enter your WhatsApp number");
+  const countryCode = whatsappCountryCode.value;
+  const rawPhone = whatsappInput.value.trim();
+  const phone = normalizeWhatsAppPhone(rawPhone, countryCode);
+  if (!/^[1-9]\d{7,14}$/.test(phone)) {
+    setMessage(whatsappMessage, "Choose your country and enter a valid WhatsApp number");
     return;
   }
 
@@ -1463,7 +1507,7 @@ async function requestOtp() {
   try {
     const payload = await request("/api/register/start", {
       method: "POST",
-      body: JSON.stringify({ phone })
+      body: JSON.stringify({ phone: rawPhone, countryCode })
     });
     showOtpModal(payload.registration);
   } catch (error) {
@@ -2051,12 +2095,12 @@ otpInput.addEventListener("keydown", (event) => {
   }
 });
 resendOtpButton.addEventListener("click", async () => {
-  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
+  whatsappInput.value = editableWhatsAppPhone(pendingOtpPhone);
   await requestOtp();
 });
 changePhoneButton.addEventListener("click", () => {
   closeModal(otpModal);
-  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
+  whatsappInput.value = editableWhatsAppPhone(pendingOtpPhone);
   openModal(whatsappModal);
 });
 copyOtpButton.addEventListener("click", async () => {
@@ -2099,8 +2143,7 @@ saveDetailsButton.addEventListener("click", async () => {
 });
 modalScrim.addEventListener("click", () => {
   closeModal(paymentModal);
-  closeModal(whatsappModal);
-  closeModal(otpModal);
+  // Never discard an in-progress phone number because of a delayed mobile tap.
   closeModal(detailsModal);
   closeModal(locationModal);
 });
