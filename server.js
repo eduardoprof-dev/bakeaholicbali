@@ -2542,6 +2542,39 @@ function saveIntegrationSettings(input = {}) {
   return nextSettings;
 }
 
+function hydrateIntegrationEnvironment() {
+  const settings = readIntegrationSettings();
+  const runtimeKeys = {
+    WHATSAPP_ACCESS_TOKEN: "whatsappAccessToken",
+    WHATSAPP_PHONE_NUMBER_ID: "whatsappPhoneNumberId",
+    WHATSAPP_BUSINESS_ACCOUNT_ID: "whatsappBusinessAccountId",
+    WHATSAPP_VERIFY_TOKEN: "whatsappVerifyToken",
+    WHATSAPP_APP_ID: "whatsappAppId",
+    WHATSAPP_APP_SECRET: "whatsappAppSecret",
+    WHATSAPP_GRAPH_VERSION: "whatsappGraphVersion",
+    WHATSAPP_OTP_TEMPLATE_NAME: "whatsappOtpTemplateName",
+    WHATSAPP_ORDER_TEMPLATE_NAME: "whatsappOrderTemplateName",
+    WHATSAPP_RECEIPT_TEMPLATE_NAME: "whatsappReceiptTemplateName",
+    WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: "whatsappPaymentReminderTemplateName",
+    WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME: "whatsappPaymentExpiredTemplateName",
+    WHATSAPP_SHIPPING_TEMPLATE_NAME: "whatsappShippingTemplateName",
+    WHATSAPP_ADMIN_NUMBER: "whatsappAdminNumber",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "whatsappAdminTemplateName",
+    WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "whatsappAdminShippingTemplateName",
+    WHATSAPP_TEMPLATE_LANGUAGE: "whatsappTemplateLanguage"
+  };
+
+  Object.entries(runtimeKeys).forEach(([environmentKey, settingsKey]) => {
+    const value = String(settings[settingsKey] || "").trim();
+    if (value) process.env[environmentKey] = value;
+  });
+}
+
+// Admin-saved integration values live in the persistent data directory. Load
+// them into the runtime after every deploy/restart so message delivery does not
+// silently fall back to generated-but-unsent OTP codes.
+hydrateIntegrationEnvironment();
+
 let catalog = loadCatalog();
 
 function loadCustomers() {
