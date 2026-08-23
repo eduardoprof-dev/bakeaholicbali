@@ -6639,12 +6639,20 @@ async function startRegistration(mode, storeState, input = {}) {
 
   storeState.registrations.set(phone, registration);
 
-  let message = mode === "test"
-    ? `Sandbox code: ${code}`
-    : "Verification code generated. Connect a WhatsApp provider to send it automatically.";
+  let message = `Sandbox code: ${code}`;
 
-  if (mode !== "test" && isWhatsappCloudReady()) {
-    await sendWhatsappOtpCode(phone, code);
+  if (mode !== "test") {
+    if (!isWhatsappCloudReady()) {
+      storeState.registrations.delete(phone);
+      throw new Error("WhatsApp verification is temporarily unavailable. Please try again shortly.");
+    }
+    try {
+      await sendWhatsappOtpCode(phone, code);
+    } catch (error) {
+      storeState.registrations.delete(phone);
+      console.warn(`WhatsApp OTP delivery failed: ${error.message}`);
+      throw new Error("We could not send the WhatsApp verification code. Check the number and try again.");
+    }
     message = "Verification code sent to WhatsApp.";
   }
 
