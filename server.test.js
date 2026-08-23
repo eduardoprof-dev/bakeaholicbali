@@ -17,7 +17,6 @@ const {
   customerShippingWhatsappParameters,
   defaultSecurityHeaders,
   findOrderPaymentByXenditReference,
-  formatIndonesianPhone,
   hasBiteshipShipmentForMessaging,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
@@ -57,14 +56,6 @@ const {
   productionCookieDomain,
   serializeCookie
 } = require("./server");
-
-test("WhatsApp normalization preserves international numbers and Indonesian local numbers", () => {
-  assert.equal(formatIndonesianPhone("0812 3456 7890"), "6281234567890");
-  assert.equal(formatIndonesianPhone("+62 812 3456 7890"), "6281234567890");
-  assert.equal(formatIndonesianPhone("+44 7700 900123"), "447700900123");
-  assert.equal(formatIndonesianPhone("0061 412 345 678"), "61412345678");
-  assert.equal(formatIndonesianPhone("14155552671"), "14155552671");
-});
 
 test("Meta Purchase attribution uses checkout network data without customer details", () => {
   const attribution = metaAttributionFromRequest({

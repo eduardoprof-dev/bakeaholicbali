@@ -3538,18 +3538,14 @@ function normalizePhoneNumber(input) {
 }
 
 function formatIndonesianPhone(input) {
-  const raw = String(input || "").trim();
   const digits = normalizePhoneNumber(input);
   if (!digits) {
     return "";
   }
-  if (raw.startsWith("+") || raw.startsWith("00")) {
-    return raw.startsWith("00") ? digits.replace(/^00/, "") : digits;
-  }
   if (digits.startsWith("62")) {
     return digits;
   }
-  return digits.startsWith("0") ? `62${digits.replace(/^0+/, "")}` : digits;
+  return `62${digits.replace(/^0+/, "")}`;
 }
 
 function normalizeCustomerDetails(input = {}) {
@@ -6558,8 +6554,8 @@ function createOtpCode() {
 
 async function startRegistration(mode, storeState, input = {}) {
   const phone = formatIndonesianPhone(input.phone);
-  if (!phone || phone.length < 8 || phone.length > 15) {
-    throw new Error("Please enter a valid WhatsApp number with country code");
+  if (!phone || phone.length < 10) {
+    throw new Error("Please enter a valid WhatsApp number");
   }
 
   const now = Date.now();
@@ -8486,7 +8482,6 @@ module.exports = {
   defaultSecurityHeaders,
   customerShippingWhatsappParameters,
   findOrderPaymentByXenditReference,
-  formatIndonesianPhone,
   hasBiteshipShipmentForMessaging,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,

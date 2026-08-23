@@ -332,21 +332,11 @@ function setMessage(element, text, tone = "error") {
 }
 
 function normalizeWhatsAppPhone(input) {
-  const raw = String(input || "").trim();
-  const digits = raw.replace(/[^\d]/g, "");
+  const digits = String(input || "").replace(/[^\d]/g, "");
   if (!digits) {
     return "";
   }
-  if (raw.startsWith("+") || raw.startsWith("00")) {
-    return raw.startsWith("00") ? digits.replace(/^00/, "") : digits;
-  }
   return digits.startsWith("62") ? digits : `62${digits.replace(/^0+/, "")}`;
-}
-
-function editableWhatsAppPhone(input) {
-  const phone = normalizeWhatsAppPhone(input);
-  if (!phone) return "";
-  return phone.startsWith("62") ? phone.slice(2) : `+${phone}`;
 }
 
 function withVerificationPrompt(prompt) {
@@ -1440,7 +1430,8 @@ function startOtpTimer(seconds) {
 
 function openWhatsappModal() {
   syncDraftFromForm();
-  whatsappInput.value = editableWhatsAppPhone(state.draft.customer.phone);
+  const phone = normalizeWhatsAppPhone(state.draft.customer.phone);
+  whatsappInput.value = phone ? phone.replace(/^62/, "") : "";
   setMessage(whatsappMessage, "");
   openModal(whatsappModal);
   whatsappInput.focus();
@@ -1461,8 +1452,8 @@ function showOtpModal(registration) {
 
 async function requestOtp() {
   const phone = normalizeWhatsAppPhone(whatsappInput.value);
-  if (!phone || phone.length < 8 || phone.length > 15) {
-    setMessage(whatsappMessage, "Enter a valid WhatsApp number with country code");
+  if (!phone) {
+    setMessage(whatsappMessage, "Please enter your WhatsApp number");
     return;
   }
 
@@ -2060,12 +2051,12 @@ otpInput.addEventListener("keydown", (event) => {
   }
 });
 resendOtpButton.addEventListener("click", async () => {
-  whatsappInput.value = editableWhatsAppPhone(pendingOtpPhone);
+  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
   await requestOtp();
 });
 changePhoneButton.addEventListener("click", () => {
   closeModal(otpModal);
-  whatsappInput.value = editableWhatsAppPhone(pendingOtpPhone);
+  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
   openModal(whatsappModal);
 });
 copyOtpButton.addEventListener("click", async () => {
