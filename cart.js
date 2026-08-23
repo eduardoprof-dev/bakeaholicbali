@@ -2143,9 +2143,8 @@ saveDetailsButton.addEventListener("click", async () => {
 });
 modalScrim.addEventListener("click", () => {
   closeModal(paymentModal);
-  // Never discard an in-progress phone number because of a delayed mobile tap.
-  closeModal(detailsModal);
-  closeModal(locationModal);
+  // Form dialogs close only from their visible controls. This prevents mobile
+  // keyboard tap-through from discarding checkout information.
 });
 submitOrderButton.addEventListener("click", submitOrder);
 

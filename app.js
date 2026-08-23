@@ -1838,11 +1838,9 @@ closeCartDrawer?.addEventListener("click", () => closeModal(cartDrawer));
 document.getElementById("closeLocationModal")?.addEventListener("click", () => closeModal(locationModal));
 modalScrim.addEventListener("click", () => {
   closeAccountMenu();
-  // Keep verification open through mobile keyboard and viewport changes.
-  // Customers can still dismiss it with the visible close button.
-  closeModal(profileModal);
-  closeModal(detailsModal);
-  closeModal(locationModal);
+  // Never dismiss form dialogs from the scrim. Mobile keyboards can dispatch
+  // a delayed background tap and discard data while the customer is typing.
+  // Each form keeps its explicit close button.
   closeModal(productModal);
   closeModal(cartDrawer);
 });
@@ -1891,6 +1889,9 @@ saveDetailsButton.addEventListener("click", () => {
   closeModal(detailsModal);
 });
 saveProfileButton.addEventListener("click", saveProfile);
+[profileFirstNameInput, profileLastNameInput, profileEmailInput].forEach((field) => {
+  field.addEventListener("input", () => setMessage(profileMessage, ""));
+});
 profileEmailInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     saveProfile();
