@@ -19,6 +19,7 @@ const xenditComponentsSdkIntegrity = "sha384-f7WJhUhA6M8Ws7YX1TCkdByJbvagFsACWdW
 let xenditComponentsSdkPromise = null;
 let paymentSelectionInProgress = false;
 const pendingQuantities = new Map();
+window.BakeaholicAnalytics?.funnel("checkout_viewed");
 const quantityUpdateTimers = new Map();
 const quantityUpdateVersions = new Map();
 

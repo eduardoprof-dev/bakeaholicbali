@@ -61,6 +61,7 @@ const brandStoryCounter = document.getElementById("brandStoryCounter");
 const cartLink = document.getElementById("cartLink");
 const cartCountBadge = document.getElementById("cartCountBadge");
 const storefrontCartBar = document.getElementById("storefrontCartBar");
+const storefrontCartAction = document.getElementById("storefrontCartAction");
 const storefrontCartCount = document.getElementById("storefrontCartCount");
 const cartDrawer = document.getElementById("cartDrawer");
 const closeCartDrawer = document.getElementById("closeCartDrawer");
@@ -811,7 +812,7 @@ function renderCartSummary() {
     storefrontCartBar.hidden = itemCount <= 0;
   }
   if (storefrontCartCount) {
-    storefrontCartCount.textContent = `${itemCount} Item${itemCount === 1 ? "" : "s"}`;
+    storefrontCartCount.textContent = `${itemCount} Item${itemCount === 1 ? "" : "s"} · ${formatRupiah.format(state.cart?.subtotal || 0)}`;
   }
   renderCartDrawer();
 }
@@ -1166,6 +1167,12 @@ async function addToCart(itemId, triggerButton = null) {
     });
     state.cart = cartPayload;
     renderCartSummary();
+    if (storefrontCartAction) {
+      storefrontCartAction.textContent = "Added — Checkout now";
+      window.setTimeout(() => {
+        storefrontCartAction.textContent = "Checkout now";
+      }, 1800);
+    }
     window.BakeaholicAnalytics?.track("AddToCart", {
       content_ids: [itemId],
       content_type: "product",
@@ -1822,10 +1829,15 @@ promoAddButton.addEventListener("click", () => addToCart(state.promo.itemId));
 cartLink?.addEventListener("click", (event) => {
   if ((state.cart?.itemCount || 0) <= 0) return;
   event.preventDefault();
+  window.BakeaholicAnalytics?.funnel("cart_opened");
   openCartDrawer();
 });
-storefrontCartBar?.addEventListener("click", openCartDrawer);
+storefrontCartBar?.addEventListener("click", () => {
+  window.BakeaholicAnalytics?.funnel("checkout_clicked");
+  window.location.href = cartPageUrl();
+});
 cartDrawerCheckoutButton?.addEventListener("click", () => {
+  window.BakeaholicAnalytics?.funnel("checkout_clicked");
   window.location.href = cartPageUrl();
 });
 cartDrawerAddressButton?.addEventListener("click", () => {

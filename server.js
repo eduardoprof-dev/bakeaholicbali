@@ -3408,7 +3408,7 @@ function funnelActorHash(request) {
 
 function recordFunnelEvent(request, mode, event, outcome = "", reason = "") {
   const allowedEvents = new Set([
-    "page_view", "login_opened", "otp_requested", "otp_verified",
+    "page_view", "login_opened", "cart_opened", "checkout_clicked", "checkout_viewed", "otp_requested", "otp_verified",
     "profile_saved", "cart_changed", "checkout_attempted", "checkout_completed"
   ]);
   if (!allowedEvents.has(event)) return;
@@ -8161,7 +8161,7 @@ function handleApi(requestUrl, request, response) {
     parseBody(request)
       .then((body) => {
         const event = String(body.event || "");
-        if (!new Set(["page_view", "login_opened"]).has(event)) {
+        if (!new Set(["page_view", "login_opened", "cart_opened", "checkout_clicked", "checkout_viewed"]).has(event)) {
           sendJson(response, 400, { error: "Unsupported funnel event" });
           return;
         }
