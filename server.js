@@ -3406,10 +3406,26 @@ function funnelActorHash(request) {
     .slice(0, 20);
 }
 
+const clientFunnelEvents = new Set([
+  "page_view",
+  "cart_opened",
+  "checkout_clicked",
+  "checkout_viewed",
+  "login_opened",
+  "address_opened",
+  "address_selected",
+  "delivery_quote_succeeded",
+  "delivery_quote_failed"
+]);
+
+function isSupportedClientFunnelEvent(event) {
+  return clientFunnelEvents.has(String(event || ""));
+}
+
 function recordFunnelEvent(request, mode, event, outcome = "", reason = "") {
   const allowedEvents = new Set([
-    "page_view", "login_opened", "cart_opened", "checkout_clicked", "otp_requested", "otp_verified",
-    "profile_saved", "cart_changed", "checkout_attempted", "checkout_completed"
+    ...clientFunnelEvents,
+    "otp_requested", "otp_verified", "profile_saved", "cart_changed", "checkout_attempted", "checkout_completed"
   ]);
   if (!allowedEvents.has(event)) return;
   const entries = loadJsonArray(funnelEventsPath);
@@ -8161,7 +8177,7 @@ function handleApi(requestUrl, request, response) {
     parseBody(request)
       .then((body) => {
         const event = String(body.event || "");
-        if (!new Set(["page_view", "login_opened", "cart_opened", "checkout_clicked"]).has(event)) {
+        if (!isSupportedClientFunnelEvent(event)) {
           sendJson(response, 400, { error: "Unsupported funnel event" });
           return;
         }
@@ -8824,5 +8840,6 @@ module.exports = {
   totpCode,
   verifyTotp,
   productionCookieDomain,
-  serializeCookie
+  serializeCookie,
+  isSupportedClientFunnelEvent
 };

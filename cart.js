@@ -21,6 +21,15 @@ let paymentSelectionInProgress = false;
 const pendingQuantities = new Map();
 const quantityUpdateTimers = new Map();
 const quantityUpdateVersions = new Map();
+const trackedCheckoutStages = new Set();
+
+function trackCheckoutStageOnce(event) {
+  if (trackedCheckoutStages.has(event)) return;
+  trackedCheckoutStages.add(event);
+  window.BakeaholicAnalytics?.funnel(event);
+}
+
+trackCheckoutStageOnce("checkout_viewed");
 
 const state = {
   store: null,
@@ -1863,6 +1872,13 @@ function renderPaymentModal() {
 async function refreshCart() {
   syncDraftFromForm();
   const cartPayload = await request(`/api/cart?${buildCartQuery()}`);
+  if (hasDeliveryDestination()) {
+    if (cartPayload.quoteSource === "biteship") {
+      trackCheckoutStageOnce("delivery_quote_succeeded");
+    } else if (cartPayload.quoteError) {
+      trackCheckoutStageOnce("delivery_quote_failed");
+    }
+  }
   applyCartPayload(cartPayload);
 }
 
@@ -2030,6 +2046,7 @@ async function bootstrap() {
     googleMapsApiKey: state.store.integrations?.googleMapsApiKey,
     initialValue: state.draft.destination,
     onSave: async (destination) => {
+      trackCheckoutStageOnce("address_selected");
       state.draft.destination = destination;
       state.draft.customer.address = destination.formattedAddress;
       try {
@@ -2139,14 +2156,17 @@ copyOtpButton.addEventListener("click", async () => {
   }
 });
 addressButton.addEventListener("click", () => {
+  trackCheckoutStageOnce("address_opened");
   openModal(locationModal);
   locationPicker?.open();
 });
 footerAddressButton?.addEventListener("click", () => {
+  trackCheckoutStageOnce("address_opened");
   openModal(locationModal);
   locationPicker?.open();
 });
 changeAddressInlineButton.addEventListener("click", () => {
+  trackCheckoutStageOnce("address_opened");
   openModal(locationModal);
   locationPicker?.open();
 });

@@ -58,8 +58,23 @@ const {
   totpCode,
   verifyTotp,
   productionCookieDomain,
-  serializeCookie
+  serializeCookie,
+  isSupportedClientFunnelEvent
 } = require("./server");
+
+test("checkout-stage funnel events are fixed and privacy-safe", () => {
+  for (const event of [
+    "checkout_viewed",
+    "address_opened",
+    "address_selected",
+    "delivery_quote_succeeded",
+    "delivery_quote_failed"
+  ]) {
+    assert.equal(isSupportedClientFunnelEvent(event), true);
+  }
+  assert.equal(isSupportedClientFunnelEvent("address=private customer data"), false);
+  assert.equal(isSupportedClientFunnelEvent("delivery_quote_failed:customer address"), false);
+});
 
 test("WhatsApp normalization supports international and Indonesian registrations", () => {
   assert.equal(formatPhoneWithCountryCode("0812 3456 7890", "62"), "6281234567890");
