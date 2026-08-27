@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const vm = require("node:vm");
 
 const {
   adminPermissions,
@@ -139,6 +140,74 @@ test("product deep-link UI preserves existing cart and checkout actions", () => 
   assert.match(appSource, /window\.location\.href = cartPageUrl\(\)/);
   assert.match(appSource, /applyCatalogPayload\(payload\);\s+document\.title = "Bakeaholic Online Shop";\s+if \(deepLinkedProductId\) \{\s+openProductModal\(deepLinkedProductId, \{ updateHistory: false \}\)/);
   assert.match(appSource, /deepLinkedProductAvailability === "out of stock"/);
+  assert.match(appSource, /BakeaholicAnalytics\?\.viewProduct\(item\)/);
+});
+
+function createMetaPixelHarness(pathname = "/products/bliss-peanutella") {
+  const fetches = [];
+  const fbqCalls = [];
+  const window = {
+    location: { origin: "https://bakeaholicbali.com", pathname },
+    crypto: { randomUUID: () => "test-event-id" },
+    fetch: async (url, options) => { fetches.push({ url, options }); return { ok: true }; },
+    sessionStorage: { getItem: () => null, setItem: () => {} }
+  };
+  window.fbq = (...args) => fbqCalls.push(args);
+  const document = { createElement: () => ({}), head: { appendChild: () => {} } };
+  const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "meta-pixel.js"), "utf8");
+  vm.runInNewContext(source, { window, document, Date, Math, Number, String, Object, Array });
+  return { window, fetches, fbqCalls };
+}
+
+test("product ViewContent uses the exact Meta payload once per product view", () => {
+  for (const [itemId, price] of [
+    ["bliss-peanutella", 75000],
+    ["cookie-lamington", 20000],
+    ["oats-banoffee-pie", 25000],
+    ["mallow-vanilla", 7500]
+  ]) {
+    const harness = createMetaPixelHarness(`/products/${itemId}`);
+    const item = { id: itemId, price };
+    harness.window.BakeaholicAnalytics.viewProduct(item);
+    harness.window.BakeaholicAnalytics.viewProduct(item);
+
+    const viewContentCalls = harness.fbqCalls.filter((entry) => entry[0] === "track" && entry[1] === "ViewContent");
+    assert.equal(viewContentCalls.length, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(viewContentCalls[0][2])), {
+      content_ids: [itemId], content_type: "product", currency: "IDR", value: price
+    });
+    const serverEvents = harness.fetches
+      .filter((entry) => entry.url === "/api/meta/events")
+      .map((entry) => JSON.parse(entry.options.body))
+      .filter((entry) => entry.eventName === "ViewContent");
+    assert.equal(serverEvents.length, 1);
+    assert.deepEqual(serverEvents[0].customData, {
+      content_ids: [itemId], content_type: "product", currency: "IDR", value: price
+    });
+  }
+});
+
+test("product ViewContent deduplicates hydration and modal reopen but tracks a new exact state", () => {
+  const harness = createMetaPixelHarness();
+  const item = { id: "cookie-lamington", price: 20000 };
+  harness.window.BakeaholicAnalytics.viewProduct(item);
+  harness.window.BakeaholicAnalytics.viewProduct(item);
+  harness.window.location.pathname = "/products/oats-banoffee-pie";
+  harness.window.BakeaholicAnalytics.viewProduct({ id: "oats-banoffee-pie", price: 25000 });
+  harness.window.location.pathname = "/products/cookie-lamington";
+  harness.window.BakeaholicAnalytics.viewProduct(item);
+  const events = harness.fbqCalls.filter((entry) => entry[1] === "ViewContent");
+  assert.deepEqual(events.map((entry) => entry[2].content_ids[0]), [
+    "cookie-lamington", "oats-banoffee-pie", "cookie-lamington"
+  ]);
+});
+
+test("invalid product state does not emit ViewContent", () => {
+  const harness = createMetaPixelHarness("/products/not-a-real-product");
+  assert.equal(harness.window.BakeaholicAnalytics.viewProduct(null), "");
+  assert.equal(harness.window.BakeaholicAnalytics.viewProduct({ id: "", price: 75000 }), "");
+  assert.equal(harness.window.BakeaholicAnalytics.viewProduct({ id: "not-a-real-product", price: "invalid" }), "");
+  assert.equal(harness.fbqCalls.some((entry) => entry[1] === "ViewContent"), false);
 });
 
 test("checkout-stage funnel events are fixed and privacy-safe", () => {

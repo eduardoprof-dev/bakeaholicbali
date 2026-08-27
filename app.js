@@ -783,12 +783,7 @@ function openProductModal(itemId, options = {}) {
   }
   document.title = `${item.name} | Bakeaholic Bali`;
 
-  window.BakeaholicAnalytics?.track("ViewContent", {
-    content_ids: [item.id],
-    content_type: "product",
-    currency: "IDR",
-    value: Number(item.price || 0)
-  });
+  window.BakeaholicAnalytics?.viewProduct(item);
 
   selectedProductId = item.id;
   productModalImage.src = versionedAsset(item.imagePath);
