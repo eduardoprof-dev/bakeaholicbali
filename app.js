@@ -14,6 +14,11 @@ const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
 const latestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
 const cartSessionKey = `bakeaholic-cart-session-${cartStateVersion}-${appMode}`;
 const cartSessionMaxAgeMs = 24 * 60 * 60 * 1000;
+const deepLinkedProductId = (() => {
+  const match = window.location.pathname.match(/^\/products\/([a-z0-9][a-z0-9-]{1,79})\/?$/i);
+  return match ? match[1].toLowerCase() : "";
+})();
+const deepLinkedProductAvailability = document.querySelector('meta[property="product:availability"]')?.content || "";
 
 const state = {
   appMode,
@@ -761,9 +766,22 @@ function currentPromoItem() {
   return state.items.find((item) => item.id === state.promo?.itemId) || null;
 }
 
-function openProductModal(itemId) {
-  const item = state.items.find((candidate) => candidate.id === itemId);
-  if (!item) return;
+function productPageUrl(itemId) {
+  const suffix = appMode === "test" ? "?mode=test" : "";
+  return `/products/${encodeURIComponent(itemId)}${suffix}`;
+}
+
+function openProductModal(itemId, options = {}) {
+  const catalogItem = state.items.find((candidate) => candidate.id === itemId);
+  if (!catalogItem) return;
+  const item = itemId === deepLinkedProductId && deepLinkedProductAvailability === "out of stock"
+    ? { ...catalogItem, stock: 0 }
+    : catalogItem;
+
+  if (options.updateHistory !== false && window.location.pathname !== `/products/${item.id}`) {
+    window.history.pushState({ productId: item.id }, "", productPageUrl(item.id));
+  }
+  document.title = `${item.name} | Bakeaholic Bali`;
 
   window.BakeaholicAnalytics?.track("ViewContent", {
     content_ids: [item.id],
@@ -799,6 +817,15 @@ function openProductModal(itemId) {
     .join("");
 
   openModal(productModal);
+}
+
+function closeProductDetails(options = {}) {
+  closeModal(productModal);
+  selectedProductId = "";
+  document.title = "Bakeaholic Online Shop";
+  if (options.updateHistory !== false && window.location.pathname.startsWith("/products/")) {
+    window.history.replaceState({}, "", `/index.html${modeQuery}`);
+  }
 }
 
 function renderCartSummary() {
@@ -1633,8 +1660,11 @@ function applyCatalogPayload(payload) {
 async function bootstrap() {
   const payload = await request("/api/menu");
   applyCatalogPayload(payload);
-
   document.title = "Bakeaholic Online Shop";
+
+  if (deepLinkedProductId) {
+    openProductModal(deepLinkedProductId, { updateHistory: false });
+  }
   locationPicker = window.BakeaholicLocationPicker?.createLocationPicker({
     rootId: "locationModal",
     kitchen: {
@@ -1863,7 +1893,7 @@ closeWhatsappModal.addEventListener("click", () => closeModal(whatsappModal));
 closeOtpModal.addEventListener("click", () => closeModal(otpModal));
 closeProfileModal.addEventListener("click", () => closeModal(profileModal));
 closeDetailsModal.addEventListener("click", () => closeModal(detailsModal));
-closeProductModal.addEventListener("click", () => closeModal(productModal));
+closeProductModal.addEventListener("click", () => closeProductDetails());
 closeCartDrawer?.addEventListener("click", () => closeModal(cartDrawer));
 document.getElementById("closeLocationModal")?.addEventListener("click", () => closeModal(locationModal));
 modalScrim.addEventListener("click", (event) => {
@@ -1935,7 +1965,17 @@ profileEmailInput.addEventListener("keydown", (event) => {
 productModalAddButton.addEventListener("click", async () => {
   if (!selectedProductId) return;
   await addToCart(selectedProductId, productModalAddButton);
-  closeModal(productModal);
+  closeProductDetails();
+});
+
+window.addEventListener("popstate", () => {
+  const match = window.location.pathname.match(/^\/products\/([a-z0-9][a-z0-9-]{1,79})\/?$/i);
+  const productId = match ? match[1].toLowerCase() : "";
+  if (productId) {
+    openProductModal(productId, { updateHistory: false });
+  } else if (!productModal.hidden) {
+    closeProductDetails({ updateHistory: false });
+  }
 });
 
 bootstrap().catch((error) => {

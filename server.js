@@ -2987,6 +2987,117 @@ function sendFile(response, targetPath) {
   });
 }
 
+function escapeMetadataHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function productIdFromPathname(pathname) {
+  const match = String(pathname || "").match(/^\/products\/([a-z0-9][a-z0-9-]{1,79})\/?$/i);
+  return match ? match[1].toLowerCase() : "";
+}
+
+const metaProductDeepLinks = Object.freeze({
+  "bliss-peanutella": Object.freeze({ opsProductId: "PEANUTELLA", barcode: "101066051706", latestStock: 42, featured: true }),
+  "cookie-lamington": Object.freeze({ opsProductId: "LAMINGTON", barcode: "101005051856", latestStock: 20, featured: true }),
+  "oats-banoffee-pie": Object.freeze({ opsProductId: "BANOFFEE", barcode: "101005051850", latestStock: 5, featured: true }),
+  "mallow-vanilla": Object.freeze({ opsProductId: "VANILLAM", barcode: "1010011202401", latestStock: 6, featured: true }),
+  "bliss-triple-chocolate": Object.freeze({ latestStock: 0, featured: false }),
+  "cookie-choc-chip": Object.freeze({ latestStock: 0, featured: false }),
+  "cookie-smores": Object.freeze({ latestStock: 1, featured: false })
+});
+
+function metaProductDeepLinkConfig(itemId) {
+  return metaProductDeepLinks[String(itemId || "")] || null;
+}
+
+function productPageHtml(template, item, categories = catalog.categories) {
+  const category = categories.find((entry) => entry.id === item.category);
+  const deepLinkConfig = metaProductDeepLinkConfig(item.id);
+  const canonicalUrl = `https://bakeaholicbali.com/products/${encodeURIComponent(item.id)}`;
+  const imageUrl = new URL(String(item.imagePath || "/assets/bakeaholic-logo.jpg"), "https://bakeaholicbali.com").href;
+  const title = `${item.name} | Bakeaholic Bali`;
+  const description = String(item.description || category?.description || "Bali-made snacks from Bakeaholic Bali.").trim();
+  const effectiveStock = deepLinkConfig && Number.isFinite(Number(deepLinkConfig.latestStock))
+    ? Number(deepLinkConfig.latestStock)
+    : Number(item.stock || 0);
+  const isAvailable = effectiveStock > 0;
+  const availability = isAvailable ? "in stock" : "out of stock";
+  const schema = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: item.name,
+    image: [imageUrl],
+    description,
+    sku: item.id,
+    ...(deepLinkConfig?.opsProductId ? { mpn: deepLinkConfig.opsProductId } : {}),
+    ...(deepLinkConfig?.barcode?.length === 12 ? { gtin12: deepLinkConfig.barcode } : {}),
+    ...(deepLinkConfig?.barcode?.length === 13 ? { gtin13: deepLinkConfig.barcode } : {}),
+    brand: { "@type": "Brand", name: "Bakeaholic Bali" },
+    offers: {
+      "@type": "Offer",
+      url: canonicalUrl,
+      priceCurrency: "IDR",
+      price: Number(item.price || 0),
+      availability: isAvailable
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock"
+    }
+  }).replace(/</g, "\\u003c");
+  const metadata = `
+    <base href="/" />
+    <link rel="canonical" href="${escapeMetadataHtml(canonicalUrl)}" />
+    <meta name="description" content="${escapeMetadataHtml(description)}" />
+    <meta property="og:type" content="product" />
+    <meta property="og:site_name" content="Bakeaholic Bali" />
+    <meta property="og:title" content="${escapeMetadataHtml(title)}" />
+    <meta property="og:description" content="${escapeMetadataHtml(description)}" />
+    <meta property="og:url" content="${escapeMetadataHtml(canonicalUrl)}" />
+    <meta property="og:image" content="${escapeMetadataHtml(imageUrl)}" />
+    <meta property="og:image:alt" content="${escapeMetadataHtml(item.name)}" />
+    <meta property="product:brand" content="Bakeaholic Bali" />
+    <meta property="product:retailer_item_id" content="${escapeMetadataHtml(item.id)}" />
+    <meta property="product:price:amount" content="${Number(item.price || 0)}" />
+    <meta property="product:price:currency" content="IDR" />
+    <meta property="product:availability" content="${availability}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeMetadataHtml(title)}" />
+    <meta name="twitter:description" content="${escapeMetadataHtml(description)}" />
+    <meta name="twitter:image" content="${escapeMetadataHtml(imageUrl)}" />
+    <script type="application/ld+json">${schema}</script>`;
+  return String(template)
+    .replace("<title>Bakeaholic Online Shop</title>", `<title>${escapeMetadataHtml(title)}</title>`)
+    .replace("</head>", `${metadata}\n  </head>`);
+}
+
+function sendProductPage(response, item, method = "GET") {
+  fs.readFile(path.join(rootDir, "index.html"), "utf8", (error, template) => {
+    if (error) {
+      sendJson(response, 500, { error: "Unable to load product page" });
+      return;
+    }
+    const html = productPageHtml(template, item);
+    response.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      ...defaultSecurityHeaders("no-store")
+    });
+    response.end(method === "HEAD" ? "" : html);
+  });
+}
+
+function sendProductNotFound(response, method = "GET") {
+  const html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Product not found | Bakeaholic Bali</title></head><body><main><h1>Product not found</h1><p>This product is not currently available in our catalogue.</p><a href="/">Shop Bakeaholic</a></main></body></html>`;
+  response.writeHead(404, {
+    "Content-Type": "text/html; charset=utf-8",
+    ...defaultSecurityHeaders("no-store")
+  });
+  response.end(method === "HEAD" ? "" : html);
+}
+
 const publicStaticFiles = new Set([
   "account-common.js",
   "addresses.html",
@@ -8739,6 +8850,17 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if ((request.method === "GET" || request.method === "HEAD") && requestUrl.pathname.startsWith("/products/")) {
+    const productId = productIdFromPathname(requestUrl.pathname);
+    const item = productId ? findMenuItem(productId) : null;
+    if (!item) {
+      sendProductNotFound(response, request.method);
+      return;
+    }
+    sendProductPage(response, item, request.method);
+    return;
+  }
+
   const relativePath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
   const targetPath = path.normalize(path.join(rootDir, relativePath));
   if (!targetPath.startsWith(`${rootDir}${path.sep}`) && targetPath !== rootDir) {
@@ -8841,5 +8963,8 @@ module.exports = {
   verifyTotp,
   productionCookieDomain,
   serializeCookie,
-  isSupportedClientFunnelEvent
+  isSupportedClientFunnelEvent,
+  productIdFromPathname,
+  productPageHtml,
+  metaProductDeepLinkConfig
 };

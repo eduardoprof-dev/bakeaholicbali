@@ -59,8 +59,87 @@ const {
   verifyTotp,
   productionCookieDomain,
   serializeCookie,
-  isSupportedClientFunnelEvent
+  isSupportedClientFunnelEvent,
+  productIdFromPathname,
+  productPageHtml,
+  metaProductDeepLinkConfig
 } = require("./server");
+
+test("Meta Collection mapping uses the Ops-ranked available products", () => {
+  assert.deepEqual(metaProductDeepLinkConfig("bliss-peanutella"), {
+    opsProductId: "PEANUTELLA", barcode: "101066051706", latestStock: 42, featured: true
+  });
+  assert.deepEqual(metaProductDeepLinkConfig("cookie-lamington"), {
+    opsProductId: "LAMINGTON", barcode: "101005051856", latestStock: 20, featured: true
+  });
+  assert.deepEqual(metaProductDeepLinkConfig("oats-banoffee-pie"), {
+    opsProductId: "BANOFFEE", barcode: "101005051850", latestStock: 5, featured: true
+  });
+  assert.deepEqual(metaProductDeepLinkConfig("mallow-vanilla"), {
+    opsProductId: "VANILLAM", barcode: "1010011202401", latestStock: 6, featured: true
+  });
+  for (const itemId of ["bliss-triple-chocolate", "cookie-choc-chip", "cookie-smores"]) {
+    assert.equal(metaProductDeepLinkConfig(itemId).featured, false);
+  }
+});
+
+test("product deep links resolve exact catalogue ids and reject invalid paths", () => {
+  assert.equal(productIdFromPathname("/products/bliss-peanutella"), "bliss-peanutella");
+  assert.equal(productIdFromPathname("/products/COOKIE-SMORES/"), "cookie-smores");
+  assert.equal(productIdFromPathname("/products/"), "");
+  assert.equal(productIdFromPathname("/products/private customer data"), "");
+  assert.equal(productIdFromPathname("/products/bliss-peanutella/extra"), "");
+});
+
+test("product pages expose Meta metadata for available and unavailable products", () => {
+  const template = "<html><head><title>Bakeaholic Online Shop</title></head><body></body></html>";
+  const available = productPageHtml(template, {
+    id: "bliss-peanutella",
+    name: "Peanutella Bliss Balls",
+    category: "bliss-balls",
+    description: "Chocolate and peanut snack.",
+    imagePath: "/assets/products/peanutella.png",
+    price: 75000,
+    stock: 12
+  }, [{ id: "bliss-balls", label: "Bliss Balls", description: "Bali-made snacks." }]);
+  assert.match(available, /<title>Peanutella Bliss Balls \| Bakeaholic Bali<\/title>/);
+  assert.match(available, /<base href="\/" \/>/);
+  assert.match(available, /property="og:type" content="product"/);
+  assert.match(available, /property="og:url" content="https:\/\/bakeaholicbali\.com\/products\/bliss-peanutella"/);
+  assert.match(available, /property="product:price:amount" content="75000"/);
+  assert.match(available, /property="product:availability" content="in stock"/);
+  assert.match(available, /https:\/\/schema\.org\/InStock/);
+
+  const opsUnavailable = productPageHtml(template, {
+    id: "cookie-choc-chip",
+    name: "Chocolate Chip Oatmeal Cookie",
+    category: "oatmeal-cookies",
+    imagePath: "/assets/products/cookies.jpg",
+    price: 20000,
+    stock: 36
+  }, []);
+  assert.match(opsUnavailable, /property="product:availability" content="out of stock"/);
+  assert.match(opsUnavailable, /https:\/\/schema\.org\/OutOfStock/);
+
+  const unavailable = productPageHtml(template, {
+    id: "cookie-raisin",
+    name: "Raisin Oatmeal Cookie",
+    category: "oatmeal-cookies",
+    imagePath: "/assets/products/cookies.jpg",
+    price: 20000,
+    stock: 0
+  }, []);
+  assert.match(unavailable, /property="product:availability" content="out of stock"/);
+  assert.match(unavailable, /https:\/\/schema\.org\/OutOfStock/);
+});
+
+test("product deep-link UI preserves existing cart and checkout actions", () => {
+  const appSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "app.js"), "utf8");
+  assert.match(appSource, /addToCart\(selectedProductId, productModalAddButton\)/);
+  assert.match(appSource, /window\.location\.href = cartPageUrl\(\)/);
+  assert.match(appSource, /applyCatalogPayload\(payload\);\s+document\.title = "Bakeaholic Online Shop";\s+if \(deepLinkedProductId\) \{\s+openProductModal\(deepLinkedProductId, \{ updateHistory: false \}\)/);
+  assert.match(appSource, /deepLinkedProductAvailability === "out of stock"/);
+});
 
 test("checkout-stage funnel events are fixed and privacy-safe", () => {
   for (const event of [
