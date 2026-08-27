@@ -4,6 +4,8 @@ const vm = require("node:vm");
 
 const {
   adminPermissions,
+  adminOrderReviewButtonQuery,
+  adminOrderReviewWhatsappParameters,
   applyXenditQrCodeStatusToOrder,
   applyXenditPaymentSessionStatusToOrder,
   applyXenditRefundStatusToOrder,
@@ -44,6 +46,10 @@ const {
   updateAdminWhatsappDeliveryStatus,
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
+  normalizedShipmentStatus,
+  isRecoverableFailedShipmentStatus,
+  replacementTrackingNotificationReady,
+  assertDeliveryRecoveryRequest,
   xenditPaymentAmount,
   xenditOrderReferenceIds,
   xenditQrExternalIds,
@@ -240,6 +246,41 @@ test("delivery geofence accepts Bali and rejects international destinations", ()
   assert.equal(isBaliDeliveryLocation({ lat: -8.7275, lng: 115.5444 }), true);
   assert.equal(isBaliDeliveryLocation({ lat: -23.55052, lng: -46.633308 }), false);
   assert.equal(isBaliDeliveryLocation({ lat: 3.139, lng: 101.6869 }), false);
+});
+
+test("delivery recovery accepts only the exact failed shipment and a replay-safe action ID", () => {
+  const order = {
+    status: "delivery_issue",
+    fulfillment: {
+      type: "delivery",
+      shipment: { orderId: "ship-failed-1", status: "courier_not_found" }
+    }
+  };
+  assert.equal(
+    assertDeliveryRecoveryRequest(order, "ship-failed-1", "recovery_action_123456"),
+    "ship-failed-1"
+  );
+  assert.throws(
+    () => assertDeliveryRecoveryRequest(order, "ship-stale", "recovery_action_123456"),
+    /delivery changed/i
+  );
+  assert.throws(
+    () => assertDeliveryRecoveryRequest(order, "ship-failed-1", "short"),
+    /valid recovery action ID/i
+  );
+});
+
+test("delivery recovery normalizes provider states and excludes active shipments", () => {
+  assert.equal(normalizedShipmentStatus("courier not found"), "courier_not_found");
+  assert.equal(isRecoverableFailedShipmentStatus("cancelled"), true);
+  assert.equal(isRecoverableFailedShipmentStatus("rejected"), true);
+  assert.equal(isRecoverableFailedShipmentStatus("courier_not_found"), true);
+  assert.equal(isRecoverableFailedShipmentStatus("allocated"), false);
+  assert.equal(isRecoverableFailedShipmentStatus("picked_up"), false);
+  assert.equal(replacementTrackingNotificationReady({ replacement: true, status: "confirmed" }), false);
+  assert.equal(replacementTrackingNotificationReady({ replacement: true, status: "allocated" }), true);
+  assert.equal(replacementTrackingNotificationReady({ replacement: true, status: "accepted" }), true);
+  assert.equal(replacementTrackingNotificationReady({ status: "confirmed" }), true);
 });
 
 test("Meta Purchase attribution uses checkout network data without customer details", () => {
@@ -534,6 +575,68 @@ test("paid admin alert describes an unbooked delivery and required approval", ()
   }, "Payment received");
   assert.equal(parameters[6], "Not booked yet");
   assert.match(parameters[8], /Reply APPROVE/);
+  assert.doesNotMatch(JSON.stringify(parameters), /Eduardo|6281234567890/);
+});
+
+test("secure order-review alerts exclude customer details and carry only the order reference", async () => {
+  const order = {
+    id: "BAK-0106",
+    status: "paid",
+    customer: { name: "Private Customer", phone: "+6281234567890" }
+  };
+  assert.equal(adminOrderReviewButtonQuery(order), "BAK-0106");
+  assert.deepEqual(adminOrderReviewWhatsappParameters(order, "This input is deliberately ignored"), [
+    "BAK-0106",
+    "Stock and fulfilment review required"
+  ]);
+  assert.doesNotMatch(JSON.stringify(adminOrderReviewWhatsappParameters(order, "Private Customer +6281234567890")), /Private Customer|6281234567890/);
+
+  const previousFetch = global.fetch;
+  const previousEnv = {
+    token: process.env.WHATSAPP_ACCESS_TOKEN,
+    phoneId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    adminNumbers: process.env.WHATSAPP_ADMIN_NUMBER,
+    reviewTemplate: process.env.WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME
+  };
+  let payload;
+  Object.assign(process.env, {
+    WHATSAPP_ACCESS_TOKEN: "test-token",
+    WHATSAPP_PHONE_NUMBER_ID: "123456",
+    WHATSAPP_ADMIN_NUMBER: "628111111111",
+    WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: "admin_order_review"
+  });
+  global.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ messages: [{ id: "wamid.review" }] })
+    };
+  };
+
+  try {
+    await sendWhatsappAdminAlert(order, "Stock review required");
+  } finally {
+    global.fetch = previousFetch;
+    for (const [key, value] of Object.entries({
+      WHATSAPP_ACCESS_TOKEN: previousEnv.token,
+      WHATSAPP_PHONE_NUMBER_ID: previousEnv.phoneId,
+      WHATSAPP_ADMIN_NUMBER: previousEnv.adminNumbers,
+      WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: previousEnv.reviewTemplate
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+
+  assert.equal(payload.template.name, "admin_order_review");
+  const body = payload.template.components.find((component) => component.type === "body");
+  assert.deepEqual(body.parameters.map((parameter) => parameter.text), ["BAK-0106", "Stock and fulfilment review required"]);
+  assert.equal(payload.template.components.some((component) => component.type === "header"), false);
+  const reviewButton = payload.template.components.find((component) => component.type === "button");
+  assert.equal(reviewButton.sub_type, "url");
+  assert.equal(reviewButton.parameters[0].text, "BAK-0106");
+  assert.doesNotMatch(JSON.stringify(payload), /Private Customer|6281234567890/);
 });
 
 function whatsappOrder(overrides = {}) {

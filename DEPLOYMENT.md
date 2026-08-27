@@ -48,10 +48,13 @@ Optional but recommended for live messaging:
 - `WHATSAPP_SHIPPING_TEMPLATE_NAME=...`
 - `WHATSAPP_ADMIN_NUMBER=...`
 - `WHATSAPP_ADMIN_TEMPLATE_NAME=...`
+- `WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME=...` (enable only after Meta approves it)
 - `WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME=...`
 - `WHATSAPP_TEMPLATE_LANGUAGE=en`
 
-For admin alerts, use a Meta-approved template whose nine body variables match the values the app sends: event/status, order id, customer name, customer phone, total, payment method, delivery status, invoice URL, and action text.
+For legacy admin alerts, use a Meta-approved template whose nine body variables match the values the app sends: event/status, order id, a safe Admin-screen customer-details notice, a safe alert-privacy notice, total, payment method, delivery status, invoice URL, and action text. Customer name and phone are deliberately not sent in alert variables.
+
+The privacy-safe replacement staff template uses two body variables only: order ID and review reason/status. Add one dynamic website button labelled `Review order` with URL `https://bakeaholicbali.com/admin.html?section=orders&order={{1}}`. The secure Admin page then provides Approve, Cancel and Contact customer to authorised Orders staff. Set `WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME` only after Meta reports the template as Approved; while it is blank, the existing approved alert remains active. The replacement alert contains no customer name, phone, address or other customer detail.
 
 Customer payment reminders should use the app's WhatsApp templates. The payment reminder template button should point to `https://bakeaholicbali.com/pay.html?ref={{1}}`; the app sends a secure order reference so customers land on the Bakeaholic waiting-payment page first. Receipt buttons should point to `https://bakeaholicbali.com/invoice.html?ref={{1}}`.
 

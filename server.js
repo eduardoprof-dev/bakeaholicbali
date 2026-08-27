@@ -984,6 +984,10 @@ function adminOrderDocumentUrl(order) {
   return getPublicDocumentUrl(order);
 }
 
+function adminOrderReviewButtonQuery(order) {
+  return String(order?.id || "").trim();
+}
+
 function xenditCheckoutButtonToken(order) {
   const receiptUrl = xenditInvoiceUrl(order);
   try {
@@ -1108,13 +1112,22 @@ function adminWhatsappParameters(order, eventLabel = "") {
   return [
     eventLabel || humanizeOrderStatus(order),
     order.id,
-    order.customer?.name || "Customer",
-    order.customer?.phone || "",
+    "Customer details available in Admin",
+    "Not included in alert",
     `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`,
     order.payment?.label || "",
     shipmentStatus,
     documentUrl,
     staffAction
+  ];
+}
+
+function adminOrderReviewWhatsappParameters(order) {
+  return [
+    order.id,
+    order.status === "paid"
+      ? "Stock and fulfilment review required"
+      : "Order status review required"
   ];
 }
 
@@ -1178,7 +1191,8 @@ function adminShippingWhatsappParameters(order) {
 
 async function sendWhatsappAdminAlert(order, eventLabel = "") {
   const adminNumbers = adminWhatsappNumbers();
-  const templateName = String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim();
+  const reviewTemplateName = String(process.env.WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME || "").trim();
+  const templateName = reviewTemplateName || String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim();
   if (!adminNumbers.length || !templateName) {
     throw new Error("Admin WhatsApp number or template name is missing");
   }
@@ -1186,12 +1200,19 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
   const deliveries = await Promise.allSettled(adminNumbers.map((adminNumber) => sendWhatsappTemplateMessage(
     adminNumber,
     templateName,
-    adminWhatsappParameters(order, eventLabel),
+    reviewTemplateName
+      ? adminOrderReviewWhatsappParameters(order)
+      : adminWhatsappParameters(order, eventLabel),
     {
       languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-      headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
-      headerDocumentFilename: `${order.id}-bakeaholic-receipt.pdf`,
-      quickReplyButtons: order.status === "paid"
+      ...(reviewTemplateName ? {} : {
+        headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
+        headerDocumentFilename: `${order.id}-bakeaholic-receipt.pdf`
+      }),
+      urlButtonParameters: reviewTemplateName && order.status === "paid"
+        ? [{ index: "0", text: adminOrderReviewButtonQuery(order) }]
+        : [],
+      quickReplyButtons: !reviewTemplateName && order.status === "paid"
         ? [
             { payload: `APPROVE ${order.id}` },
             { payload: `CANCEL ${order.id}` }
@@ -1759,22 +1780,38 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
 }
 
 async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = false } = {}) {
+  const shipmentId = String(order.fulfillment?.shipment?.orderId || "").trim();
+  const notificationRoot = admin ? "adminWhatsappShippingNotification" : "whatsappShippingNotification";
+  const notificationBucket = order[notificationRoot] || {};
+  const shipmentNotification = notificationBucket.shipments?.[shipmentId]
+    || (order.fulfillment?.shipment?.replacement === true ? {} : notificationBucket);
   const skipReason = (() => {
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (admin && !process.env.WHATSAPP_ADMIN_NUMBER) return "admin_number_not_configured";
     if (admin && !(process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME)) return "admin_shipping_template_not_configured";
     if (!admin && !process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME) return "shipping_template_not_configured";
     if (!hasBiteshipShipmentForMessaging(order)) return "biteship_shipment_not_available";
-    const bucket = admin ? order.adminWhatsappShippingNotification : order.whatsappShippingNotification;
-    if (admin && bucket?.lastSentAt) return "already_sent";
-    if (!admin && bucket?.lastSentAt) return "already_sent";
-    if (eventKey && bucket?.lastNotificationKey === eventKey) return "already_sent";
+    if (shipmentNotification.lastSentAt) return "already_sent_for_shipment";
+    if (shipmentNotification.queuedAt) return "already_queued_for_shipment";
+    if (eventKey && shipmentNotification.lastNotificationKey === eventKey) return "already_sent_for_shipment";
     return "";
   })();
   if (skipReason) {
     return { sent: false, skipped: true, reason: skipReason };
   }
 
+  const queuedRecord = {
+    lastNotificationKey: eventKey,
+    queuedAt: new Date().toISOString()
+  };
+  order[notificationRoot] = {
+    ...notificationBucket,
+    shipments: {
+      ...(notificationBucket.shipments || {}),
+      [shipmentId]: queuedRecord
+    }
+  };
+  persistWhatsappNotificationClaim(order);
   try {
     const messageResponse = await sendWhatsappShippingUpdate(order, { admin });
     const record = {
@@ -1782,20 +1819,36 @@ async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = f
       lastSentAt: new Date().toISOString(),
       messageId: messageResponse?.messages?.[0]?.id || ""
     };
+    const nextBucket = {
+      ...notificationBucket,
+      // Keep the legacy top-level summary for the Admin UI while deduping by
+      // provider shipment so a genuine replacement can receive one update.
+      ...record,
+      shipments: {
+        ...(notificationBucket.shipments || {}),
+        [shipmentId]: record
+      }
+    };
     if (admin) {
-      order.adminWhatsappShippingNotification = record;
+      order.adminWhatsappShippingNotification = nextBucket;
       delete order.adminWhatsappShippingNotificationError;
     } else {
-      order.whatsappShippingNotification = record;
+      order.whatsappShippingNotification = nextBucket;
       delete order.whatsappShippingNotificationError;
     }
+    persistWhatsappNotificationClaim(order);
     return { sent: true, messageId: record.messageId };
   } catch (error) {
+    const failedBucket = order[notificationRoot] || {};
+    const failedShipments = { ...(failedBucket.shipments || {}) };
+    delete failedShipments[shipmentId];
+    order[notificationRoot] = { ...failedBucket, shipments: failedShipments };
     if (admin) {
       order.adminWhatsappShippingNotificationError = error.message;
     } else {
       order.whatsappShippingNotificationError = error.message;
     }
+    persistWhatsappNotificationClaim(order);
     return { sent: false, skipped: false, error: error.message };
   }
 }
@@ -1849,6 +1902,12 @@ async function notifyShipmentUpdate(order, eventKey = "") {
     };
   }
   const shipment = order.fulfillment?.shipment || {};
+  if (!replacementTrackingNotificationReady(shipment)) {
+    return {
+      customer: { sent: false, skipped: true, reason: "replacement_courier_not_allocated" },
+      admin: { sent: false, skipped: true, reason: "replacement_courier_not_allocated" }
+    };
+  }
   const shipmentKey = eventKey || [
     "biteship",
     shipment.orderId || order.id,
@@ -4905,6 +4964,91 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
 }
 
 let biteshipDeliverySweepInProgress = false;
+const deliveryRecoveryLocks = new Map();
+
+function normalizedShipmentStatus(status = "") {
+  const normalized = String(status || "")
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[\s-]+/g, "_")
+    .toLowerCase();
+  return normalized === "canceled" ? "cancelled" : normalized;
+}
+
+function isRecoverableFailedShipmentStatus(status = "") {
+  return ["cancelled", "rejected", "courier_not_found"].includes(normalizedShipmentStatus(status));
+}
+
+function replacementTrackingNotificationReady(shipment = {}) {
+  return shipment.replacement !== true
+    || ["allocated", "accepted"].includes(normalizedShipmentStatus(shipment.status));
+}
+
+function assertDeliveryRecoveryRequest(order, expectedShipmentId, actionId) {
+  const shipmentId = String(order?.fulfillment?.shipment?.orderId || "").trim();
+  if (!order || order.fulfillment?.type !== "delivery" || !shipmentId) {
+    throw new Error("This order does not have a failed courier delivery to recover");
+  }
+  if (!expectedShipmentId || String(expectedShipmentId).trim() !== shipmentId) {
+    throw new Error("The delivery changed. Refresh the order before choosing a recovery action.");
+  }
+  if (!actionId || !/^[a-zA-Z0-9_-]{16,100}$/.test(String(actionId))) {
+    throw new Error("A valid recovery action ID is required");
+  }
+  if (["delivered", "returned", "delivery_failed", "cancelled"].includes(order.status)) {
+    throw new Error("This order can no longer be recovered for delivery");
+  }
+  return shipmentId;
+}
+
+async function withDeliveryRecoveryLock(mode, orderId, action) {
+  const key = `${mode}:${orderId}`;
+  if (deliveryRecoveryLocks.has(key)) {
+    throw new Error("A delivery recovery action is already in progress. Refresh before trying again.");
+  }
+  const marker = crypto.randomUUID();
+  deliveryRecoveryLocks.set(key, marker);
+  try {
+    return await action();
+  } finally {
+    if (deliveryRecoveryLocks.get(key) === marker) deliveryRecoveryLocks.delete(key);
+  }
+}
+
+function beginDeliveryRecoveryAction(mode, order, { actionId, action, shipmentId, session }) {
+  const actions = Array.isArray(order.fulfillment?.deliveryRecoveryActions)
+    ? order.fulfillment.deliveryRecoveryActions
+    : [];
+  const previous = actions.find((entry) => entry.id === actionId);
+  if (previous) {
+    if (previous.action !== action || previous.shipmentId !== shipmentId) {
+      throw new Error("This recovery action ID was already used for a different request");
+    }
+    return { replay: true, record: previous };
+  }
+  if (actions.some((entry) => entry.shipmentId === shipmentId && entry.status === "processing")) {
+    throw new Error("A persisted recovery action is already processing for this shipment");
+  }
+  const record = {
+    id: actionId,
+    action,
+    shipmentId,
+    status: "processing",
+    requestedAt: new Date().toISOString(),
+    requestedBy: session?.email || session?.name || session?.role || "admin"
+  };
+  order.fulfillment.deliveryRecoveryActions = [...actions, record].slice(-25);
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return { replay: false, record };
+}
+
+function finishDeliveryRecoveryAction(mode, order, record, status, details = {}) {
+  Object.assign(record, details, {
+    status,
+    [`${status}At`]: new Date().toISOString()
+  });
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+}
 
 async function sweepBiteshipDeliveryStatuses() {
   if (biteshipDeliverySweepInProgress || !getIntegrationConfig().biteshipApiKey) {
@@ -4940,63 +5084,130 @@ async function sweepBiteshipDeliveryStatuses() {
   }
 }
 
-async function rebookBiteshipDelivery(mode, orderId, session) {
-  const order = findOrder(mode, orderId);
-  const previousShipment = order?.fulfillment?.shipment;
-  if (!order) {
-    throw new Error("Order not found");
-  }
-  if (order.fulfillment?.type !== "delivery" || !previousShipment?.orderId) {
-    throw new Error("This order does not have a Biteship delivery to rebook");
-  }
-  if (["delivered", "returned", "delivery_failed", "cancelled"].includes(order.status)) {
-    throw new Error("This order can no longer be rebooked for delivery");
-  }
+async function rebookBiteshipDelivery(mode, orderId, session, request = {}) {
+  return withDeliveryRecoveryLock(mode, orderId, async () => {
+    const order = findOrder(mode, orderId);
+    if (!order) throw new Error("Order not found");
+    const shipmentId = assertDeliveryRecoveryRequest(order, request.shipmentId, request.actionId);
+    const claim = beginDeliveryRecoveryAction(mode, order, {
+      actionId: request.actionId,
+      action: "request_another_driver",
+      shipmentId,
+      session
+    });
+    if (claim.replay) {
+      if (claim.record.status === "completed") return enrichOrder(order);
+      throw new Error(`This recovery request is already ${claim.record.status}`);
+    }
 
-  const providerShipment = await fetchBiteshipShipment(previousShipment.orderId);
-  const providerStatus = String(providerShipment.status || "").toLowerCase();
-  if (!['cancelled', 'rejected', 'courier_not_found'].includes(providerStatus)) {
-    throw new Error(`Biteship still shows this delivery as ${providerStatus || "active"}. Cancel it in Biteship before rebooking.`);
-  }
+    try {
+      const previousShipment = { ...order.fulfillment.shipment };
+      const providerShipment = await fetchBiteshipShipmentForOrder(order, previousShipment);
+      const providerStatus = normalizedShipmentStatus(providerShipment.status || previousShipment.status);
+      if (!isRecoverableFailedShipmentStatus(providerStatus)) {
+        throw new Error(`Biteship still shows this delivery as ${providerStatus || "active"}. It cannot be replaced yet.`);
+      }
+      const history = Array.isArray(order.fulfillment.shipmentHistory)
+        ? [...order.fulfillment.shipmentHistory]
+        : [];
+      const archivedAt = new Date().toISOString();
+      history.push({
+        ...previousShipment,
+        status: providerStatus,
+        endedAt: archivedAt,
+        endReason: "Staff requested another driver"
+      });
+      const deliveryAttempt = history.length + 1;
+      const shipment = await createBiteshipShipment(order, {
+        referenceId: `${order.id}-R${deliveryAttempt}`,
+        deliveryAttempt
+      });
+      if (!shipment?.orderId || shipment.orderId === shipmentId) {
+        throw new Error("Biteship did not return a distinct replacement delivery booking");
+      }
+      order.fulfillment = {
+        ...order.fulfillment,
+        shipment: { ...shipment, replacement: true, replacesShipmentId: shipmentId },
+        shipmentHistory: history.slice(-10),
+        shipmentError: "",
+        approval: {
+          ...(order.fulfillment.approval || {}),
+          status: "approved",
+          approvedAt: order.fulfillment.approval?.approvedAt || archivedAt,
+          approvedBy: session?.email || session?.role || "admin"
+        },
+        rebookedAt: archivedAt
+      };
+      order.status = "preparing";
+      order.whatsappUrl = buildWhatsappUrl(order);
+      finishDeliveryRecoveryAction(mode, order, claim.record, "completed", {
+        replacementShipmentId: shipment.orderId,
+        providerStatus
+      });
+      await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-rebooked:${shipment.orderId}`, `Replacement Biteship delivery requested after ${providerStatus}. Customer tracking waits for courier allocation.`);
+      saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+      return enrichOrder(order);
+    } catch (error) {
+      finishDeliveryRecoveryAction(mode, order, claim.record, "failed", { error: error.message });
+      throw error;
+    }
+  });
+}
 
-  const history = Array.isArray(order.fulfillment.shipmentHistory)
-    ? order.fulfillment.shipmentHistory
-    : [];
-  history.push({
-    ...previousShipment,
-    status: providerStatus,
-    endedAt: new Date().toISOString(),
-    endReason: "Rebooked after Biteship cancellation"
+async function useSelfDelivery(mode, orderId, session, request = {}) {
+  return withDeliveryRecoveryLock(mode, orderId, async () => {
+    const order = findOrder(mode, orderId);
+    if (!order) throw new Error("Order not found");
+    const shipmentId = assertDeliveryRecoveryRequest(order, request.shipmentId, request.actionId);
+    const claim = beginDeliveryRecoveryAction(mode, order, {
+      actionId: request.actionId,
+      action: "self_delivery",
+      shipmentId,
+      session
+    });
+    if (claim.replay) {
+      if (claim.record.status === "completed") return enrichOrder(order);
+      throw new Error(`This recovery request is already ${claim.record.status}`);
+    }
+    try {
+      const previousShipment = { ...order.fulfillment.shipment };
+      const providerShipment = await fetchBiteshipShipmentForOrder(order, previousShipment);
+      const providerStatus = normalizedShipmentStatus(providerShipment.status || previousShipment.status);
+      if (!isRecoverableFailedShipmentStatus(providerStatus)) {
+        throw new Error(`Biteship still shows this delivery as ${providerStatus || "active"}. Self-delivery cannot replace it yet.`);
+      }
+      const recordedAt = new Date().toISOString();
+      const history = Array.isArray(order.fulfillment.shipmentHistory)
+        ? [...order.fulfillment.shipmentHistory]
+        : [];
+      history.push({
+        ...previousShipment,
+        status: providerStatus,
+        endedAt: recordedAt,
+        endReason: "Staff selected self-delivery"
+      });
+      order.fulfillment = {
+        ...order.fulfillment,
+        shipment: null,
+        shipmentHistory: history.slice(-10),
+        shipmentError: "",
+        deliveryMethod: "self_delivery",
+        selfDelivery: {
+          status: "preparing",
+          recordedAt,
+          recordedBy: session?.email || session?.name || session?.role || "admin",
+          replacedShipmentId: shipmentId
+        }
+      };
+      order.status = "preparing";
+      order.whatsappUrl = buildWhatsappUrl(order);
+      finishDeliveryRecoveryAction(mode, order, claim.record, "completed", { providerStatus });
+      return enrichOrder(order);
+    } catch (error) {
+      finishDeliveryRecoveryAction(mode, order, claim.record, "failed", { error: error.message });
+      throw error;
+    }
   });
-  const deliveryAttempt = history.length + 1;
-  order.fulfillment = {
-    ...order.fulfillment,
-    shipment: null,
-    shipmentHistory: history.slice(-10),
-    shipmentError: "",
-    approval: {
-      ...(order.fulfillment.approval || {}),
-      status: "approved",
-      approvedAt: order.fulfillment.approval?.approvedAt || new Date().toISOString(),
-      approvedBy: session?.role || "admin"
-    },
-    rebookedAt: new Date().toISOString()
-  };
-  order.status = "preparing";
-  const shipment = await createBiteshipShipment(order, {
-    referenceId: `${order.id}-R${deliveryAttempt}`,
-    deliveryAttempt
-  });
-  if (!shipment?.orderId) {
-    throw new Error("Biteship did not return a new delivery booking");
-  }
-  order.fulfillment.shipment = shipment;
-  order.whatsappUrl = buildWhatsappUrl(order);
-  const shippingKey = `biteship:${shipment.orderId}:requested`;
-  await notifyShipmentUpdate(order, shippingKey);
-  await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-rebooked`, `Replacement Biteship delivery booked after ${providerStatus}`);
-  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
-  return enrichOrder(order);
 }
 
 async function approveOrderForDelivery(mode, orderId, session) {
@@ -7556,6 +7767,20 @@ function handleApi(requestUrl, request, response) {
           return;
         }
 
+        const webhookIdentifiers = new Set(biteshipWebhookIdentifiers(body));
+        const activeShipmentIdentifiers = biteshipShipmentIdentifiers(order.fulfillment?.shipment || {});
+        if (!activeShipmentIdentifiers.some((identifier) => webhookIdentifiers.has(identifier))) {
+          recordBiteshipWebhookLog({
+            matched: false,
+            staleShipment: true,
+            event: payload.event || body.event || "",
+            identifiers: [...webhookIdentifiers],
+            orderId: order.id,
+            activeShipmentId: order.fulfillment?.shipment?.orderId || ""
+          });
+          return;
+        }
+
         const previousStatus = order.status;
         const previousShipmentStatus = order.fulfillment?.shipment?.status || "";
         const shipmentStatus = payload.status || body.status || order.fulfillment.shipment.status || "";
@@ -8007,7 +8232,21 @@ function handleApi(requestUrl, request, response) {
       return true;
     }
     const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/rebook-delivery", ""));
-    rebookBiteshipDelivery(mode, orderId, session)
+    parseBody(request)
+      .then((body) => rebookBiteshipDelivery(mode, orderId, session, body))
+      .then((order) => sendJson(response, 200, { ok: true, order }))
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/self-delivery")) {
+    const session = requireAdminPermission(request, response, "orders");
+    if (!session) {
+      return true;
+    }
+    const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/self-delivery", ""));
+    parseBody(request)
+      .then((body) => useSelfDelivery(mode, orderId, session, body))
       .then((order) => sendJson(response, 200, { ok: true, order }))
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
@@ -8902,6 +9141,8 @@ if (require.main === module) {
 
 module.exports = {
   adminPermissions,
+  adminOrderReviewButtonQuery,
+  adminOrderReviewWhatsappParameters,
   adminWhatsappParameters,
   adminWhatsappNumbers,
   applyXenditQrCodeStatusToOrder,
@@ -8943,6 +9184,10 @@ module.exports = {
   updateAdminWhatsappDeliveryStatus,
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
+  normalizedShipmentStatus,
+  isRecoverableFailedShipmentStatus,
+  replacementTrackingNotificationReady,
+  assertDeliveryRecoveryRequest,
   isSupportedImageBuffer,
   metaAttributionFromRequest,
   metaUserDataFromOrder,

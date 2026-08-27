@@ -2490,6 +2490,11 @@ body::before {
   gap: 14px;
 }
 
+.admin-order-card.is-requested-order {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(181, 82, 61, 0.14);
+}
+
 .admin-order-main,
 .admin-order-actions {
   display: flex;

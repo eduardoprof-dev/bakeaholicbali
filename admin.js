@@ -1,5 +1,6 @@
 const params = new URLSearchParams(window.location.search);
 const appMode = params.get("mode") === "test" ? "test" : "live";
+const requestedOrderId = String(params.get("order") || "").trim();
 
 const state = {
   adminSession: null,
@@ -1147,10 +1148,11 @@ function renderAdminOrders() {
     const canApprove = (order.status === "paid" || canRetryFailedBooking)
       && order.fulfillment?.type === "delivery"
       && !order.fulfillment?.shipment?.orderId;
-    const canRebook = Boolean(order.fulfillment?.shipment?.orderId)
-      && order.fulfillment?.type === "delivery"
-      && !["delivered", "cancelled", "returned", "delivery_failed"].includes(order.status);
     const shipmentStatus = String(order.fulfillment?.shipment?.status || "").trim().toLowerCase();
+    const canRecoverDelivery = Boolean(order.fulfillment?.shipment?.orderId)
+      && order.fulfillment?.type === "delivery"
+      && ["cancelled", "canceled", "rejected", "courier_not_found"].includes(shipmentStatus)
+      && !["delivered", "cancelled", "returned", "delivery_failed"].includes(order.status);
     const canCancelDelivery = Boolean(order.fulfillment?.shipment?.orderId)
       && order.fulfillment?.type === "delivery"
       && ["confirmed", "scheduled", "allocated", "picking_up", "pickingup"].includes(shipmentStatus)
@@ -1176,7 +1178,8 @@ function renderAdminOrders() {
       : isDeliveryIssue
         ? `
           <button class="admin-button secondary" type="button" data-sync-delivery="${escapeHtml(order.id)}">Sync delivery status</button>
-          <button class="admin-button" type="button" data-rebook-delivery="${escapeHtml(order.id)}" ${canRebook ? "" : "disabled"}>Check &amp; rebook</button>
+          <button class="admin-button" type="button" data-rebook-delivery="${escapeHtml(order.id)}" data-shipment-id="${escapeHtml(order.fulfillment?.shipment?.orderId || "")}" ${canRecoverDelivery ? "" : "disabled"}>Request another driver</button>
+          <button class="admin-button secondary" type="button" data-self-delivery="${escapeHtml(order.id)}" data-shipment-id="${escapeHtml(order.fulfillment?.shipment?.orderId || "")}" ${canRecoverDelivery ? "" : "disabled"}>We will deliver ourselves</button>
         `
         : canSyncDelivery
           ? `
@@ -1281,7 +1284,7 @@ function renderAdminOrders() {
         </div>
         <div class="admin-order-actions">
           <a class="admin-button secondary" href="${escapeHtml(order.documentUrl || "#")}" target="_blank" rel="noreferrer">Open &amp; print invoice</a>
-          <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer">WhatsApp handoff</a>
+          <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer" data-contact-customer="${escapeHtml(order.id)}">Contact customer</a>
           ${canCheckCardPayment
             ? `<button class="admin-button" type="button" data-check-card-payment="${escapeHtml(order.id)}">Check payment with Xendit</button>`
             : ""}
@@ -1298,6 +1301,22 @@ function renderAdminOrders() {
       </article>
     `;
   }).join("");
+
+  focusRequestedOrder();
+}
+
+function focusRequestedOrder() {
+  if (!requestedOrderId || !adminOrderList) return;
+  const card = adminOrderList.querySelector(`[data-order-id="${CSS.escape(requestedOrderId)}"]`);
+  if (!card) {
+    setStatus(`Order ${requestedOrderId} was not found or is not available to this staff account.`);
+    return;
+  }
+  adminOrderList.querySelectorAll(".is-requested-order").forEach((node) => {
+    node.classList.remove("is-requested-order");
+  });
+  card.classList.add("is-requested-order");
+  window.setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
 }
 
 function orderDate(order) {
@@ -2562,15 +2581,30 @@ async function approveDelivery(orderId) {
   }
 }
 
-async function rebookDelivery(orderId) {
+async function rebookDelivery(orderId, shipmentId) {
   try {
-    setStatus(`Checking Biteship delivery for ${orderId}...`);
+    setStatus(`Requesting another driver for ${orderId}...`);
     await request(`/api/admin/orders/${encodeURIComponent(orderId)}/rebook-delivery`, {
       method: "POST",
-      body: JSON.stringify({})
+      body: JSON.stringify({ shipmentId, actionId: crypto.randomUUID() })
     });
     await loadOrders();
-    setStatus(`Replacement delivery booked for ${orderId}.`);
+    setStatus(`Another driver was requested for ${orderId}. Tracking will be sent after allocation.`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function useSelfDelivery(orderId, shipmentId) {
+  if (!window.confirm(`Archive the failed courier for ${orderId} and record self-delivery? This will not mark the order delivered.`)) return;
+  try {
+    setStatus(`Recording self-delivery for ${orderId}...`);
+    await request(`/api/admin/orders/${encodeURIComponent(orderId)}/self-delivery`, {
+      method: "POST",
+      body: JSON.stringify({ shipmentId, actionId: crypto.randomUUID() })
+    });
+    await loadOrders();
+    setStatus(`${orderId} is recorded for self-delivery and remains in preparation.`);
   } catch (error) {
     setStatus(error.message);
   }
@@ -2835,7 +2869,7 @@ async function bootstrap() {
     // The operations overview should remain usable if the optional map preview
     // cannot initialize. The Storefront section still exposes the saved address.
   });
-  const requestedSection = window.location.hash.slice(1);
+  const requestedSection = requestedOrderId ? "orders" : window.location.hash.slice(1);
   const preferredSection = session?.role === "orders_manager" ? "orders" : (session?.role === "storefront_manager" ? "store" : "dashboard");
   const initialSection = requestedSection.startsWith("docs-")
     ? "documentation"
@@ -2916,7 +2950,12 @@ adminOrderList?.addEventListener("click", (event) => {
   }
   const rebookButton = event.target.closest("[data-rebook-delivery]");
   if (rebookButton) {
-    rebookDelivery(rebookButton.dataset.rebookDelivery);
+    rebookDelivery(rebookButton.dataset.rebookDelivery, rebookButton.dataset.shipmentId);
+    return;
+  }
+  const selfDeliveryButton = event.target.closest("[data-self-delivery]");
+  if (selfDeliveryButton) {
+    useSelfDelivery(selfDeliveryButton.dataset.selfDelivery, selfDeliveryButton.dataset.shipmentId);
   }
 });
 voucherList?.addEventListener("click", (event) => {
