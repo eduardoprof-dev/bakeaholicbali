@@ -7683,6 +7683,36 @@ function handleApi(requestUrl, request, response) {
   ].includes(normalizedPathname);
   const mutatingRequest = new Set(["POST", "PUT", "PATCH", "DELETE"]).has(request.method);
 
+  if (request.method === "GET" && normalizedPathname === "/api/integrations/next-best-action") {
+    const configured = String(process.env.NEXT_BEST_ACTION_READ_TOKEN || "");
+    const supplied = String(request.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    if (!configured || !supplied || !timingSafeEqualString(configured, supplied)) {
+      sendJson(response, 401, { error: "Unauthorized" });
+      return true;
+    }
+    const now = Date.now();
+    const orders = getStoreState("live").orders || [];
+    const paidOrders = orders.filter((order) => ["paid", "preparing", "delivery_issue", "allocated", "picked_up", "delivered"].includes(String(order.status || "").toLowerCase()) || Boolean(order.paidAt));
+    const statusCounts = orders.reduce((counts, order) => {
+      const status = String(order.status || "unknown").toLowerCase();
+      counts[status] = (counts[status] || 0) + 1;
+      return counts;
+    }, {});
+    sendJson(response, 200, {
+      schemaVersion: 1, source: "Bakeaholic Storefront", verifiedAt: new Date().toISOString(),
+      metrics: {
+        totalOrders: orders.length,
+        paidOrders: paidOrders.length,
+        paidRevenue: paidOrders.reduce((sum, order) => sum + Number(order.pricing?.total || 0), 0),
+        ordersLast24Hours: orders.filter((order) => now - (Date.parse(order.createdAt || "") || 0) <= 24 * 60 * 60 * 1000).length,
+        deliveryIssues: Number(statusCounts.delivery_issue || 0), preparing: Number(statusCounts.preparing || 0),
+        delivered: Number(statusCounts.delivered || 0), awaitingPayment: Number(statusCounts.awaiting_payment || 0)
+      },
+      privacy: { customerDataIncluded: false, addressesIncluded: false, lineItemsIncluded: false }
+    });
+    return true;
+  }
+
   const externalWebhookPaths = new Set([
     "/api/xendit/invoice-callback",
     "/api/webhooks/whatsapp",
