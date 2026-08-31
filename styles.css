@@ -3003,6 +3003,7 @@ body::before {
 }
 
 .offline-stockist-logo {
+  --stockist-logo-scale: 1;
   display: block;
   width: 100%;
   max-width: 100%;
@@ -3013,6 +3014,8 @@ body::before {
   object-fit: contain;
   object-position: center;
   justify-self: center;
+  transform: scale(var(--stockist-logo-scale));
+  transform-origin: center;
 }
 
 .offline-stockist-logo.is-square {
@@ -3027,6 +3030,19 @@ body::before {
 .offline-stockist-logo--tight {
   object-fit: cover;
 }
+
+.stockist-logo--circle-k { --stockist-logo-scale: 0.9; }
+.stockist-logo--m-mart,
+.stockist-logo--box-mart { --stockist-logo-scale: 1.2; }
+.stockist-logo--whsmith { --stockist-logo-scale: 0.48; }
+.stockist-logo--island-foods { --stockist-logo-scale: 1.3; }
+.stockist-logo--pepito { --stockist-logo-scale: 0.9; }
+.stockist-logo--frestive { --stockist-logo-scale: 0.95; }
+.stockist-logo--bintang { --stockist-logo-scale: 1.2; }
+.stockist-logo--liga-tennis { --stockist-logo-scale: 0.62; }
+.stockist-logo--bali-direct { --stockist-logo-scale: 0.5; }
+.stockist-logo--alchemy { --stockist-logo-scale: 1.8; }
+.stockist-logo--satvika { --stockist-logo-scale: 1.3; }
 
 .offline-stockist-grid a:hover {
   border-color: var(--accent);
