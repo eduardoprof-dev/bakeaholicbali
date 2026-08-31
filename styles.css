@@ -3031,18 +3031,18 @@ body::before {
   object-fit: cover;
 }
 
-.stockist-logo--circle-k { --stockist-logo-scale: 0.9; }
+.stockist-logo--circle-k { --stockist-logo-scale: 1; }
 .stockist-logo--m-mart,
-.stockist-logo--box-mart { --stockist-logo-scale: 1.2; }
-.stockist-logo--whsmith { --stockist-logo-scale: 0.48; }
-.stockist-logo--island-foods { --stockist-logo-scale: 1.3; }
-.stockist-logo--pepito { --stockist-logo-scale: 0.9; }
-.stockist-logo--frestive { --stockist-logo-scale: 0.95; }
-.stockist-logo--bintang { --stockist-logo-scale: 1.2; }
-.stockist-logo--liga-tennis { --stockist-logo-scale: 0.62; }
-.stockist-logo--bali-direct { --stockist-logo-scale: 0.5; }
-.stockist-logo--alchemy { --stockist-logo-scale: 1.8; }
-.stockist-logo--satvika { --stockist-logo-scale: 1.3; }
+.stockist-logo--box-mart { --stockist-logo-scale: 1.25; }
+.stockist-logo--whsmith { --stockist-logo-scale: 0.55; }
+.stockist-logo--island-foods { --stockist-logo-scale: 1.35; }
+.stockist-logo--pepito { --stockist-logo-scale: 1; }
+.stockist-logo--frestive { --stockist-logo-scale: 1.05; }
+.stockist-logo--bintang { --stockist-logo-scale: 1.3; }
+.stockist-logo--liga-tennis { --stockist-logo-scale: 0.68; }
+.stockist-logo--bali-direct { --stockist-logo-scale: 0.85; }
+.stockist-logo--alchemy { --stockist-logo-scale: 1.65; }
+.stockist-logo--satvika { --stockist-logo-scale: 1.25; }
 
 .offline-stockist-grid a:hover {
   border-color: var(--accent);
