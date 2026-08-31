@@ -2986,18 +2986,40 @@ body::before {
 
 .offline-stockist-grid a {
   display: grid;
+  grid-template-rows: 90px minmax(2.7em, auto);
+  align-items: center;
+  justify-items: center;
   gap: 3px;
-  min-height: 76px;
+  min-height: 104px;
   padding: 13px;
   border: 1px solid rgba(107, 66, 38, 0.12);
   border-radius: 14px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.78);
+  background: #fff;
   text-decoration: none;
+  text-align: center;
 }
 
-.offline-stockist-grid a:last-child {
-  grid-column: 1 / -1;
+.offline-stockist-logo {
+  display: block;
+  width: 100%;
+  height: 56px;
+  object-fit: contain;
+  object-position: center;
+  justify-self: center;
+}
+
+.offline-stockist-logo.is-square {
+  width: 100%;
+  max-width: none;
+}
+
+.offline-stockist-logo--large {
+  height: 90px;
+}
+
+.offline-stockist-logo--tight {
+  object-fit: cover;
 }
 
 .offline-stockist-grid a:hover {
@@ -3009,6 +3031,7 @@ body::before {
   color: var(--muted);
   font-size: 0.78rem;
   line-height: 1.35;
+  text-align: center;
 }
 
 .cart-site-footer {
