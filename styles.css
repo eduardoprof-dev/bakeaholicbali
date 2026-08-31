@@ -2989,6 +2989,8 @@ body::before {
   grid-template-rows: 90px minmax(2.7em, auto);
   align-items: center;
   justify-items: center;
+  min-width: 0;
+  overflow: hidden;
   gap: 3px;
   min-height: 104px;
   padding: 13px;
@@ -3003,7 +3005,11 @@ body::before {
 .offline-stockist-logo {
   display: block;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   height: 56px;
+  max-height: 90px;
+  box-sizing: border-box;
   object-fit: contain;
   object-position: center;
   justify-self: center;
