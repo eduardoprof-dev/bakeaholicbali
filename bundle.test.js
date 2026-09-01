@@ -6,7 +6,7 @@ const test = require("node:test");
 const root = __dirname;
 const catalog = JSON.parse(fs.readFileSync(path.join(root, "data", "catalog.json"), "utf8"));
 
-test("approved fixed bundles have exact prices and components", () => {
+test("legacy fixed bundle records remain intact for existing orders", () => {
   const bliss = catalog.items.find((item) => item.id === "bundle-bliss-mixed-4");
   const cookies = catalog.items.find((item) => item.id === "bundle-cookie-mixed-12");
   assert.equal(bliss.price, 250000);
@@ -29,8 +29,17 @@ test("homepage places Limited Bundles immediately after the order banner", () =>
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   assert.match(html, /id="orderBanner"[\s\S]*?id="promoCard"[\s\S]*?class="brand-story-card"/);
   assert.doesNotMatch(html, /Best Seller/);
+  assert.match(html, /Pick your flavours/);
+  assert.match(html, /Ends 5 September/);
   assert.match(html, /href="\/styles\.css/);
   assert.match(html, /src="\/app\.js/);
+});
+
+test("homepage promotion routes shoppers to flavours instead of adding a fixed assortment", () => {
+  const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(app, /data-bundle-category/);
+  assert.doesNotMatch(app, /data-bundle-add/);
+  assert.doesNotMatch(app, /Fixed assortments/);
 });
 
 test("client and server do not block orders using catalog stock", () => {

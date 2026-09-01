@@ -64,8 +64,40 @@ const {
   verifyTotp,
   verifiedCustomerWhatsappNumber,
   productionCookieDomain,
-  serializeCookie
+  serializeCookie,
+  bundlePromotionIsActive,
+  computeAutomaticBundleDiscount,
+  combineDiscounts
 } = require("./server");
+
+test("five-day mix-and-match promotion applies across flavours and then expires", () => {
+  const lineItems = [
+    { item: { category: "bliss-balls", price: 75000 }, quantity: 1 },
+    { item: { category: "bliss-balls", price: 75000 }, quantity: 3 },
+    { item: { category: "oatmeal-cookies", price: 20000 }, quantity: 4 },
+    { item: { category: "oatmeal-cookies", price: 20000 }, quantity: 8 }
+  ];
+  const activeAt = Date.parse("2026-09-03T12:00:00+08:00");
+  assert.equal(bundlePromotionIsActive(activeAt), true);
+  const active = computeAutomaticBundleDiscount(lineItems, activeAt);
+  assert.equal(active.amount, 90000);
+  assert.equal(active.code, "BLISS4+COOKIES12");
+  const expiredAt = Date.parse("2026-09-06T00:00:00+08:00");
+  assert.equal(bundlePromotionIsActive(expiredAt), false);
+  const expired = computeAutomaticBundleDiscount(lineItems, expiredAt);
+  assert.equal(expired.amount, 0);
+  assert.equal(expired.code, "");
+});
+
+test("bundle and voucher discounts remain separate from tax and delivery", () => {
+  const bundle = computeAutomaticBundleDiscount([
+    { item: { category: "bliss-balls", price: 75000 }, quantity: 4 }
+  ], Date.parse("2026-09-02T12:00:00+08:00"));
+  const combined = combineDiscounts(bundle, { code: "WELCOME", label: "Welcome", amount: 10000 });
+  assert.equal(bundle.amount, 50000);
+  assert.equal(combined.amount, 60000);
+  assert.equal(combined.code, "BLISS4+WELCOME");
+});
 
 test("provider delivered status cannot complete an order without observed courier handoff", () => {
   assert.equal(shipmentHasObservedHandoff({}), false);

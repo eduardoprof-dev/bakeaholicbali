@@ -710,39 +710,39 @@ function currentPromoItem() {
   return state.items.find((item) => item.id === state.promo?.itemId) || null;
 }
 
-function bundleComponentText(item) {
-  if (!item?.isBundle || !Array.isArray(item.bundleComponents)) return "";
-  return item.bundleComponents.map((component) => {
-    const product = state.items.find((entry) => entry.id === component.itemId);
-    return `${component.quantity} × ${product?.name || component.itemId}`;
-  }).join(" · ");
-}
-
 function renderLimitedBundles() {
   if (!limitedBundlesGrid) return;
-  const bundleIds = ["bundle-bliss-mixed-4", "bundle-cookie-mixed-12"];
-  limitedBundlesGrid.innerHTML = bundleIds.map((id) => state.items.find((item) => item.id === id)).filter(Boolean).map((item) => `
-    <article class="limited-bundle-card" data-product-id="${escapeHtml(item.id)}">
-      <img src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" loading="eager" decoding="async" />
+  const end = new Date("2026-09-06T00:00:00+08:00").getTime();
+  if (Date.now() >= end) {
+    promoCard.hidden = true;
+    return;
+  }
+  const offers = [
+    { category: "bliss-balls", badge: "Any 4 packs", name: "Bliss Balls Mix & Match", description: "Choose any combination of Bliss Balls flavours.", price: 250000, image: "/assets/products/bliss-peanutella-lifestyle-20260422.png", action: "Choose Bliss flavours" },
+    { category: "oatmeal-cookies", badge: "Any 12 cookies", name: "Cookie Mix & Match", description: "Choose any combination from the oatmeal cookie range.", price: 200000, image: "/assets/products/oatmeal-cookies-assorted.jpg", action: "Choose cookie flavours" }
+  ];
+  limitedBundlesGrid.innerHTML = offers.map((offer) => `
+    <article class="limited-bundle-card">
+      <img src="${escapeHtml(versionedAsset(offer.image))}" alt="${escapeHtml(offer.name)}" loading="eager" decoding="async" />
       <div class="limited-bundle-copy">
-        <span>${escapeHtml(item.badge)}</span>
-        <h3>${escapeHtml(item.name)}</h3>
-        <p>${escapeHtml(bundleComponentText(item))}</p>
-        <strong>${formatRupiah.format(item.price)}</strong>
+        <span>${escapeHtml(offer.badge)}</span>
+        <h3>${escapeHtml(offer.name)}</h3>
+        <p>${escapeHtml(offer.description)}</p>
+        <strong>${formatRupiah.format(offer.price)}</strong>
         <div class="limited-bundle-actions">
-          <a href="/products/${escapeHtml(item.id)}${modeQuery}" data-bundle-details="${escapeHtml(item.id)}">View bundle</a>
-          <button class="primary-button" type="button" data-bundle-add="${escapeHtml(item.id)}">Add bundle</button>
+          <button class="primary-button" type="button" data-bundle-category="${escapeHtml(offer.category)}">${escapeHtml(offer.action)}</button>
         </div>
       </div>
     </article>
   `).join("");
-  limitedBundlesGrid.querySelectorAll("[data-bundle-add]").forEach((button) => {
-    button.addEventListener("click", () => addToCart(button.dataset.bundleAdd, button));
-  });
-  limitedBundlesGrid.querySelectorAll("[data-bundle-details]").forEach((link) => {
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      openProductModal(link.dataset.bundleDetails, true);
+  limitedBundlesGrid.querySelectorAll("[data-bundle-category]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.bundleCategory);
+      if (target) {
+        const headerHeight = document.querySelector(".app-header")?.offsetHeight || 0;
+        const targetTop = target.getBoundingClientRect().top + window.scrollY - headerHeight - 12;
+        window.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+      }
     });
   });
 }

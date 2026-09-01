@@ -209,6 +209,11 @@ function loadCatalog() {
   for (const item of savedCatalog.items || []) {
     const bundledItem = bundledItems.get(item.id);
     if (!bundledItem) continue;
+    if (["cookie-choc-chip", "cookie-raisin", "cookie-smores", "cookie-lamington"].includes(item.id)
+      && Number(item.price) !== Number(bundledItem.price)) {
+      item.price = Number(bundledItem.price);
+      changed = true;
+    }
     for (const key of ["lengthCm", "widthCm", "heightCm"]) {
       if (!Number.isFinite(Number(item[key])) && Number.isFinite(Number(bundledItem[key]))) {
         item[key] = Number(bundledItem[key]);
@@ -4314,12 +4319,14 @@ function recalculateSummary(summary, options = {}) {
   const store = getStoreConfig();
   const deliveryFee = Number(options.deliveryFee || 0);
   const shipping = options.shipping || summary.shipping;
-  const discount = computeDiscount(
-    summary.subtotal,
+  const bundleDiscount = computeAutomaticBundleDiscount(summary.lineItems || []);
+  const voucherDiscount = computeDiscount(
+    Math.max(0, summary.subtotal - bundleDiscount.amount),
     deliveryFee,
     String(options.voucherCode || summary.discount?.code || "").trim().toUpperCase(),
     summary.fulfillmentType
   );
+  const discount = combineDiscounts(bundleDiscount, voucherDiscount);
   const taxableAmount = Math.max(0, summary.subtotal + deliveryFee - discount.amount);
   const tax = roundCurrency(taxableAmount * store.taxRate);
   const total = Math.max(0, summary.subtotal + deliveryFee + tax - discount.amount);
@@ -5192,6 +5199,51 @@ function biteshipActualPrice(payload = {}, body = {}) {
   return price == null ? null : Number(price);
 }
 
+const AUTOMATIC_BUNDLE_PROMO_START = Date.parse("2026-09-01T00:00:00+08:00");
+const AUTOMATIC_BUNDLE_PROMO_END = Date.parse("2026-09-06T00:00:00+08:00");
+const AUTOMATIC_BUNDLES = Object.freeze([
+  { id: "BLISS4", category: "bliss-balls", quantity: 4, bundlePrice: 250000, label: "Any 4 Bliss Balls packs for Rp250K" },
+  { id: "COOKIES12", category: "oatmeal-cookies", quantity: 12, bundlePrice: 200000, label: "Any 12 Oatmeal Cookies for Rp200K" }
+]);
+
+function bundlePromotionIsActive(now = Date.now()) {
+  const timestamp = Number(now);
+  return timestamp >= AUTOMATIC_BUNDLE_PROMO_START && timestamp < AUTOMATIC_BUNDLE_PROMO_END;
+}
+
+function computeAutomaticBundleDiscount(lineItems = [], now = Date.now()) {
+  if (!bundlePromotionIsActive(now)) return { code: "", label: "", amount: 0, bundles: [] };
+  const applied = [];
+  let amount = 0;
+  for (const offer of AUTOMATIC_BUNDLES) {
+    const eligible = lineItems.filter((entry) => entry?.item?.category === offer.category && entry.item.isBundle !== true);
+    const quantity = eligible.reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
+    const bundleCount = Math.floor(quantity / offer.quantity);
+    if (bundleCount <= 0) continue;
+    const eligibleUnitPrices = eligible
+      .flatMap((entry) => Array.from({ length: Number(entry.quantity || 0) }, () => Number(entry.item.price || 0)))
+      .sort((left, right) => left - right);
+    const regularPrice = eligibleUnitPrices.slice(0, bundleCount * offer.quantity).reduce((sum, price) => sum + price, 0);
+    const offerPrice = bundleCount * offer.bundlePrice;
+    const saving = Math.max(0, regularPrice - offerPrice);
+    if (saving <= 0) continue;
+    amount += saving;
+    applied.push({ ...offer, bundleCount, appliedQuantity: bundleCount * offer.quantity, regularPrice, offerPrice, saving });
+  }
+  return { code: applied.map((offer) => offer.id).join("+"), label: applied.map((offer) => offer.label).join(" + "), amount, bundles: applied };
+}
+
+function combineDiscounts(bundleDiscount, voucherDiscount) {
+  const discounts = [bundleDiscount, voucherDiscount].filter((discount) => Number(discount?.amount || 0) > 0);
+  if (!discounts.length) return voucherDiscount || { code: "", label: "", amount: 0, bundles: [] };
+  return {
+    code: discounts.map((discount) => discount.code).filter(Boolean).join("+"),
+    label: discounts.map((discount) => discount.label).filter(Boolean).join(" + "),
+    amount: discounts.reduce((sum, discount) => sum + Number(discount.amount || 0), 0),
+    bundles: bundleDiscount?.bundles || []
+  };
+}
+
 function computeDiscount(subtotal, deliveryFee, voucherCode, fulfillmentType) {
   if (!voucherCode) {
     return { code: "", label: "", amount: 0 };
@@ -5301,12 +5353,14 @@ function buildCartSummary(storeState, options = {}) {
   }
 
   const deliveryFee = shipping.total;
-  const discount = computeDiscount(
-    subtotal,
+  const bundleDiscount = computeAutomaticBundleDiscount(lineItems);
+  const voucherDiscount = computeDiscount(
+    Math.max(0, subtotal - bundleDiscount.amount),
     deliveryFee,
     String(options.voucherCode || "").trim().toUpperCase(),
     fulfillmentType
   );
+  const discount = combineDiscounts(bundleDiscount, voucherDiscount);
   const taxableAmount = Math.max(0, subtotal + deliveryFee - discount.amount);
   const tax = roundCurrency(taxableAmount * store.taxRate);
   const total = Math.max(0, subtotal + deliveryFee + tax - discount.amount);
@@ -7953,7 +8007,7 @@ function handleApi(requestUrl, request, response) {
       promo: catalog.promo,
       brandStory: withDefaultBrandStory(catalog.brandStory),
       categories: catalog.categories,
-      items: catalog.items,
+      items: catalog.items.filter((item) => item.isBundle !== true),
       paymentMethods: availablePaymentMethods(mode)
     });
     return true;
@@ -9000,6 +9054,9 @@ module.exports = {
   verifiedCustomerWhatsappNumber,
   productionCookieDomain,
   serializeCookie,
+  bundlePromotionIsActive,
+  computeAutomaticBundleDiscount,
+  combineDiscounts,
   buildFulfillmentGroups,
   normalizeMarketplaceCatalog,
   productMarketplaceFields
