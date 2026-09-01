@@ -1971,18 +1971,36 @@ async function notifyShipmentUpdate(order, eventKey = "") {
 function shouldAlertAdminForBiteshipWebhook({ shipmentStatus = "", priceChanged = false } = {}) {
   const normalizedStatus = String(shipmentStatus || "").toLowerCase();
   return priceChanged || [
+    "on_hold", "on hold", "return_in_transit", "return in transit", "returned", "disposed"
+  ].includes(normalizedStatus);
+}
+
+function isDeliveryRecoveryStatus(shipmentStatus = "") {
+  const normalizedStatus = String(shipmentStatus || "").toLowerCase();
+  return [
     "cancelled",
     "canceled",
-    "on_hold",
-    "on hold",
     "courier_not_found",
     "courier not found",
-    "rejected",
-    "return_in_transit",
-    "return in transit",
-    "returned",
-    "disposed"
+    "rejected"
   ].includes(normalizedStatus);
+}
+
+async function maybeSendWhatsappAdminDeliveryRecoveryAlert(order, shipmentStatus, eventKey = "") {
+  if (!isDeliveryRecoveryStatus(shipmentStatus)) return { sent: false, skipped: true, reason: "not_recovery_status" };
+  const templateName = String(process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME || "").trim();
+  const recipients = adminWhatsappNumbers();
+  const key = String(eventKey || `delivery-recovery:${order.id}:${shipmentStatus}`).trim();
+  if (!isWhatsappCloudReady() || !templateName || !recipients.length) return { sent: false, skipped: true, reason: "recovery_template_or_admin_not_configured" };
+  if (order.adminDeliveryRecoveryNotification?.lastNotificationKey === key) return { sent: false, skipped: true, reason: "already_sent" };
+  order.adminDeliveryRecoveryNotification = { lastNotificationKey: key, claimedAt: new Date().toISOString() };
+  const deliveries = await Promise.allSettled(recipients.map((recipient) => sendWhatsappTemplateMessage(recipient, templateName, [order.id, "Courier delivery needs recovery"], {
+    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+    urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: adminOrderReviewButtonQuery(order) }] }]
+  })));
+  order.adminDeliveryRecoveryNotification = { ...order.adminDeliveryRecoveryNotification, lastSentAt: new Date().toISOString(), results: deliveries.map((entry, index) => ({ recipient: maskedWhatsappNumber(recipients[index]), sent: entry.status === "fulfilled" })) };
+  persistWhatsappNotificationClaim(order);
+  return { sent: true, recipients: order.adminDeliveryRecoveryNotification.results };
 }
 
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
@@ -7682,6 +7700,7 @@ function handleApi(requestUrl, request, response) {
                 : `Biteship ${shipmentStatus || "delivery update"}`
             )
           : { sent: false, skipped: true, reason: "normal_biteship_status" };
+        const deliveryRecoveryWhatsappResult = await maybeSendWhatsappAdminDeliveryRecoveryAlert(order, shipmentStatus, shipmentNotificationKey);
         recordBiteshipWebhookLog({
           matched: true,
           event: payload.event || body.event || "",
@@ -7699,6 +7718,7 @@ function handleApi(requestUrl, request, response) {
           whatsappResult,
           shippingWhatsappResult,
           adminWhatsappResult,
+          deliveryRecoveryWhatsappResult,
           body
         });
         saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);
@@ -8954,6 +8974,8 @@ module.exports = {
   isRecoverableFailedShipmentStatus,
   shipmentHasObservedHandoff,
   providerStatusCanCompleteOrder,
+  isDeliveryRecoveryStatus,
+  maybeSendWhatsappAdminDeliveryRecoveryAlert,
   correctDisputedDeliveryToSelfDelivery,
   replacementTrackingNotificationReady,
   assertDeliveryRecoveryRequest,

@@ -44,6 +44,7 @@ const {
   normalizedShipmentStatus,
   shipmentHasObservedHandoff,
   providerStatusCanCompleteOrder,
+  isDeliveryRecoveryStatus,
   isRecoverableFailedShipmentStatus,
   replacementTrackingNotificationReady,
   assertDeliveryRecoveryRequest,
@@ -71,6 +72,14 @@ test("provider delivered status cannot complete an order without observed courie
   assert.equal(providerStatusCanCompleteOrder({}, "delivered"), false);
   assert.equal(providerStatusCanCompleteOrder({ pickupObservedAt: "2026-09-01T00:00:00.000Z" }, "delivered"), true);
   assert.equal(providerStatusCanCompleteOrder({}, "picked_up"), true);
+});
+
+test("delivery recovery alerts are limited to verified recoverable courier states", () => {
+  assert.equal(isDeliveryRecoveryStatus("cancelled"), true);
+  assert.equal(isDeliveryRecoveryStatus("rejected"), true);
+  assert.equal(isDeliveryRecoveryStatus("courier_not_found"), true);
+  assert.equal(isDeliveryRecoveryStatus("delivered"), false);
+  assert.equal(isDeliveryRecoveryStatus("picked_up"), false);
 });
 
 test("customer WhatsApp templates require the verified customer recipient and reject admin crossover", () => {
