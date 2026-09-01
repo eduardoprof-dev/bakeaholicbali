@@ -4604,6 +4604,7 @@ body::before {
 .limited-bundle-actions { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
 .limited-bundle-actions a { color: var(--accent); font-weight: 800; }
 .limited-bundle-actions .primary-button { min-height: 42px; padding: 0 14px; }
+.limited-bundle-carousel-controls { display: none; }
 .bundle-components { display: block; color: var(--muted); line-height: 1.35; }
 
 .bestseller-strip-media {
@@ -7370,11 +7371,25 @@ body.cart-is-empty .checkout-shell .cart-layout {
   }
 
   .limited-bundles-grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    gap: 12px;
+    margin-right: -12px;
+    padding: 0 12px 6px 0;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 0;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
 
+  .limited-bundles-grid::-webkit-scrollbar { display: none; }
+
   .limited-bundle-card {
+    flex: 0 0 calc(100% - 18px);
     grid-template-columns: 108px minmax(0, 1fr);
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
 
   .limited-bundle-card > img {
@@ -7386,6 +7401,30 @@ body.cart-is-empty .checkout-shell .cart-layout {
     align-items: stretch;
     flex-direction: column;
   }
+
+  .limited-bundle-carousel-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 8px;
+  }
+
+  .limited-bundle-carousel-controls button {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 1px solid rgba(107, 66, 38, 0.14);
+    border-radius: 999px;
+    background: #fffaf4;
+    color: var(--accent);
+    font: inherit;
+    font-size: 1.35rem;
+    cursor: pointer;
+  }
+
+  .limited-bundle-carousel-controls button:disabled { opacity: 0.35; cursor: default; }
+  .limited-bundle-carousel-controls span { min-width: 42px; text-align: center; color: var(--muted); font-size: 0.86rem; font-weight: 800; }
 
   .bestseller-strip {
     grid-template-columns: 140px minmax(0, 1fr) 52px;

@@ -12,7 +12,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="/styles.css?v=20260901-mix-match-bundles" />
+    <link rel="stylesheet" href="/styles.css?v=20260901-bundle-carousel" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -113,7 +113,12 @@
             <h2 id="limitedBundlesTitle">Pick your flavours. The bundle price applies automatically.</h2>
             <p>Choose any 4 Bliss Balls packs for Rp250K or any 12 cookies for Rp200K. Tax and delivery are added separately at checkout. Ends 5 September.</p>
           </div>
-          <div class="limited-bundles-grid" id="limitedBundlesGrid"></div>
+          <div class="limited-bundles-grid" id="limitedBundlesGrid" aria-label="Limited bundle offers"></div>
+          <div class="limited-bundle-carousel-controls" id="limitedBundleCarouselControls" aria-label="Limited bundle carousel controls">
+            <button id="limitedBundlePrev" type="button" aria-label="Previous bundle">‹</button>
+            <span id="limitedBundleCounter" aria-live="polite">1 / 2</span>
+            <button id="limitedBundleNext" type="button" aria-label="Next bundle">›</button>
+          </div>
         </section>
 
         <section class="brand-story-card" aria-label="Bakeaholic story carousel">
@@ -424,6 +429,6 @@
     ></script>
     <script src="/location-picker.js?v=20260618-address-fallback"></script>
     <script src="/meta-pixel.js?v=20260817-bakeaholic-dataset"></script>
-    <script src="/app.js?v=20260901-mix-match-bundles"></script>
+    <script src="/app.js?v=20260901-bundle-carousel"></script>
   </body>
 </html>

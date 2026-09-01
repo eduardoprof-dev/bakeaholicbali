@@ -31,6 +31,9 @@ test("homepage places Limited Bundles immediately after the order banner", () =>
   assert.doesNotMatch(html, /Best Seller/);
   assert.match(html, /Pick your flavours/);
   assert.match(html, /Ends 5 September/);
+  assert.match(html, /id="limitedBundleCarouselControls"/);
+  assert.match(html, /aria-label="Previous bundle"/);
+  assert.match(html, /aria-label="Next bundle"/);
   assert.match(html, /href="\/styles\.css/);
   assert.match(html, /src="\/app\.js/);
 });
@@ -40,6 +43,8 @@ test("homepage promotion routes shoppers to flavours instead of adding a fixed a
   assert.match(app, /data-bundle-category/);
   assert.doesNotMatch(app, /data-bundle-add/);
   assert.doesNotMatch(app, /Fixed assortments/);
+  assert.match(app, /scrollTo\(\{ left:/);
+  assert.match(app, /limitedBundleCounter\.textContent/);
 });
 
 test("client and server do not block orders using catalog stock", () => {

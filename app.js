@@ -44,6 +44,10 @@ const momentGuideTitle = document.getElementById("momentGuideTitle");
 const categoryChips = document.getElementById("categoryChips");
 const catalog = document.getElementById("catalog");
 const limitedBundlesGrid = document.getElementById("limitedBundlesGrid");
+const limitedBundleCarouselControls = document.getElementById("limitedBundleCarouselControls");
+const limitedBundlePrev = document.getElementById("limitedBundlePrev");
+const limitedBundleNext = document.getElementById("limitedBundleNext");
+const limitedBundleCounter = document.getElementById("limitedBundleCounter");
 const brandStoryKicker = document.getElementById("brandStoryKicker");
 const brandStoryTitle = document.getElementById("brandStoryTitle");
 const brandStoryBody = document.getElementById("brandStoryBody");
@@ -735,6 +739,37 @@ function renderLimitedBundles() {
       </div>
     </article>
   `).join("");
+  const cards = Array.from(limitedBundlesGrid.querySelectorAll(".limited-bundle-card"));
+  let activeCardIndex = 0;
+  const updateCarouselControls = () => {
+    if (!limitedBundleCounter || !cards.length) return;
+    limitedBundleCounter.textContent = `${activeCardIndex + 1} / ${cards.length}`;
+    if (limitedBundlePrev) limitedBundlePrev.disabled = activeCardIndex === 0;
+    if (limitedBundleNext) limitedBundleNext.disabled = activeCardIndex === cards.length - 1;
+  };
+  const moveToCard = (index) => {
+    activeCardIndex = Math.max(0, Math.min(cards.length - 1, index));
+    limitedBundlesGrid.scrollTo({ left: cards[activeCardIndex].offsetLeft - limitedBundlesGrid.offsetLeft, behavior: "smooth" });
+    updateCarouselControls();
+  };
+  if (limitedBundleCarouselControls) limitedBundleCarouselControls.hidden = cards.length < 2;
+  limitedBundlePrev?.addEventListener("click", () => moveToCard(activeCardIndex - 1));
+  limitedBundleNext?.addEventListener("click", () => moveToCard(activeCardIndex + 1));
+  limitedBundlesGrid.addEventListener("scroll", () => {
+    window.requestAnimationFrame(() => {
+      const nextIndex = cards.reduce((bestIndex, card, index) => (
+        Math.abs(card.offsetLeft - limitedBundlesGrid.offsetLeft - limitedBundlesGrid.scrollLeft)
+          < Math.abs(cards[bestIndex].offsetLeft - limitedBundlesGrid.offsetLeft - limitedBundlesGrid.scrollLeft)
+          ? index
+          : bestIndex
+      ), 0);
+      if (nextIndex !== activeCardIndex) {
+        activeCardIndex = nextIndex;
+        updateCarouselControls();
+      }
+    });
+  }, { passive: true });
+  updateCarouselControls();
   limitedBundlesGrid.querySelectorAll("[data-bundle-category]").forEach((button) => {
     button.addEventListener("click", () => {
       const target = document.getElementById(button.dataset.bundleCategory);
