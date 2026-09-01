@@ -44,3 +44,15 @@ test("one checkout creates separate immutable commercial fulfillment groups", ()
   assert.equal(knots.sellerNetAmount, 722500);
   assert.equal(knots.fulfillmentLocationId, "knots-bali-office");
 });
+
+test("bundle fulfillment lines preserve the exact staff packing components", () => {
+  const components = [
+    { itemId: "bliss-cranberry", name: "Cranberry Bliss Balls", sku: "bbbb-ccpk", quantity: 1 },
+    { itemId: "bliss-peanutella", name: "Peanutella Bliss Balls", sku: "bbbb-pppk", quantity: 1 }
+  ];
+  const [group] = buildFulfillmentGroups([
+    { item: { id: "bundle-bliss-mixed-4", price: 250000 }, quantity: 1, components }
+  ]);
+  assert.equal(group.productSubtotal, 250000);
+  assert.deepEqual(group.items[0].components, components);
+});

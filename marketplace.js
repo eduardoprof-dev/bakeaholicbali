@@ -170,7 +170,13 @@ function buildFulfillmentGroups(lineItems = [], catalog = {}) {
     const group = groups.get(key);
     const unitPrice = Math.max(0, Number(item.price || line.unitPrice || 0));
     const lineTotal = Math.round(unitPrice * quantity);
-    group.items.push({ itemId: item.id, quantity, unitPrice, lineTotal });
+    group.items.push({
+      itemId: item.id,
+      quantity,
+      unitPrice,
+      lineTotal,
+      components: Array.isArray(line.components) ? line.components : []
+    });
     group.productSubtotal += lineTotal;
   }
   return [...groups.values()].map((group) => {

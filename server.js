@@ -186,6 +186,26 @@ function loadCatalog() {
   const bundledItems = new Map((bundledCatalog.items || []).map((item) => [item.id, item]));
   let changed = false;
 
+  for (const bundledItem of bundledCatalog.items || []) {
+    if (bundledItem.isBundle !== true) continue;
+    const existingIndex = (savedCatalog.items || []).findIndex((item) => item.id === bundledItem.id);
+    if (existingIndex < 0) {
+      savedCatalog.items = [...(savedCatalog.items || []), bundledItem];
+      changed = true;
+      continue;
+    }
+    const existing = savedCatalog.items[existingIndex];
+    const exactBundle = {
+      ...existing,
+      ...bundledItem,
+      bundleComponents: bundledItem.bundleComponents
+    };
+    if (JSON.stringify(existing) !== JSON.stringify(exactBundle)) {
+      savedCatalog.items[existingIndex] = exactBundle;
+      changed = true;
+    }
+  }
+
   for (const item of savedCatalog.items || []) {
     const bundledItem = bundledItems.get(item.id);
     if (!bundledItem) continue;
@@ -3967,6 +3987,18 @@ function validateCatalog(nextCatalog) {
     }
   });
 
+  nextCatalog.items.forEach((item) => {
+    if (!item.isBundle) return;
+    if (!Array.isArray(item.bundleComponents) || !item.bundleComponents.length) {
+      throw new Error(`Bundle ${item.id} needs components`);
+    }
+    item.bundleComponents.forEach((component) => {
+      if (!itemIds.has(String(component.itemId || "").trim()) || Number(component.quantity) <= 0) {
+        throw new Error(`Invalid component for bundle ${item.id}`);
+      }
+    });
+  });
+
   if (!itemIds.has(nextCatalog.promo?.itemId)) {
     throw new Error("Promo item must reference an existing product");
   }
@@ -4091,6 +4123,13 @@ function sanitizeCatalog(nextCatalog) {
       frameOffsetX: Math.min(30, Math.max(-30, Number(item.frameOffsetX ?? 0) || 0)),
       frameOffsetY: Math.min(30, Math.max(-30, Number(item.frameOffsetY ?? 0) || 0)),
       stock: Number(item.stock),
+      isBundle: item.isBundle === true,
+      bundleComponents: item.isBundle === true
+        ? item.bundleComponents.map((component) => ({
+          itemId: String(component.itemId || "").trim(),
+          quantity: Math.max(1, Math.round(Number(component.quantity) || 1))
+        }))
+        : [],
       lengthCm: Number(item.lengthCm) > 0 ? Number(item.lengthCm) : undefined,
       widthCm: Number(item.widthCm) > 0 ? Number(item.widthCm) : undefined,
       heightCm: Number(item.heightCm) > 0 ? Number(item.heightCm) : undefined,
@@ -4116,14 +4155,10 @@ function cartItems(storeState) {
 }
 
 function clampCartToStock(storeState) {
-  for (const [itemId, quantity] of storeState.cart.entries()) {
+  for (const [itemId] of storeState.cart.entries()) {
     const item = findMenuItem(itemId);
-    if (!item || item.stock <= 0) {
+    if (!item) {
       storeState.cart.delete(itemId);
-      continue;
-    }
-    if (quantity > item.stock) {
-      storeState.cart.set(itemId, item.stock);
     }
   }
 }
@@ -5200,8 +5235,6 @@ function computeDiscount(subtotal, deliveryFee, voucherCode, fulfillmentType) {
 }
 
 function buildCartSummary(storeState, options = {}) {
-  clampCartToStock(storeState);
-
   const lineItems = cartItems(storeState)
     .map(({ itemId, quantity }) => ({
       itemId,
@@ -5262,11 +5295,16 @@ function buildCartSummary(storeState, options = {}) {
 
   return {
     cartSessionId: String(options.cartSessionId || ""),
-    items: lineItems.map(({ itemId, quantity }) => ({ itemId, quantity })),
+    items: lineItems.map(({ item, itemId, quantity }) => ({
+      itemId,
+      quantity,
+      components: bundleComponentSnapshot(item, quantity)
+    })),
     lineItems: lineItems.map(({ item, quantity }) => ({
       itemId: item.id,
       quantity,
       lineTotal: item.price * quantity,
+      components: bundleComponentSnapshot(item, quantity),
       item
     })),
     subtotal,
@@ -5279,6 +5317,20 @@ function buildCartSummary(storeState, options = {}) {
     fulfillmentType,
     perkUnlocked: subtotal >= 120000
   };
+}
+
+function bundleComponentSnapshot(item, bundleQuantity = 1) {
+  if (!item?.isBundle || !Array.isArray(item.bundleComponents)) return [];
+  return item.bundleComponents.map((component) => {
+    const product = findMenuItem(component.itemId);
+    return {
+      itemId: component.itemId,
+      sku: product?.sku || component.itemId,
+      name: product?.name || component.itemId,
+      quantityPerBundle: Number(component.quantity),
+      quantity: Number(component.quantity) * Number(bundleQuantity)
+    };
+  });
 }
 
 function makeNumericSeed(value) {
@@ -6766,13 +6818,14 @@ function enrichOrder(order, options = {}) {
     ...(refund ? { refund } : {}),
     documentUrl: getPublicDocumentUrl(order),
     lineItems: order.items
-      .map(({ itemId, quantity }) => {
+      .map(({ itemId, quantity, components = [] }) => {
         const item = findMenuItem(itemId);
         if (!item) return null;
         return {
           itemId,
           quantity,
           lineTotal: item.price * quantity,
+          components,
           item
         };
       })
@@ -6816,10 +6869,13 @@ function buildWhatsappUrl(order) {
     "Items:"
   ];
 
-  order.items.forEach(({ itemId, quantity }) => {
+  order.items.forEach(({ itemId, quantity, components = [] }) => {
     const item = findMenuItem(itemId);
     if (!item) return;
     lines.push(`- ${item.name} x${quantity} = Rp ${item.price * quantity}`);
+    components.forEach((component) => {
+      lines.push(`  • ${component.name} x${component.quantity}`);
+    });
   });
 
   lines.push("");
@@ -7401,16 +7457,6 @@ function handleCartUpsert(mode, storeState, response, body, strategy, cartSessio
     storeState.cart.delete(item.id);
     saveSessionCarts(cartsPathForMode(mode), getStoreState(mode).carts);
     sendJson(response, 200, buildCartSummary(storeState, { cartSessionId }));
-    return;
-  }
-
-  if (item.stock <= 0) {
-    sendJson(response, 409, { error: `${item.name} is out of stock` });
-    return;
-  }
-
-  if (nextQuantity > item.stock) {
-    sendJson(response, 409, { error: `Only ${item.stock} left for ${item.name}` });
     return;
   }
 
@@ -8823,7 +8869,8 @@ const server = http.createServer((request, response) => {
     return;
   }
 
-  const relativePath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
+  const isProductPage = /^\/products\/[^/]+\/?$/.test(requestUrl.pathname);
+  const relativePath = requestUrl.pathname === "/" || isProductPage ? "/index.html" : requestUrl.pathname;
   const targetPath = path.normalize(path.join(rootDir, relativePath));
   if (!targetPath.startsWith(`${rootDir}${path.sep}`) && targetPath !== rootDir) {
     sendJson(response, 403, { error: "Forbidden" });

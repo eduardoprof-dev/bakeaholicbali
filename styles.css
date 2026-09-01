@@ -4559,12 +4559,7 @@ body::before {
   line-height: 1.35;
 }
 
-.bestseller-strip {
-  display: grid;
-  grid-template-columns: 210px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 20px;
-  min-height: 218px;
+.limited-bundles {
   margin-bottom: 22px;
   padding: 18px;
   border-radius: 24px;
@@ -4572,6 +4567,44 @@ body::before {
   border: 1px solid rgba(107, 66, 38, 0.1);
   box-shadow: 0 16px 32px rgba(77, 42, 12, 0.08);
 }
+
+.limited-bundles-head h2,
+.limited-bundles-head p {
+  margin: 0 0 8px;
+}
+
+.limited-bundles-head > p:last-child {
+  color: var(--muted);
+}
+
+.limited-bundles-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.limited-bundle-card {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border-radius: 18px;
+  background: #fffaf4;
+  border: 1px solid rgba(107, 66, 38, 0.1);
+}
+
+.limited-bundle-card > img { width: 150px; height: 150px; object-fit: cover; border-radius: 15px; }
+.limited-bundle-copy { display: grid; gap: 5px; min-width: 0; }
+.limited-bundle-copy h3, .limited-bundle-copy p { margin: 0; }
+.limited-bundle-copy p { color: var(--muted); font-size: .84rem; line-height: 1.35; }
+.limited-bundle-copy > span { color: var(--accent); font-size: .78rem; font-weight: 800; text-transform: uppercase; }
+.limited-bundle-copy > strong { font-size: 1.18rem; }
+.limited-bundle-actions { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
+.limited-bundle-actions a { color: var(--accent); font-weight: 800; }
+.limited-bundle-actions .primary-button { min-height: 42px; padding: 0 14px; }
+.bundle-components { display: block; color: var(--muted); line-height: 1.35; }
 
 .bestseller-strip-media {
   width: 210px;
@@ -7334,6 +7367,24 @@ body.cart-is-empty .checkout-shell .cart-layout {
 
   .moment-card {
     flex: 0 0 148px;
+  }
+
+  .limited-bundles-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .limited-bundle-card {
+    grid-template-columns: 108px minmax(0, 1fr);
+  }
+
+  .limited-bundle-card > img {
+    width: 108px;
+    height: 132px;
+  }
+
+  .limited-bundle-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .bestseller-strip {

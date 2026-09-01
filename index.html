@@ -12,7 +12,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260725-frame-controls-v21" />
+    <link rel="stylesheet" href="/styles.css?v=20260901-fixed-bundles" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -107,6 +107,15 @@
           <a class="secondary-link" id="orderBannerLink" href="#" hidden>Checkout</a>
         </section>
 
+        <section class="limited-bundles" id="promoCard" aria-labelledby="limitedBundlesTitle">
+          <div class="limited-bundles-head">
+            <p class="feature-kicker">Limited Bundles</p>
+            <h2 id="limitedBundlesTitle">Mixed favorites, ready in one order.</h2>
+            <p>Fixed assortments with the bundle price already included—no promo code needed.</p>
+          </div>
+          <div class="limited-bundles-grid" id="limitedBundlesGrid"></div>
+        </section>
+
         <section class="brand-story-card" aria-label="Bakeaholic story carousel">
           <div class="brand-story-track" id="brandStoryTrack">
             <article class="brand-story-slide" aria-labelledby="brandStoryTitle">
@@ -198,22 +207,6 @@
               <strong id="momentCard3Title">Munchie Mallow</strong>
             </a>
           </div>
-        </section>
-
-        <section class="bestseller-strip" id="promoCard">
-          <div class="bestseller-strip-media">
-            <img
-              id="promoHeroImage"
-              src="/assets/products/bliss-peanutella-lifestyle-20260422.png"
-              alt="Bakeaholic bestseller"
-            />
-          </div>
-          <div class="bestseller-strip-copy">
-            <p class="feature-kicker" id="promoKicker">Best Seller</p>
-            <strong id="promoHeroTitle">Best seller ready to ship</strong>
-            <span id="promoHeroPrice">Rp 75.000</span>
-          </div>
-          <button class="primary-button" id="promoAddButton" type="button">Add Bestseller</button>
         </section>
 
         <section class="catalog-list" id="catalog"></section>
@@ -429,8 +422,8 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260618-address-fallback"></script>
-    <script src="meta-pixel.js?v=20260817-bakeaholic-dataset"></script>
-    <script src="app.js?v=20260817-one-click-cart"></script>
+    <script src="/location-picker.js?v=20260618-address-fallback"></script>
+    <script src="/meta-pixel.js?v=20260817-bakeaholic-dataset"></script>
+    <script src="/app.js?v=20260901-fixed-bundles"></script>
   </body>
 </html>

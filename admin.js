@@ -1190,7 +1190,7 @@ function renderAdminOrders() {
             ? `<button class="admin-button danger" type="button" data-cancel-order="${escapeHtml(order.id)}">Cancel order &amp; refund</button>`
             : ""}`;
     const lineItems = (order.lineItems || []).map((entry) => `
-      <li>${entry.quantity}x ${escapeHtml(entry.item?.name || entry.itemId)} (${formatRupiah.format(entry.lineTotal || 0)})</li>
+      <li>${entry.quantity}x ${escapeHtml(entry.item?.name || entry.itemId)} (${formatRupiah.format(entry.lineTotal || 0)})${Array.isArray(entry.components) && entry.components.length ? `<ul>${entry.components.map((component) => `<li>${escapeHtml(component.name)} ×${Number(component.quantity || 0)}</li>`).join("")}</ul>` : ""}</li>
     `).join("");
     const shipmentText = order.fulfillment?.shipment?.orderId
       ? `Biteship ${order.fulfillment.shipment.orderId}`

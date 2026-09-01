@@ -43,11 +43,7 @@ const momentGuideKicker = document.getElementById("momentGuideKicker");
 const momentGuideTitle = document.getElementById("momentGuideTitle");
 const categoryChips = document.getElementById("categoryChips");
 const catalog = document.getElementById("catalog");
-const promoKicker = document.getElementById("promoKicker");
-const promoAddButton = document.getElementById("promoAddButton");
-const promoHeroImage = document.getElementById("promoHeroImage");
-const promoHeroTitle = document.getElementById("promoHeroTitle");
-const promoHeroPrice = document.getElementById("promoHeroPrice");
+const limitedBundlesGrid = document.getElementById("limitedBundlesGrid");
 const brandStoryKicker = document.getElementById("brandStoryKicker");
 const brandStoryTitle = document.getElementById("brandStoryTitle");
 const brandStoryBody = document.getElementById("brandStoryBody");
@@ -662,8 +658,8 @@ function renderCatalog() {
                       </div>
                       <div class="product-bottom">
                         <strong>${formatRupiah.format(item.price)}</strong>
-                        <button class="mini-add-button" type="button" data-item-id="${escapeHtml(item.id)}" aria-label="Add ${escapeHtml(item.name)} to cart" ${item.stock <= 0 ? "disabled" : ""}>
-                          ${item.stock <= 0 ? "Sold out" : "+"}
+                        <button class="mini-add-button" type="button" data-item-id="${escapeHtml(item.id)}" aria-label="Add ${escapeHtml(item.name)} to cart">
+                          +
                           ${quantity > 0 ? `<span class="add-quantity-badge">${quantity > 99 ? "99+" : quantity}</span>` : ""}
                         </button>
                       </div>
@@ -714,7 +710,44 @@ function currentPromoItem() {
   return state.items.find((item) => item.id === state.promo?.itemId) || null;
 }
 
-function openProductModal(itemId) {
+function bundleComponentText(item) {
+  if (!item?.isBundle || !Array.isArray(item.bundleComponents)) return "";
+  return item.bundleComponents.map((component) => {
+    const product = state.items.find((entry) => entry.id === component.itemId);
+    return `${component.quantity} × ${product?.name || component.itemId}`;
+  }).join(" · ");
+}
+
+function renderLimitedBundles() {
+  if (!limitedBundlesGrid) return;
+  const bundleIds = ["bundle-bliss-mixed-4", "bundle-cookie-mixed-12"];
+  limitedBundlesGrid.innerHTML = bundleIds.map((id) => state.items.find((item) => item.id === id)).filter(Boolean).map((item) => `
+    <article class="limited-bundle-card" data-product-id="${escapeHtml(item.id)}">
+      <img src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" loading="eager" decoding="async" />
+      <div class="limited-bundle-copy">
+        <span>${escapeHtml(item.badge)}</span>
+        <h3>${escapeHtml(item.name)}</h3>
+        <p>${escapeHtml(bundleComponentText(item))}</p>
+        <strong>${formatRupiah.format(item.price)}</strong>
+        <div class="limited-bundle-actions">
+          <a href="/products/${escapeHtml(item.id)}${modeQuery}" data-bundle-details="${escapeHtml(item.id)}">View bundle</a>
+          <button class="primary-button" type="button" data-bundle-add="${escapeHtml(item.id)}">Add bundle</button>
+        </div>
+      </div>
+    </article>
+  `).join("");
+  limitedBundlesGrid.querySelectorAll("[data-bundle-add]").forEach((button) => {
+    button.addEventListener("click", () => addToCart(button.dataset.bundleAdd, button));
+  });
+  limitedBundlesGrid.querySelectorAll("[data-bundle-details]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      openProductModal(link.dataset.bundleDetails, true);
+    });
+  });
+}
+
+function openProductModal(itemId, updateUrl = false) {
   const item = state.items.find((candidate) => candidate.id === itemId);
   if (!item) return;
 
@@ -732,19 +765,23 @@ function openProductModal(itemId) {
   productModalBadge.hidden = !item.badge;
   productModalDescription.textContent = item.description;
   productModalPrice.textContent = formatRupiah.format(item.price);
-  productModalAddButton.disabled = item.stock <= 0;
-  productModalAddButton.textContent = item.stock <= 0 ? "Sold out" : `Add to Cart ${formatRupiah.format(item.price)}`;
+  productModalAddButton.disabled = false;
+  productModalAddButton.textContent = `Add to Cart ${formatRupiah.format(item.price)}`;
   productModalFacts.innerHTML = [
-    `★ ${item.rating}`,
-    `${item.reviews} reviews`,
+    item.rating > 0 ? `★ ${item.rating}` : "",
+    item.reviews > 0 ? `${item.reviews} reviews` : "",
     item.shelfLife,
-    item.minOrder ? `Min. ${item.minOrder}` : ""
+    item.minOrder ? `Min. ${item.minOrder}` : "",
+    bundleComponentText(item)
   ]
     .filter(Boolean)
     .map((fact) => `<span>${escapeHtml(fact)}</span>`)
     .join("");
 
   openModal(productModal);
+  if (updateUrl && !isAdminPreview) {
+    window.history.pushState({ productId: item.id }, "", `/products/${encodeURIComponent(item.id)}${modeQuery}`);
+  }
 }
 
 function renderCartSummary() {
@@ -1526,23 +1563,7 @@ function applyCatalogPayload(payload) {
   if (storeEyebrow) {
     storeEyebrow.textContent = state.store.eyebrow;
   }
-  promoKicker.textContent = state.promo.kicker;
-  promoAddButton.textContent = state.promo.buttonLabel;
-  const promoItem = currentPromoItem();
-  if (promoHeroImage && promoItem?.imagePath) {
-    promoHeroImage.src = versionedAsset(promoItem.imagePath);
-    promoHeroImage.alt = promoItem.name;
-    promoHeroImage.style.objectFit = imageFit(promoItem);
-    promoHeroImage.style.objectPosition = "center";
-    promoHeroImage.style.transform = mediaTransform(promoItem);
-    promoHeroImage.style.transformOrigin = "center";
-  }
-  if (promoHeroTitle) {
-    promoHeroTitle.textContent = promoItem?.name || "Best seller ready to ship";
-  }
-  if (promoHeroPrice) {
-    promoHeroPrice.textContent = promoItem?.price ? formatRupiah.format(promoItem.price) : "Rp 0";
-  }
+  renderLimitedBundles();
   renderBrandStory();
   whatsappPrompt.textContent = withVerificationPrompt(state.store.whatsappPrompt);
   modeBanner.hidden = appMode !== "test";
@@ -1582,6 +1603,11 @@ async function bootstrap() {
   hydrateDetailsForm();
   renderOrderBanner();
   await refreshCart();
+
+  const productPathMatch = window.location.pathname.match(/^\/products\/([^/]+)\/?$/);
+  if (productPathMatch) {
+    openProductModal(decodeURIComponent(productPathMatch[1]));
+  }
 
   await syncSessionProfile();
   renderAccountMenu();
@@ -1744,7 +1770,6 @@ document.addEventListener("click", (event) => {
   if (accountMenu.contains(event.target) || loginButton?.contains(event.target)) return;
   closeAccountMenu();
 });
-promoAddButton.addEventListener("click", () => addToCart(state.promo.itemId));
 cartLink?.addEventListener("click", (event) => {
   if ((state.cart?.itemCount || 0) <= 0) return;
   event.preventDefault();

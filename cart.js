@@ -1611,10 +1611,11 @@ function renderCartItems() {
           <div class="cart-line-copy">
             <strong>${escapeHtml(entry.item.name)}</strong>
             <span>${formatRupiah.format(entry.item.price)}</span>
+            ${Array.isArray(entry.components) && entry.components.length ? `<small class="bundle-components">${entry.components.map((component) => `${escapeHtml(component.name)} ×${component.quantity}`).join(" · ")}</small>` : ""}
             <div class="quantity-row">
               <button class="qty-box" type="button" data-item-id="${escapeHtml(entry.itemId)}" data-action="decrease">−</button>
               <strong>${entry.quantity}</strong>
-              <button class="qty-box" type="button" data-item-id="${escapeHtml(entry.itemId)}" data-action="increase" ${entry.quantity >= entry.item.stock ? "disabled" : ""}>+</button>
+              <button class="qty-box" type="button" data-item-id="${escapeHtml(entry.itemId)}" data-action="increase">+</button>
             </div>
           </div>
           <button class="text-action align-self-end" type="button">Edit</button>
@@ -1629,9 +1630,7 @@ function renderCartItems() {
       const current = pendingQuantities.has(itemId)
         ? pendingQuantities.get(itemId)
         : state.cart.items.find((entry) => entry.itemId === itemId)?.quantity || 0;
-      const stock = state.cart.lineItems.find((entry) => entry.itemId === itemId)?.item?.stock || 0;
       const nextQuantity = button.dataset.action === "increase" ? current + 1 : current - 1;
-      if (nextQuantity > stock) return;
 
       pendingQuantities.set(itemId, nextQuantity);
       const row = button.closest(".quantity-row");
@@ -1640,7 +1639,7 @@ function renderCartItems() {
       const decreaseButton = row?.querySelector('[data-action="decrease"]');
       const increaseButton = row?.querySelector('[data-action="increase"]');
       if (decreaseButton) decreaseButton.disabled = nextQuantity <= 0;
-      if (increaseButton) increaseButton.disabled = nextQuantity >= stock;
+      if (increaseButton) increaseButton.disabled = false;
 
       window.clearTimeout(quantityUpdateTimers.get(itemId));
       const version = (quantityUpdateVersions.get(itemId) || 0) + 1;

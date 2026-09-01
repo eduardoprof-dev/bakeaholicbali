@@ -74,7 +74,7 @@ async function requestDocument() {
 function lineItemRows(order) {
   return (order.lineItems || []).map((entry) => `
     <tr>
-      <td>${escapeHtml(entry.item?.name || entry.itemId)}</td>
+      <td>${escapeHtml(entry.item?.name || entry.itemId)}${Array.isArray(entry.components) && entry.components.length ? `<br><small>${entry.components.map((component) => `${escapeHtml(component.name)} ×${Number(component.quantity || 0)}`).join(" · ")}</small>` : ""}</td>
       <td>${entry.quantity}</td>
       <td>${formatRupiah.format(entry.item?.price || 0)}</td>
       <td>${formatRupiah.format(entry.lineTotal || 0)}</td>
