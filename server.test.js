@@ -59,9 +59,28 @@ const {
   base32Encode,
   totpCode,
   verifyTotp,
+  verifiedCustomerWhatsappNumber,
   productionCookieDomain,
   serializeCookie
 } = require("./server");
+
+test("customer WhatsApp templates require the verified customer recipient and reject admin crossover", () => {
+  const customer = {
+    customer: {
+      phone: "+62 811 222 3333",
+      phoneVerifiedAt: "2026-09-01T00:00:00.000Z"
+    }
+  };
+  assert.equal(verifiedCustomerWhatsappNumber(customer, ["628122223333"]), "628112223333");
+  assert.throws(
+    () => verifiedCustomerWhatsappNumber(customer, ["628112223333"]),
+    /must not be an admin recipient/i
+  );
+  assert.throws(
+    () => verifiedCustomerWhatsappNumber({ customer: { phone: "+62 811 222 3333" } }, []),
+    /verified customer WhatsApp number is required/i
+  );
+});
 
 test("delivery recovery accepts only the exact failed shipment and a replay-safe action ID", () => {
   const order = {
@@ -253,7 +272,7 @@ test("concurrent paid-event processing sends each WhatsApp notification only onc
     id: "BAK-CONCURRENT",
     mode: "test",
     status: "paid",
-    customer: { name: "Customer", phone: "628999999999" },
+    customer: { name: "Customer", phone: "628999999999", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
     pricing: { total: 18700 },
     payment: { label: "QRIS" },
     fulfillment: { shipment: {} },
@@ -459,7 +478,7 @@ function whatsappOrder(overrides = {}) {
     id: "BAK-0001",
     mode: "live",
     status: "paid",
-    customer: { phone: "+6281234567890" },
+    customer: { phone: "+6281234567890", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
     fulfillment: { shipment: {} },
     ...overrides
   };

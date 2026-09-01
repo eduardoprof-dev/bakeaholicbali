@@ -480,7 +480,10 @@ function whatsappTemplateTestOrder(recipient) {
     receiptToken: crypto.randomBytes(18).toString("hex"),
     customer: {
       name: "WhatsApp Template Test",
-      phone: recipient
+      // Diagnostics are a synthetic, admin-only test path. Customer production
+      // notifications never use this fixture or this recipient.
+      phone: recipient,
+      phoneVerifiedAt: new Date(0).toISOString()
     },
     pricing: { total: 6600 },
     payment: {
@@ -517,6 +520,21 @@ function adminWhatsappNumbers() {
     .split(/[,\n;]+/)
     .map((value) => normalizePhoneNumber(value))
     .filter(Boolean))].slice(0, 3);
+}
+
+function verifiedCustomerWhatsappNumber(order, configuredAdminNumbers = adminWhatsappNumbers()) {
+  const verifiedAt = String(order?.customer?.phoneVerifiedAt || "").trim();
+  const recipient = formatIndonesianPhone(order?.customer?.phone);
+  if (!verifiedAt || !recipient || recipient.length < 10) {
+    throw new Error("A verified customer WhatsApp number is required");
+  }
+  const adminRecipients = new Set((configuredAdminNumbers || [])
+    .map((value) => formatIndonesianPhone(value))
+    .filter(Boolean));
+  if (adminRecipients.has(recipient)) {
+    throw new Error("Customer WhatsApp recipient must not be an admin recipient");
+  }
+  return recipient;
 }
 
 async function runWhatsappTemplateDiagnostics() {
@@ -568,17 +586,28 @@ async function runWhatsappTemplateDiagnostics() {
     {
       key: "payment_receipt",
       templateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME,
-      send: () => sendWhatsappPaymentReceipt(order)
+      send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME, receiptWhatsappParameters(order), {
+        languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+        headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
+        headerDocumentFilename: `${order.id}-payment-receipt.pdf`,
+        urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: order.receiptToken }] }]
+      })
     },
     {
       key: "payment_reminder",
       templateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME,
-      send: () => sendWhatsappPaymentReminder(order)
+      send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME, paymentReminderWhatsappParameters(order), {
+        languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+        urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: order.receiptToken }] }]
+      })
     },
     {
       key: "payment_expired",
       templateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME,
-      send: () => sendWhatsappPaymentExpired(order)
+      send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME, paymentExpiredWhatsappParameters(order), {
+        languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+        urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: order.receiptToken }] }]
+      })
     },
     {
       key: "order_cancelled",
@@ -588,7 +617,10 @@ async function runWhatsappTemplateDiagnostics() {
     {
       key: "customer_shipping",
       templateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME,
-      send: () => sendWhatsappShippingUpdate(order)
+      send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME, customerShippingWhatsappParameters(order), {
+        languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+        urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: order.receiptToken }] }]
+      })
     },
     {
       key: "admin_alert",
@@ -603,7 +635,10 @@ async function runWhatsappTemplateDiagnostics() {
     {
       key: "refund_completed",
       templateName: process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "refund_completed",
-      send: () => sendWhatsappRefundCompleted(order)
+      send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "refund_completed", refundWhatsappParameters(order), {
+        languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+        urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: order.receiptToken }] }]
+      })
     },
     {
       key: "admin_refund_update",
@@ -1092,7 +1127,7 @@ async function sendWhatsappOrderUpdate(order) {
   }
 
   const parameters = orderUpdateWhatsappParameters(order, templateName);
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, parameters, orderUpdateWhatsappOptions(order, templateName));
+  return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, parameters, orderUpdateWhatsappOptions(order, templateName));
 }
 
 function adminWhatsappParameters(order, eventLabel = "") {
@@ -1292,7 +1327,7 @@ function adminRefundWhatsappParameters(order) {
 
 async function sendWhatsappRefundCompleted(order) {
   const templateName = String(process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "refund_completed").trim();
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, refundWhatsappParameters(order), {
+  return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, refundWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     urlButtonParameters: [
       {
@@ -1332,7 +1367,7 @@ async function sendWhatsappPaymentReceipt(order) {
     throw new Error("WHATSAPP_RECEIPT_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, receiptWhatsappParameters(order), {
+  return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, receiptWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
     headerDocumentFilename: `${order.id}-payment-receipt.pdf`,
@@ -1351,7 +1386,7 @@ async function sendWhatsappPaymentReminder(order) {
     throw new Error("WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, paymentReminderWhatsappParameters(order), {
+  return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, paymentReminderWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     urlButtonParameters: [
       {
@@ -1368,7 +1403,7 @@ async function sendWhatsappPaymentExpired(order) {
     throw new Error("WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, paymentExpiredWhatsappParameters(order), {
+  return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, paymentExpiredWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     urlButtonParameters: [
       {
@@ -1757,7 +1792,7 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
   if (!templateName) {
     throw new Error(admin ? "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME is not configured" : "WHATSAPP_SHIPPING_TEMPLATE_NAME is not configured");
   }
-  const recipients = admin ? adminWhatsappNumbers() : [order.customer.phone];
+  const recipients = admin ? adminWhatsappNumbers() : [verifiedCustomerWhatsappNumber(order)];
   const parameters = admin ? adminShippingWhatsappParameters(order) : customerShippingWhatsappParameters(order);
   const responses = await Promise.all(recipients.map((recipient) => sendWhatsappTemplateMessage(recipient, templateName, parameters, {
       languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
@@ -8840,6 +8875,7 @@ module.exports = {
   base32Encode,
   totpCode,
   verifyTotp,
+  verifiedCustomerWhatsappNumber,
   productionCookieDomain,
   serializeCookie,
   buildFulfillmentGroups,
