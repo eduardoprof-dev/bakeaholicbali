@@ -4661,8 +4661,12 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
   const previousStatus = order.status;
   const providerShipment = await fetchBiteshipShipmentForOrder(order, shipment);
   const shipmentStatus = String(providerShipment.status || shipment.status || "").toLowerCase();
-  const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
   const normalizedShipment = shipmentFromBiteshipPayload(providerShipment, shipment);
+  const observedHandoff = shipmentHasObservedHandoff(shipment) || ["picked", "picked_up", "successfully_pickup", "successfully_picked_up", "dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalizedShipmentStatus(shipmentStatus));
+  if (observedHandoff && !normalizedShipment.pickupObservedAt) normalizedShipment.pickupObservedAt = new Date().toISOString();
+  const nextOrderStatus = providerStatusCanCompleteOrder({ ...shipment, ...normalizedShipment }, shipmentStatus)
+    ? shipmentStatusToOrderStatus(shipmentStatus)
+    : "delivery_issue";
   order.fulfillment = {
     ...order.fulfillment,
     shipment: {
@@ -4677,7 +4681,8 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
       waybillUrl: normalizedShipment.waybillUrl || shipment.waybillUrl || "",
       updatedAt: new Date().toISOString(),
       syncedAt: new Date().toISOString(),
-      raw: providerShipment
+          raw: providerShipment,
+          providerDeliveredAwaitingHandoffReview: shipmentStatusToOrderStatus(shipmentStatus) === "delivered" && !observedHandoff
     }
   };
   if (nextOrderStatus) {
@@ -4710,6 +4715,14 @@ function normalizedShipmentStatus(status = "") {
 
 function isRecoverableFailedShipmentStatus(status = "") {
   return ["cancelled", "rejected", "courier_not_found"].includes(normalizedShipmentStatus(status));
+}
+
+function shipmentHasObservedHandoff(shipment = {}) {
+  return Boolean(shipment.pickupObservedAt || shipment.inTransitObservedAt);
+}
+
+function providerStatusCanCompleteOrder(shipment = {}, status = "") {
+  return shipmentStatusToOrderStatus(status) !== "delivered" || shipmentHasObservedHandoff(shipment);
 }
 
 function replacementTrackingNotificationReady(shipment = {}) {
@@ -4941,6 +4954,32 @@ async function useSelfDelivery(mode, orderId, session, request = {}) {
       throw error;
     }
   });
+}
+
+function correctDisputedDeliveryToSelfDelivery(mode, orderId, session, request = {}) {
+  if ((session?.staffRole || "owner") !== "owner") throw new Error("Only the owner can correct a disputed courier delivery");
+  const order = findOrder(mode, orderId);
+  const shipment = order?.fulfillment?.shipment;
+  if (!order || order.payment?.status !== "paid" || order.fulfillment?.type !== "delivery" || order.status !== "delivered" || !shipment?.orderId) {
+    throw new Error("Only a paid delivered courier order can be corrected to self-delivery");
+  }
+  if (String(request.shipmentId || "") !== shipment.orderId || !/^[a-zA-Z0-9_-]{16,100}$/.test(String(request.actionId || "")) || request.reason !== "provider_delivered_disputed_no_pickup") {
+    throw new Error("A matching shipment, replay-safe action ID, and approved incident reason are required");
+  }
+  const actions = order.fulfillment.deliveryRecoveryActions || [];
+  if (actions.some((action) => action.actionId === request.actionId)) throw new Error("This delivery correction was already recorded");
+  const recordedAt = new Date().toISOString();
+  order.fulfillment = {
+    ...order.fulfillment,
+    shipment: null,
+    shipmentHistory: [...(order.fulfillment.shipmentHistory || []), { ...shipment, endedAt: recordedAt, endReason: request.reason }].slice(-10),
+    deliveryMethod: "self_delivery",
+    selfDelivery: { status: "preparing", recordedAt, recordedBy: session.email || "owner", replacesShipmentId: shipment.orderId, incidentReason: request.reason },
+    deliveryRecoveryActions: [...actions, { actionId: request.actionId, action: "correct_disputed_delivery_to_self_delivery", shipmentId: shipment.orderId, reason: request.reason, status: "completed", recordedAt }].slice(-25)
+  };
+  order.status = "preparing";
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return enrichOrder(order);
 }
 
 async function approveOrderForDelivery(mode, orderId, session) {
@@ -7990,6 +8029,17 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/correct-disputed-delivery")) {
+    const session = requireAdminPermission(request, response, "orders");
+    if (!session) return true;
+    const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/correct-disputed-delivery", ""));
+    parseBody(request)
+      .then((body) => correctDisputedDeliveryToSelfDelivery(mode, orderId, session, body))
+      .then((order) => sendJson(response, 200, { ok: true, order }))
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
   if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/cancel-delivery")) {
     const session = requireAdminPermission(request, response, "orders");
     if (!session) {
@@ -8855,6 +8905,9 @@ module.exports = {
   shipmentStatusToOrderStatus,
   normalizedShipmentStatus,
   isRecoverableFailedShipmentStatus,
+  shipmentHasObservedHandoff,
+  providerStatusCanCompleteOrder,
+  correctDisputedDeliveryToSelfDelivery,
   replacementTrackingNotificationReady,
   assertDeliveryRecoveryRequest,
   isSupportedImageBuffer,

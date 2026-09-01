@@ -42,6 +42,8 @@ const {
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   normalizedShipmentStatus,
+  shipmentHasObservedHandoff,
+  providerStatusCanCompleteOrder,
   isRecoverableFailedShipmentStatus,
   replacementTrackingNotificationReady,
   assertDeliveryRecoveryRequest,
@@ -63,6 +65,13 @@ const {
   productionCookieDomain,
   serializeCookie
 } = require("./server");
+
+test("provider delivered status cannot complete an order without observed courier handoff", () => {
+  assert.equal(shipmentHasObservedHandoff({}), false);
+  assert.equal(providerStatusCanCompleteOrder({}, "delivered"), false);
+  assert.equal(providerStatusCanCompleteOrder({ pickupObservedAt: "2026-09-01T00:00:00.000Z" }, "delivered"), true);
+  assert.equal(providerStatusCanCompleteOrder({}, "picked_up"), true);
+});
 
 test("customer WhatsApp templates require the verified customer recipient and reject admin crossover", () => {
   const customer = {
