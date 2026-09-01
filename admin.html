@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bakeaholic Admin | Bakeaholic Online Shop</title>
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260601-hide-test-otp" />
+    <link rel="stylesheet" href="styles.css?v=20260729-payment-reasons-v24" />
+  </head>
+  <body>
+    <div class="admin-app-shell">
+      <aside class="admin-sidebar">
+        <div class="admin-brand-lockup">
+          <img src="/assets/bakeaholic-logo.jpg" alt="Bakeaholic Bali" />
+          <div>
+            <strong>Bakeaholic Admin</strong>
+            <span>Storefront control</span>
+          </div>
+        </div>
+        <nav class="admin-nav" aria-label="Admin sections">
+          <button class="admin-nav-button is-active" type="button" data-admin-target="dashboard">Overview</button>
+          <div class="admin-nav-group">
+            <button class="admin-nav-button" type="button" data-admin-target="store">Storefront</button>
+            <div class="admin-subnav">
+              <button type="button" data-admin-target="store">Storefront settings</button>
+              <span class="admin-subnav-label">Home page</span>
+              <button class="admin-subnav-nested" type="button" data-admin-target="story">Story carousel</button>
+              <span class="admin-subnav-label">Catalog</span>
+              <button class="admin-subnav-nested" type="button" data-admin-target="categories">Categories</button>
+              <button type="button" data-admin-target="promo">Promo highlights</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="catalog">Products</button>
+              <button type="button" data-admin-target="discounts">Discounts</button>
+              <span class="admin-subnav-label">Pages</span>
+              <button class="admin-subnav-nested" type="button" data-admin-target="checkout-page">Checkout</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="orders-page">Order history</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="addresses-page">Your addresses</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="invoice-page">Invoice</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="terms-page">Terms</button>
+              <button class="admin-subnav-nested" type="button" data-admin-target="privacy-page">Privacy</button>
+            </div>
+          </div>
+          <button class="admin-nav-button" type="button" data-admin-target="orders">Orders</button>
+          <button class="admin-nav-button" type="button" data-admin-target="reports">Reports</button>
+          <button class="admin-nav-button" type="button" data-admin-target="operations-settings">Operations settings</button>
+          <button class="admin-nav-button" type="button" data-admin-target="integrations">Integrations</button>
+          <button class="admin-nav-button" type="button" data-admin-target="staff">Staff &amp; access</button>
+          <button class="admin-nav-button" type="button" data-admin-target="documentation">Documentation</button>
+        </nav>
+        <div class="admin-sidebar-links">
+          <a href="/index.html" target="_blank" rel="noreferrer">Open storefront</a>
+          <a href="/index.html?mode=test" target="_blank" rel="noreferrer">Open test mode</a>
+          <button id="adminLogoutButton" type="button">Log out</button>
+        </div>
+      </aside>
+
+      <main class="admin-main">
+        <header class="admin-topbar">
+          <div>
+            <p class="eyebrow" id="adminPageEyebrow">Bakeaholic Operations</p>
+            <h1 id="adminPageTitle">Good decisions start here.</h1>
+          </div>
+          <div class="admin-actions">
+            <select id="adminSectionSelect" class="admin-section-select" aria-label="Admin section">
+              <option value="dashboard">Overview</option>
+              <option value="store">Storefront</option>
+              <option value="promo">Promo Highlights</option>
+              <option value="orders">Orders</option>
+              <option value="reports">Reports</option>
+              <option value="operations-settings">Operations settings</option>
+              <option value="discounts">Storefront · Discounts</option>
+              <option value="story">Storefront · Story Carousel</option>
+              <option value="categories">Categories</option>
+              <option value="catalog">Catalog</option>
+              <option value="checkout-page">Pages · Checkout</option>
+              <option value="orders-page">Pages · Order history</option>
+              <option value="addresses-page">Pages · Your addresses</option>
+              <option value="invoice-page">Pages · Invoice</option>
+              <option value="terms-page">Pages · Terms</option>
+              <option value="privacy-page">Pages · Privacy</option>
+              <option value="integrations">Integrations</option>
+              <option value="staff">Staff &amp; access</option>
+              <option value="documentation">Documentation</option>
+            </select>
+            <span id="storefrontPublishState" class="admin-publish-state" hidden><span></span>All changes published</span>
+            <button id="saveCatalogButton" class="admin-button" type="button" hidden>Publish changes</button>
+          </div>
+          <span id="adminStatus" class="admin-status">Loading catalog...</span>
+        </header>
+
+        <section class="admin-login-panel" id="adminLoginPanel" hidden>
+          <form id="adminLoginForm" class="admin-login-form">
+            <div>
+              <h2>Admin Login</h2>
+              <p class="helper-text">Staff and the protected owner account enter their email, password, and authenticator code. Until owner two-step setup is completed, the existing owner password remains available without email.</p>
+            </div>
+            <label class="admin-field" for="adminEmailInput">
+              <span>Email <small>(staff accounts)</small></span>
+              <input id="adminEmailInput" type="email" autocomplete="username" placeholder="staff@bakeaholicbali.com" />
+            </label>
+            <label class="admin-field" for="adminPasswordInput">
+              <span>Password</span>
+              <input id="adminPasswordInput" type="password" autocomplete="current-password" />
+            </label>
+            <label class="admin-field" for="adminOtpInput">
+              <span>Authenticator or recovery code</span>
+              <input id="adminOtpInput" type="text" autocomplete="one-time-code" maxlength="14" placeholder="000000 or recovery code" />
+            </label>
+            <button class="admin-button" id="adminLoginButton" type="submit">Log in</button>
+          </form>
+        </section>
+
+        <section class="admin-panel admin-dashboard-panel" data-admin-section="dashboard">
+          <div class="admin-dashboard-hero">
+            <div>
+              <span class="admin-live-badge"><span></span> Production operations</span>
+              <h2>Store health at a glance.</h2>
+              <p>Start here each day. Anything that needs attention appears before routine editing tools.</p>
+            </div>
+            <div class="admin-dashboard-hero-actions">
+              <button id="runSystemCheckButton" class="admin-button" type="button">Run system check</button>
+              <button class="admin-button secondary" type="button" data-dashboard-target="orders">Review orders</button>
+            </div>
+          </div>
+
+          <div class="admin-kpi-grid" aria-label="Operations summary">
+            <article class="admin-kpi-card is-priority">
+              <span>Needs attention</span>
+              <strong id="dashboardAttentionCount">—</strong>
+              <small id="dashboardAttentionSummary">Checking orders and refunds…</small>
+            </article>
+            <article class="admin-kpi-card">
+              <span>Open orders</span>
+              <strong id="dashboardOpenOrdersCount">—</strong>
+              <small>Paid, preparing, or in delivery</small>
+            </article>
+            <article class="admin-kpi-card">
+              <span>Low stock</span>
+              <strong id="dashboardLowStockCount">—</strong>
+              <small>Products with 5 units or fewer</small>
+            </article>
+            <article class="admin-kpi-card">
+              <span>System status</span>
+              <strong id="dashboardSystemStatus">Checking</strong>
+              <small id="dashboardSystemSummary">Payments, messages, delivery, security</small>
+            </article>
+          </div>
+
+          <div class="admin-dashboard-layout">
+            <section class="admin-command-card">
+              <div class="admin-card-heading">
+                <div>
+                  <span class="admin-card-kicker">Priority queue</span>
+                  <h3>What needs you now</h3>
+                </div>
+                <button class="admin-text-button" type="button" data-dashboard-target="orders">Open orders →</button>
+              </div>
+              <div id="dashboardPriorityList" class="admin-priority-list">
+                <div class="admin-dashboard-empty">Loading operational priorities…</div>
+              </div>
+            </section>
+
+            <section class="admin-command-card admin-health-card">
+              <div class="admin-card-heading">
+                <div>
+                  <span class="admin-card-kicker">System health</span>
+                  <h3>Connected services</h3>
+                </div>
+                <span id="dashboardLastChecked" class="admin-card-meta">Not checked yet</span>
+              </div>
+              <div id="dashboardHealthList" class="admin-health-list">
+                <div class="admin-health-row"><span>Loading configuration…</span><span class="admin-health-state">—</span></div>
+              </div>
+            </section>
+          </div>
+
+          <section class="admin-command-card admin-test-plan-card">
+            <div class="admin-card-heading">
+              <div>
+                <span class="admin-card-kicker">Pinned for tomorrow</span>
+                <h3>Live payment test plan</h3>
+                <p>Use the lowest practical order value. Complete one test at a time and record the result before continuing.</p>
+              </div>
+              <button id="resetLiveTestChecklistButton" class="admin-text-button" type="button">Reset checklist</button>
+            </div>
+            <div class="admin-checklist-grid" id="liveTestChecklist">
+              <label class="admin-check-item"><input type="checkbox" data-live-test="va-generate" /><span><strong>Generate all six VAs</strong><small>BNI, BRI, CIMB, BJB, Mandiri and Permata. Pay only one.</small></span></label>
+              <label class="admin-check-item"><input type="checkbox" data-live-test="qris-payment" /><span><strong>Complete one QRIS payment</strong><small>Confirm website, invoice, Admin and WhatsApp all show paid.</small></span></label>
+              <label class="admin-check-item"><input type="checkbox" data-live-test="debit-card" /><span><strong>Complete one debit-card payment</strong><small>Confirm 3DS, return page and payment callback.</small></span></label>
+              <label class="admin-check-item"><input type="checkbox" data-live-test="credit-card" /><span><strong>Complete one credit-card payment</strong><small>Confirm 3DS, receipt and Admin alert.</small></span></label>
+              <label class="admin-check-item"><input type="checkbox" data-live-test="qris-refund" /><span><strong>Test one QRIS refund</strong><small>Use a supported issuer and verify the refund webhook reaches succeeded.</small></span></label>
+              <label class="admin-check-item"><input type="checkbox" data-live-test="card-refund" /><span><strong>Test one representative card refund</strong><small>One card refund covers the shared debit/credit workflow.</small></span></label>
+              <div class="admin-check-item is-warning"><span class="admin-warning-icon">!</span><span><strong>Never use VA payments for automatic-refund testing</strong><small>VA refunds are channel-dependent and may require a manual bank payout.</small></span></div>
+            </div>
+          </section>
+
+          <div class="admin-dashboard-layout">
+            <section class="admin-command-card">
+              <div class="admin-card-heading">
+                <div>
+                  <span class="admin-card-kicker">Owner routine</span>
+                  <h3>Maintenance rhythm</h3>
+                </div>
+              </div>
+              <div class="admin-maintenance-list">
+                <div><strong>Daily</strong><span>Review paid orders, delivery issues, failed messages and refunds.</span></div>
+                <div><strong>Weekly</strong><span>Run WhatsApp diagnostics, check low stock and verify one receipt/tracking link.</span></div>
+                <div><strong>Monthly</strong><span>Review Cloudflare threats, Xendit settlements, access users and backup health.</span></div>
+                <div><strong>Before changes</strong><span>Use test mode, document the change and keep a rollback point in GitHub.</span></div>
+              </div>
+            </section>
+            <section class="admin-command-card">
+              <div class="admin-card-heading">
+                <div>
+                  <span class="admin-card-kicker">Safe operations</span>
+                  <h3>Rules worth remembering</h3>
+                </div>
+              </div>
+              <ul class="admin-owner-rules">
+                <li>“Cancelled” does not automatically mean “refunded.” Check the refund status.</li>
+                <li>Never paste secret API keys into chat, email or screenshots.</li>
+                <li>Do not approve delivery until payment is confirmed and the package is ready.</li>
+                <li>If a webhook fails, fix and replay it—do not ask the customer to pay twice.</li>
+              </ul>
+            </section>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="store" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Storefront Settings</h2>
+              <p class="helper-text">Edit text, contact links, delivery defaults, and storefront metadata.</p>
+            </div>
+          </div>
+          <div class="admin-grid">
+            <section class="admin-location-editor admin-store-region">
+              <div class="admin-location-editor-head"><div><span class="admin-card-kicker">Storefront header</span><h3>Header and navigation</h3><p class="helper-text">Logo, search wording and the three navigation icons shown at the top of the store.</p></div></div>
+              <div class="admin-grid" id="headerSettingsGrid"></div>
+            </section>
+            <section class="admin-location-editor admin-store-region">
+              <div class="admin-location-editor-head"><div><span class="admin-card-kicker">Storefront footer</span><h3>Footer and contact</h3><p class="helper-text">Footer logo, tagline, WhatsApp and public links shown at the bottom of the store.</p></div></div>
+              <div class="admin-grid" id="footerSettingsGrid"></div>
+            </section>
+            <div class="admin-field">
+              <label for="storeName">Store name</label>
+              <input id="storeName" type="text" />
+            </div>
+            <div class="admin-field admin-logo-editor">
+              <label for="storeLogoPathInput">Store logo</label>
+              <input id="storeLogoPathInput" data-store-field="logoPath" class="admin-code-input" type="text" />
+              <label class="admin-image-dropzone" data-image-dropzone>
+                <input type="file" accept="image/png,image/jpeg,image/webp" data-image-upload="store-logo" data-path-input="storeLogoPathInput" />
+                <span><strong>Choose logo</strong> or drag and drop</span>
+                <small>Transparent PNG, JPG or WebP · max 6 MB</small>
+              </label>
+              <div class="admin-logo-preview"><img id="storeLogoPreview" src="/assets/bakeaholic-logo.jpg" alt="Store logo preview" /></div>
+              <div class="admin-media-controls">
+                <label><span>Logo size <output data-range-output-for="storeLogoScaleInput">100%</output></span><input id="storeLogoScaleInput" type="range" min="50" max="180" step="1" /></label>
+                <label><span>Left ↔ Right <output data-range-output-for="storeLogoPositionXInput">0%</output></span><input id="storeLogoPositionXInput" type="range" min="-100" max="100" step="1" /></label>
+                <label><span>Up ↕ Down <output data-range-output-for="storeLogoPositionYInput">0%</output></span><input id="storeLogoPositionYInput" type="range" min="-100" max="100" step="1" /></label>
+              </div>
+            </div>
+            <div class="admin-field">
+              <label for="orderWhatsapp">WhatsApp number</label>
+              <input id="orderWhatsapp" type="text" />
+            </div>
+            <div class="admin-field admin-logo-editor">
+              <label for="footerLogoPathInput">Footer logo</label>
+              <input id="footerLogoPathInput" data-store-field="footerLogoPath" class="admin-code-input" type="text" />
+              <label class="admin-image-dropzone" data-image-dropzone>
+                <input type="file" accept="image/png,image/jpeg,image/webp" data-image-upload="footer-logo" data-path-input="footerLogoPathInput" />
+                <span><strong>Choose footer logo</strong> or drag and drop</span>
+                <small>Leave blank to reuse the header logo</small>
+              </label>
+              <div class="admin-logo-preview"><img id="footerLogoPreview" src="/assets/bakeaholic-logo.jpg" alt="Footer logo preview" /></div>
+              <div class="admin-media-controls">
+                <label><span>Logo size <output data-range-output-for="footerLogoScaleInput">100%</output></span><input id="footerLogoScaleInput" type="range" min="50" max="180" step="1" /></label>
+                <label><span>Left ↔ Right <output data-range-output-for="footerLogoPositionXInput">0%</output></span><input id="footerLogoPositionXInput" type="range" min="-100" max="100" step="1" /></label>
+                <label><span>Up ↕ Down <output data-range-output-for="footerLogoPositionYInput">0%</output></span><input id="footerLogoPositionYInput" type="range" min="-100" max="100" step="1" /></label>
+              </div>
+            </div>
+            <div class="admin-field"><label for="footerTaglineInput">Footer tagline</label><textarea id="footerTaglineInput"></textarea></div>
+            <div class="admin-field"><label for="footerContactLabelInput">Contact heading</label><input id="footerContactLabelInput" type="text" /></div>
+            <div class="admin-field">
+              <label for="instagramUrlInput">Instagram URL</label>
+              <input id="instagramUrlInput" type="url" />
+            </div>
+            <div class="admin-field">
+              <label for="termsUrlInput">Terms URL</label>
+              <input id="termsUrlInput" type="text" />
+              <a class="secondary-link" href="/terms.html" target="_blank">Open Terms page</a>
+            </div>
+            <div class="admin-field"><label for="termsLabelInput">Terms link text</label><input id="termsLabelInput" type="text" /></div>
+            <div class="admin-field">
+              <label for="privacyUrlInput">Privacy URL</label>
+              <input id="privacyUrlInput" type="text" />
+              <a class="secondary-link" href="/terms.html#privacy" target="_blank">Open Privacy page</a>
+            </div>
+            <div class="admin-field"><label for="privacyLabelInput">Privacy link text</label><input id="privacyLabelInput" type="text" /></div>
+            <section class="admin-location-editor" data-operation-field>
+              <div class="admin-location-editor-head">
+                <div>
+                  <h3>Bakeaholic pickup location</h3>
+                  <p class="helper-text">This pin is sent to Biteship as the courier pickup point. Search for a new address or click the map, then save storefront settings.</p>
+                </div>
+                <a id="openKitchenMapLink" class="secondary-link" href="#" target="_blank" rel="noreferrer" hidden>Open in Google Maps</a>
+              </div>
+              <label class="admin-location-search" for="kitchenMapSearchInput">
+                <span>Find a location</span>
+                <input id="kitchenMapSearchInput" type="search" placeholder="Search Bakeaholic or paste an address" autocomplete="off" />
+              </label>
+              <div id="kitchenLocationMap" class="admin-kitchen-map" aria-label="Bakeaholic pickup location map"></div>
+              <p id="kitchenMapStatus" class="helper-text">Loading pickup map...</p>
+            </section>
+            <div class="admin-field" data-operation-field>
+              <label for="kitchenAddressInput">Kitchen address</label>
+              <input id="kitchenAddressInput" type="text" />
+            </div>
+            <div class="admin-field" data-operation-field>
+              <label for="kitchenLatInput">Kitchen latitude</label>
+              <input id="kitchenLatInput" type="number" step="0.000001" />
+            </div>
+            <div class="admin-field" data-operation-field>
+              <label for="kitchenLngInput">Kitchen longitude</label>
+              <input id="kitchenLngInput" type="number" step="0.000001" />
+            </div>
+            <div class="admin-field" data-operation-field>
+              <label for="pickupAddressInput">Pickup address</label>
+              <input id="pickupAddressInput" type="text" />
+            </div>
+            <div class="admin-field" data-operation-field>
+              <label for="pickupDescriptionInput">Pickup description</label>
+              <input id="pickupDescriptionInput" type="text" />
+            </div>
+            <div class="admin-field"><label for="searchPlaceholderInput">Search box hint</label><input id="searchPlaceholderInput" type="text" /><small class="helper-text">Example text customers see before typing a product search.</small></div>
+            <div class="admin-field"><label for="searchIconStyleInput">Search icon</label><select id="searchIconStyleInput"><option value="magnifier">🔍 Magnifier</option><option value="circle-search">⭕ Circle search</option><option value="scan-search">⌗ Scan search</option><option value="bold-search">🔎 Bold magnifier</option><option value="minimal-search">⌕ Minimal search</option><option value="search-plus">⊕ Search plus</option><option value="search-lines">☷ Search list</option><option value="search-location">⌖ Location search</option><option value="search-heart">♡ Favorite search</option><option value="search-star">☆ Featured search</option></select></div>
+            <div class="admin-field"><label for="cartIconStyleInput">Cart icon</label><select id="cartIconStyleInput"><option value="cart">🛒 Shopping cart</option><option value="bag">🛍 Shopping bag</option><option value="basket">🧺 Shopping basket</option><option value="box">📦 Order box</option><option value="trolley">🛒 Store trolley</option><option value="cart-plus">⊕ Cart plus</option><option value="tote">👜 Tote bag</option><option value="receipt-order">🧾 Order receipt</option><option value="gift-order">🎁 Gift order</option><option value="store-order">🏪 Store order</option></select><small class="helper-text">Opens the customer's current cart and checkout.</small></div>
+            <div class="admin-field"><label for="cartButtonLabelInput">Cart button description</label><input id="cartButtonLabelInput" type="text" /><small class="helper-text">Tooltip and screen-reader description.</small></div>
+            <div class="admin-field"><label for="loginIconStyleInput">Login icon</label><select id="loginIconStyleInput"><option value="person">👤 Person</option><option value="person-circle">⭕ Person in circle</option><option value="profile-card">🪪 Profile card</option><option value="account-badge">✅ Account badge</option><option value="minimal-person">♙ Minimal person</option><option value="secure-account">🔐 Secure account</option><option value="avatar">🙂 Avatar</option><option value="members">👥 Members</option><option value="spark-account">✨ Featured account</option><option value="home-account">🏠 Customer home</option></select><small class="helper-text">Opens login or the customer account menu.</small></div>
+            <div class="admin-field"><label for="loginButtonLabelInput">Login button description</label><input id="loginButtonLabelInput" type="text" /><small class="helper-text">Tooltip and screen-reader description.</small></div>
+            <section class="admin-location-editor admin-moment-editor" id="shopByCategoryEditor">
+              <div class="admin-location-editor-head"><div><h3>Shop by category</h3><p class="helper-text">Edit the heading and customer-facing labels shown above each category.</p></div></div>
+              <div class="admin-grid">
+                <div class="admin-field"><label for="momentGuideKickerInput">Small label</label><input id="momentGuideKickerInput" type="text" /></div>
+                <div class="admin-field"><label for="momentGuideTitleInput">Section title</label><input id="momentGuideTitleInput" type="text" /></div>
+                <div class="admin-field"><label for="momentCard0LabelInput">Bliss Balls label</label><input id="momentCard0LabelInput" type="text" /></div>
+                <div class="admin-field"><label for="momentCard1LabelInput">Oatmeal Cookies label</label><input id="momentCard1LabelInput" type="text" /></div>
+                <div class="admin-field"><label for="momentCard2LabelInput">Overnight Oats label</label><input id="momentCard2LabelInput" type="text" /></div>
+                <div class="admin-field"><label for="momentCard3LabelInput">Munchie Mallow label</label><input id="momentCard3LabelInput" type="text" /></div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="checkout-page" hidden>
+          <div class="admin-section-head"><div><h2>Checkout page</h2><p class="helper-text">Edit this customer page independently.</p></div><a class="secondary-link" href="/cart.html" target="_blank">Open page</a></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="checkoutPageTitleInput">Page title</label><input id="checkoutPageTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="checkoutPageSubtitleInput">Page description</label><textarea id="checkoutPageSubtitleInput"></textarea></div>
+            <div class="admin-field"><label for="checkoutCustomerTitleInput">Customer details heading</label><input id="checkoutCustomerTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="checkoutPaymentTitleTextInput">Payment heading</label><input id="checkoutPaymentTitleTextInput" type="text" /></div>
+            <div class="admin-field"><label for="checkoutSubmitLabelInput">Continue button</label><input id="checkoutSubmitLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="checkoutSummaryTitleInput">Order summary heading</label><input id="checkoutSummaryTitleInput" type="text" /></div>
+          </div>
+        </section>
+        <section class="admin-panel" data-admin-section="orders-page" hidden>
+          <div class="admin-section-head"><div><h2>Order history page</h2><p class="helper-text">Edit this customer page independently.</p></div><a class="secondary-link" href="/orders.html" target="_blank">Open page</a></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="ordersPageTitleInput">Page title</label><input id="ordersPageTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersPageSubtitleInput">Page description</label><textarea id="ordersPageSubtitleInput"></textarea></div>
+            <div class="admin-field"><label for="ordersIdHeadingInput">Order column</label><input id="ordersIdHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersTotalHeadingInput">Total column</label><input id="ordersTotalHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersStatusHeadingInput">Status column</label><input id="ordersStatusHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersViewLabelInput">View order button</label><input id="ordersViewLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersEmptyTitleInput">Empty-state title</label><input id="ordersEmptyTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="ordersEmptyCopyInput">Empty-state description</label><textarea id="ordersEmptyCopyInput"></textarea></div>
+          </div>
+        </section>
+        <section class="admin-panel" data-admin-section="addresses-page" hidden>
+          <div class="admin-section-head"><div><h2>Your addresses page</h2><p class="helper-text">Edit this customer page independently.</p></div><a class="secondary-link" href="/addresses.html" target="_blank">Open page</a></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="addressesPageTitleInput">Page title</label><input id="addressesPageTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="addressesPageSubtitleInput">Page description</label><textarea id="addressesPageSubtitleInput"></textarea></div>
+            <div class="admin-field"><label for="addressesAddLabelInput">Add address button</label><input id="addressesAddLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="addressesDefaultLabelInput">Default badge</label><input id="addressesDefaultLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="addressesEmptyTitleInput">Empty-state title</label><input id="addressesEmptyTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="addressesEmptyCopyInput">Empty-state description</label><textarea id="addressesEmptyCopyInput"></textarea></div>
+          </div>
+        </section>
+        <section class="admin-panel" data-admin-section="invoice-page" hidden>
+          <div class="admin-section-head"><div><h2>Invoice page</h2><p class="helper-text">Edit the reusable wording shown on every invoice.</p></div></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="invoicePageLabelInput">Document label</label><input id="invoicePageLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceCustomerHeadingInput">Customer heading</label><input id="invoiceCustomerHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceAddressHeadingInput">Address heading</label><input id="invoiceAddressHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoicePaymentHeadingInput">Payment heading</label><input id="invoicePaymentHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceOrderHeadingInput">Order heading</label><input id="invoiceOrderHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceItemHeadingInput">Item column</label><input id="invoiceItemHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceQuantityHeadingInput">Quantity column</label><input id="invoiceQuantityHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoicePriceHeadingInput">Price column</label><input id="invoicePriceHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceTotalHeadingInput">Total column</label><input id="invoiceTotalHeadingInput" type="text" /></div>
+            <div class="admin-field"><label for="invoiceTotalPaidLabelInput">Grand-total label</label><input id="invoiceTotalPaidLabelInput" type="text" /></div>
+            <div class="admin-field admin-grid-wide"><label for="invoiceFooterNoteInput">Footer note</label><textarea id="invoiceFooterNoteInput"></textarea></div>
+          </div>
+        </section>
+        <section class="admin-panel" data-admin-section="terms-page" hidden>
+          <div class="admin-section-head"><div><h2>Terms and Conditions</h2><p class="helper-text">One policy point per line. Changes publish to the legal page without exposing HTML.</p></div><a class="secondary-link" href="/terms.html" target="_blank">Open page</a></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="termsPageTitleInput">Page title</label><input id="termsPageTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="termsEffectiveDateInput">Effective date</label><input id="termsEffectiveDateInput" type="text" placeholder="April 21, 2026" /></div>
+            <div class="admin-field admin-grid-wide"><label for="termsIntroInput">Introduction</label><textarea id="termsIntroInput" rows="4"></textarea></div>
+            <div class="admin-field admin-grid-wide"><label for="termsPointsInput">Policy points</label><textarea id="termsPointsInput" rows="10"></textarea><small class="helper-text">Use “Heading: explanation” on each line.</small></div>
+          </div>
+        </section>
+        <section class="admin-panel" data-admin-section="privacy-page" hidden>
+          <div class="admin-section-head"><div><h2>Privacy Policy</h2><p class="helper-text">One policy point per line. Changes publish to the legal page without exposing HTML.</p></div><a class="secondary-link" href="/terms.html#privacy" target="_blank">Open page</a></div>
+          <div class="admin-grid">
+            <div class="admin-field"><label for="privacyPageTitleInput">Page title</label><input id="privacyPageTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="privacyEffectiveDateInput">Effective date</label><input id="privacyEffectiveDateInput" type="text" placeholder="April 21, 2026" /></div>
+            <div class="admin-field admin-grid-wide"><label for="privacyIntroInput">Introduction</label><textarea id="privacyIntroInput" rows="4"></textarea></div>
+            <div class="admin-field admin-grid-wide"><label for="privacyPointsInput">Policy points</label><textarea id="privacyPointsInput" rows="10"></textarea><small class="helper-text">Use “Heading: explanation” on each line.</small></div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="operations-settings" hidden>
+          <div class="admin-section-head"><div><h2>Operations settings</h2><p class="helper-text">Checkout rules, delivery defaults, test-mode messages and business hours. These settings affect operations, not the storefront design.</p></div></div>
+          <div class="admin-grid" id="operationsSettingsGrid">
+            <div class="admin-field"><label for="storeEyebrowInput">Internal catalog eyebrow</label><input id="storeEyebrowInput" type="text" /></div>
+            <div class="admin-field"><label for="perkLabelInput">Internal contact label</label><input id="perkLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="deliveryFeeInput">Fallback delivery fee</label><input id="deliveryFeeInput" type="number" min="0" step="1" /></div>
+            <div class="admin-field"><label for="taxRateInput">Tax rate</label><input id="taxRateInput" type="number" min="0" step="0.01" /></div>
+            <div class="admin-field"><label for="addressLabelInput">Address prompt</label><input id="addressLabelInput" type="text" /></div>
+            <div class="admin-field"><label for="defaultAddressInput">Default delivery address</label><input id="defaultAddressInput" type="text" /></div>
+            <div class="admin-field"><label for="whatsappPromptInput">WhatsApp prompt</label><input id="whatsappPromptInput" type="text" /></div>
+            <div class="admin-field"><label for="testModeTitleInput">Test mode title</label><input id="testModeTitleInput" type="text" /></div>
+            <div class="admin-field"><label for="testModeDescriptionInput">Test mode message</label><input id="testModeDescriptionInput" type="text" /></div>
+            <div class="admin-field"><label for="businessHoursOpenInput">Ordering opens</label><input id="businessHoursOpenInput" type="time" /></div>
+            <div class="admin-field"><label for="businessHoursCloseInput">Ordering closes</label><input id="businessHoursCloseInput" type="time" /></div>
+            <div class="admin-field"><label for="businessHoursTimezoneInput">Ordering timezone</label><input id="businessHoursTimezoneInput" type="text" placeholder="Asia/Makassar" /></div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="orders" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Orders</h2>
+              <p class="helper-text">Paid orders wait here until staff prepares and packages them. Use “Open &amp; print invoice” on the order, print from the invoice page, place it inside the package, then approve delivery.</p>
+            </div>
+            <button id="refreshOrdersButton" class="admin-button secondary" type="button">Refresh orders</button>
+          </div>
+          <div id="adminOrderList" class="admin-order-list"></div>
+        </section>
+
+        <section class="admin-panel admin-reports-panel" data-admin-section="reports" hidden>
+          <div class="admin-section-head">
+            <div>
+              <span class="admin-card-kicker">Commerce intelligence</span>
+              <h2>Reports</h2>
+              <p class="helper-text">Sales performance, order outcomes, best sellers, and customer purchasing locations from your order database.</p>
+            </div>
+            <div class="admin-actions admin-report-actions">
+              <label class="admin-report-period">Period
+                <select id="reportPeriodSelect">
+                  <option value="7">Last 7 days</option>
+                  <option value="30" selected>Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                  <option value="all">All time</option>
+                </select>
+              </label>
+              <div class="admin-report-export-buttons" aria-label="Report export actions">
+                <button id="exportCustomersButton" class="admin-button secondary" type="button">Download CSV</button>
+                <button id="downloadReportPdfButton" class="admin-button secondary" type="button">Download PDF</button>
+                <button id="printReportButton" class="admin-button secondary" type="button">Print A4</button>
+              </div>
+            </div>
+          </div>
+          <div class="admin-report-kpis">
+            <article><span>Net sales</span><strong id="reportNetSales">—</strong><small id="reportPaidCount">0 paid orders</small></article>
+            <article><span>Average order</span><strong id="reportAverageOrder">—</strong><small>Paid and fulfilled orders</small></article>
+            <article><span>Cancelled</span><strong id="reportCancelledCount">—</strong><small id="reportCancelledValue">—</small></article>
+            <article><span>Pending</span><strong id="reportPendingCount">—</strong><small>Awaiting payment or action</small></article>
+          </div>
+          <div class="admin-report-grid">
+            <article class="admin-report-card">
+              <div class="admin-card-heading"><div><span class="admin-card-kicker">Products</span><h3>Top sellers</h3></div></div>
+              <div id="reportTopSellers" class="admin-report-list"></div>
+            </article>
+            <article class="admin-report-card">
+              <div class="admin-card-heading"><div><span class="admin-card-kicker">Order outcomes</span><h3>Status mix</h3></div></div>
+              <div id="reportStatusMix" class="admin-report-list"></div>
+            </article>
+          </div>
+          <article class="admin-report-card admin-report-wide">
+            <div class="admin-card-heading"><div><span class="admin-card-kicker">Customer database</span><h3>Buyers and purchasing locations</h3><p>Customers are grouped by phone number. Location is derived from their most recent delivery address.</p></div></div>
+            <div class="admin-table-scroll">
+              <table class="admin-report-table">
+                <thead><tr><th>Customer</th><th>Phone</th><th>Location</th><th>Orders</th><th>Total spent</th><th>Last purchase</th></tr></thead>
+                <tbody id="reportBuyerTable"></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="admin-report-card admin-report-wide">
+            <div class="admin-card-heading"><div><span class="admin-card-kicker">Transaction detail</span><h3>Orders and products</h3><p>Every order in the selected period, including the exact products and quantities purchased.</p></div></div>
+            <div class="admin-table-scroll">
+              <table class="admin-report-table admin-order-detail-table">
+                <thead><tr><th>Order</th><th>Date</th><th>Customer</th><th>Products</th><th>Payment</th><th>Status</th><th>Total</th></tr></thead>
+                <tbody id="reportOrderTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="admin-panel" data-admin-section="discounts" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Discount Codes</h2>
+              <p class="helper-text">Codes are checked on the server. Product discounts leave the live delivery fee payable.</p>
+            </div>
+            <div class="admin-actions">
+              <button id="clearVouchersButton" class="admin-button secondary" type="button">Delete all discounts</button>
+              <button id="addVoucherButton" class="admin-button secondary" type="button">Add discount</button>
+              <button id="saveVouchersButton" class="admin-button" type="button">Save discounts</button>
+            </div>
+          </div>
+          <div id="voucherList" class="voucher-list"></div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="integrations" hidden>
+          <div class="admin-section-head admin-integration-heading">
+            <div>
+              <span class="admin-card-kicker">Connected services</span>
+              <h2>Integrations</h2>
+              <p class="helper-text">Configuration is grouped by provider. Secret fields never display saved values; leave them blank to keep the current key.</p>
+            </div>
+            <button id="saveIntegrationsButton" class="admin-button" type="button">Save integrations</button>
+          </div>
+          <div class="admin-integration-layout">
+            <article class="admin-integration-card">
+              <div class="admin-provider-heading">
+                <span class="admin-provider-logo"><img src="/assets/brands/google-maps.svg" alt="" /><strong>Google Maps</strong></span>
+                <div><h3>Google Maps</h3><p>Address search, route validation and kitchen location.</p></div>
+                <span class="admin-provider-state" data-provider-status="googleMaps">Checking</span>
+              </div>
+              <div class="admin-grid">
+                <div class="admin-field">
+                  <label for="googleMapsApiKeyInput">API key</label>
+                  <input id="googleMapsApiKeyInput" type="password" autocomplete="off" />
+                  <small>Restrict this key to the website domain and required Maps APIs.</small>
+                </div>
+              </div>
+            </article>
+
+            <article class="admin-integration-card">
+              <div class="admin-provider-heading">
+                <span class="admin-provider-logo is-wordmark"><img src="https://biteship.com/images/biteship-logo.svg" alt="" /></span>
+                <div><h3>Biteship</h3><p>Delivery quotes, courier booking and tracking updates.</p></div>
+                <span class="admin-provider-state" data-provider-status="biteship">Checking</span>
+              </div>
+              <div class="admin-grid">
+                <div class="admin-field">
+                  <label for="biteshipApiKeyInput">API key</label>
+                  <input id="biteshipApiKeyInput" type="password" autocomplete="off" />
+                </div>
+                <div class="admin-field">
+                  <label for="biteshipCouriersInput">Enabled couriers</label>
+                  <input id="biteshipCouriersInput" type="text" placeholder="gojek,grab" />
+                  <small>Comma-separated provider codes.</small>
+                </div>
+                <div class="admin-field">
+                  <label for="biteshipWebhookHeaderNameInput">Webhook header name</label>
+                  <input id="biteshipWebhookHeaderNameInput" type="text" placeholder="x-biteship-webhook-key" autocomplete="off" />
+                </div>
+                <div class="admin-field">
+                  <label for="biteshipWebhookHeaderSecretInput">Webhook secret</label>
+                  <input id="biteshipWebhookHeaderSecretInput" type="password" autocomplete="off" />
+                </div>
+              </div>
+            </article>
+
+            <article class="admin-integration-card">
+              <div class="admin-provider-heading">
+                <span class="admin-provider-logo"><img src="/assets/brands/xendit.svg" alt="" /><strong>Xendit</strong></span>
+                <div><h3>Xendit</h3><p>QRIS, virtual accounts, cards, callbacks and refunds.</p></div>
+                <span class="admin-provider-state" data-provider-status="xendit">Checking</span>
+              </div>
+              <div class="admin-grid">
+                <div class="admin-field">
+                  <label for="xenditEnvironmentInput">Environment</label>
+                  <select id="xenditEnvironmentInput">
+                    <option value="test">Test</option>
+                    <option value="live">Live</option>
+                  </select>
+                </div>
+                <div class="admin-field">
+                  <label for="xenditSecretKeyInput">Secret key</label>
+                  <input id="xenditSecretKeyInput" type="password" autocomplete="off" />
+                </div>
+                <div class="admin-field">
+                  <label for="xenditCallbackTokenInput">Callback token</label>
+                  <input id="xenditCallbackTokenInput" type="password" autocomplete="off" />
+                </div>
+              </div>
+              <div class="admin-provider-note"><strong>Production rule:</strong> environment and key type must match. Never paste a public card-tokenization key here.</div>
+            </article>
+
+            <article class="admin-integration-card admin-integration-card-wide">
+              <div class="admin-provider-heading">
+                <span class="admin-provider-logo"><img src="/assets/brands/whatsapp.svg" alt="" /><strong>WhatsApp</strong></span>
+                <div><h3>WhatsApp Business</h3><p>Authentication, customer updates and staff action messages.</p></div>
+                <span class="admin-provider-state" data-provider-status="whatsapp">Checking</span>
+              </div>
+              <div class="admin-provider-subsection">
+                <h4>Meta connection</h4>
+                <div class="admin-grid three">
+                  <div class="admin-field"><label for="whatsappAccessTokenInput">Access token</label><input id="whatsappAccessTokenInput" type="password" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappPhoneNumberIdInput">Phone number ID</label><input id="whatsappPhoneNumberIdInput" type="text" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappBusinessAccountIdInput">Business account ID</label><input id="whatsappBusinessAccountIdInput" type="text" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappVerifyTokenInput">Verify token</label><input id="whatsappVerifyTokenInput" type="password" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappAppIdInput">Meta app ID</label><input id="whatsappAppIdInput" type="text" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappAppSecretInput">Meta app secret</label><input id="whatsappAppSecretInput" type="password" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappGraphVersionInput">Graph version</label><input id="whatsappGraphVersionInput" type="text" placeholder="v22.0" /></div>
+                  <div class="admin-field"><label for="whatsappAdminNumberInput">Admin phone number</label><input id="whatsappAdminNumberInput" type="tel" placeholder="62812..." autocomplete="tel" /><small>Primary admin. Receives order alerts and can approve or cancel.</small></div>
+                  <div class="admin-field"><label for="whatsappAdminNumber2Input">Admin phone number 2</label><input id="whatsappAdminNumber2Input" type="tel" placeholder="Optional" autocomplete="tel" /><small>Optional second administrator.</small></div>
+                  <div class="admin-field"><label for="whatsappAdminNumber3Input">Admin phone number 3</label><input id="whatsappAdminNumber3Input" type="tel" placeholder="Optional" autocomplete="tel" /><small>Optional third administrator. Maximum three recipients.</small></div>
+                  <div class="admin-field"><label for="whatsappTemplateLanguageInput">Template language</label><input id="whatsappTemplateLanguageInput" type="text" placeholder="en_US" /></div>
+                </div>
+              </div>
+              <div class="admin-provider-subsection">
+                <h4>Approved template mapping</h4>
+                <div class="admin-grid three">
+                  <div class="admin-field"><label for="whatsappOtpTemplateNameInput">OTP verification</label><input id="whatsappOtpTemplateNameInput" type="text" placeholder="otp_verification" /></div>
+                  <div class="admin-field"><label for="whatsappOrderTemplateNameInput">Order received</label><input id="whatsappOrderTemplateNameInput" type="text" placeholder="order_received" /></div>
+                  <div class="admin-field"><label for="whatsappReceiptTemplateNameInput">Payment receipt</label><input id="whatsappReceiptTemplateNameInput" type="text" placeholder="payment_receipt" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappPaymentReminderTemplateNameInput">Payment reminder</label><input id="whatsappPaymentReminderTemplateNameInput" type="text" placeholder="payment_update_order" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappPaymentExpiredTemplateNameInput">Payment expired</label><input id="whatsappPaymentExpiredTemplateNameInput" type="text" placeholder="order_cancelled_unpaid" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappShippingTemplateNameInput">Customer shipping</label><input id="whatsappShippingTemplateNameInput" type="text" placeholder="shipping_update" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappAdminTemplateNameInput">Admin order alert</label><input id="whatsappAdminTemplateNameInput" type="text" placeholder="admin_order_alert_v2" autocomplete="off" /></div>
+                  <div class="admin-field"><label for="whatsappAdminShippingTemplateNameInput">Admin shipping</label><input id="whatsappAdminShippingTemplateNameInput" type="text" placeholder="admin_shipping_update" autocomplete="off" /></div>
+                </div>
+              </div>
+              <div class="admin-provider-actions">
+                <button class="admin-button secondary" id="testWhatsappTemplatesButton" type="button">Run template diagnostics</button>
+                <button class="admin-button secondary" id="inspectWhatsappTemplatesButton" type="button">Compare with Meta schemas</button>
+                <span>Diagnostics send synthetic messages only to Admin phone number 1. Real order alerts are sent to every configured admin number. No order, stock, delivery or payment is created.</span>
+              </div>
+              <pre class="helper-text" id="whatsappTemplateTestResults" hidden></pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="staff" hidden>
+          <div class="admin-section-head">
+            <div>
+              <span class="admin-card-kicker">Owner controls</span>
+              <h2>Staff &amp; access</h2>
+              <p class="helper-text">Create role-limited accounts, block access immediately, reset passwords or two-step authentication, and remove former staff.</p>
+            </div>
+          </div>
+          <article id="ownerSecurityCard" class="admin-card admin-owner-security">
+            <div class="admin-staff-card-head">
+              <div><span class="admin-card-kicker">Owner security</span><h3>Google Authenticator</h3></div>
+              <span id="ownerSecurityStatus" class="admin-staff-status">Checking…</span>
+            </div>
+            <p class="helper-text">Protect the owner account with a time-based code from Google Authenticator, Microsoft Authenticator, Authy or 1Password. After confirmation, password-only owner login is permanently disabled.</p>
+            <div id="ownerSecurityEnrollment">
+              <label class="admin-field"><span>Owner email</span><input id="ownerSecurityEmail" type="email" autocomplete="email" placeholder="owner@example.com" /></label>
+              <button id="startOwnerMfaButton" class="admin-button" type="button">Set up owner 2-step authentication</button>
+            </div>
+            <div id="ownerSecurityConfirm" hidden>
+              <p>Add this setup key to Google Authenticator, then enter the current six-digit code to confirm.</p>
+              <code id="ownerMfaSecret" class="admin-mfa-secret"></code>
+              <a id="ownerMfaOpenLink" class="admin-button secondary admin-owner-authenticator-link" href="#">Open in authenticator app</a>
+              <div class="admin-form-grid two-column">
+                <label class="admin-field"><span>Authenticator code</span><input id="ownerMfaCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" /></label>
+                <div class="admin-provider-actions"><button id="confirmOwnerMfaButton" class="admin-button" type="button">Confirm and activate</button></div>
+              </div>
+            </div>
+            <div id="ownerRecoveryCodes" hidden></div>
+          </article>
+          <article class="admin-card admin-permission-matrix" aria-labelledby="staffPermissionTitle">
+            <div class="admin-permission-matrix-head">
+              <div>
+                <span class="admin-card-kicker">Secure role presets</span>
+                <h3 id="staffPermissionTitle">Who can access what</h3>
+              </div>
+              <span class="admin-permission-lock">Owner controlled</span>
+            </div>
+            <p class="helper-text">Permissions are fixed by role to prevent accidental access to payments, credentials and staff security. Changing a staff member's role updates their access after their next login.</p>
+            <div class="admin-permission-table-wrap">
+              <table class="admin-permission-table">
+                <thead>
+                  <tr><th scope="col">Admin area</th><th scope="col">Owner</th><th scope="col">Storefront manager</th><th scope="col">Orders manager</th></tr>
+                </thead>
+                <tbody>
+                  <tr><th scope="row">Storefront, pages and homepage</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                  <tr><th scope="row">Products, categories, prices and stock</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                  <tr><th scope="row">Promotions and discounts</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                  <tr><th scope="row">Orders, invoices, delivery and cancellations</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-denied">No access</span></td><td data-role="Orders manager"><span class="permission-chip is-allowed">Allowed</span></td></tr>
+                  <tr><th scope="row">Sales reports and customer exports</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-denied">No access</span></td><td data-role="Orders manager"><span class="permission-chip is-allowed">Allowed</span></td></tr>
+                  <tr><th scope="row">Operations settings</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-denied">No access</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                  <tr><th scope="row">Integrations and API credentials</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-denied">No access</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                  <tr><th scope="row">Staff accounts and security</th><td data-role="Owner"><span class="permission-chip is-allowed">Allowed</span></td><td data-role="Storefront manager"><span class="permission-chip is-denied">No access</span></td><td data-role="Orders manager"><span class="permission-chip is-denied">No access</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+          <div class="admin-staff-layout">
+            <form id="adminStaffForm" class="admin-card admin-staff-form">
+              <h3>Add staff member</h3>
+              <label class="admin-field"><span>Name</span><input id="staffNameInput" required autocomplete="name" /></label>
+              <label class="admin-field"><span>Email</span><input id="staffEmailInput" type="email" required autocomplete="email" /></label>
+              <label class="admin-field"><span>Role</span><select id="staffRoleInput"><option value="storefront_manager">Storefront manager</option><option value="orders_manager">Orders manager</option></select></label>
+              <label class="admin-field"><span>Temporary password</span><input id="staffPasswordInput" type="password" minlength="10" required autocomplete="new-password" /></label>
+              <button class="admin-button" type="submit">Add staff &amp; set up 2-step authentication</button>
+              <p class="helper-text">Storefront managers can edit products, prices, stock, promotions, images and storefront pages. Orders managers can access orders, reports, invoices, delivery and cancellations. Neither role can access integrations, operations settings or staff controls.</p>
+            </form>
+            <div>
+              <div id="staffSetupResult" class="admin-card admin-staff-setup" hidden></div>
+              <div id="adminStaffList" class="admin-staff-list"><p class="helper-text">Loading staff…</p></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel admin-docs-panel" data-admin-section="documentation" hidden>
+          <div class="admin-section-head">
+            <div>
+              <span class="admin-card-kicker">Bakeaholic guide</span>
+              <h2>Documentation</h2>
+              <p class="helper-text">One practical reference for the owner, staff and future developer.</p>
+            </div>
+          </div>
+          <div class="admin-docs-layout">
+            <nav class="admin-docs-nav" aria-label="Documentation topics">
+              <a href="#docs-start">Start here</a>
+              <a href="#docs-orders">Order lifecycle</a>
+              <a href="#docs-messages">WhatsApp messages</a>
+              <a href="#docs-refunds">Cancellations & refunds</a>
+              <a href="#docs-maintenance">Maintenance</a>
+              <a href="#docs-developer">Developer handover</a>
+            </nav>
+            <div class="admin-docs-content">
+              <article id="docs-start" class="admin-doc-article">
+                <span class="admin-doc-number">01</span>
+                <h3>Start here</h3>
+                <p>The Overview is the daily control room. Work from its priority queue first. Use Integrations only when credentials, provider settings or approved WhatsApp template names change.</p>
+                <div class="admin-doc-callout"><strong>Owner rule</strong><span>Never edit a secret, callback or template mapping simply to “try something.” Record the old value and reason before every change.</span></div>
+                <figure class="admin-doc-diagram"><img src="/assets/docs/system-architecture.svg" alt="Bakeaholic system architecture diagram" /><figcaption><a href="/assets/docs/system-architecture.svg" download>Download architecture image</a></figcaption></figure>
+              </article>
+
+              <article id="docs-orders" class="admin-doc-article">
+                <span class="admin-doc-number">02</span>
+                <h3>Order lifecycle</h3>
+                <p>This is the authoritative customer-order sequence. Each step must complete before the next operational action.</p>
+                <div class="admin-workflow" aria-label="Customer order workflow">
+                  <div><span>1</span><strong>Checkout</strong><small>Address and delivery quote</small></div>
+                  <i>→</i>
+                  <div><span>2</span><strong>Payment</strong><small>Xendit confirms paid</small></div>
+                  <i>→</i>
+                  <div><span>3</span><strong>Prepare</strong><small>Staff packs and prints</small></div>
+                  <i>→</i>
+                  <div><span>4</span><strong>Approve</strong><small>Admin releases delivery</small></div>
+                  <i>→</i>
+                  <div><span>5</span><strong>Deliver</strong><small>Biteship tracking</small></div>
+                </div>
+                <figure class="admin-doc-diagram"><img src="/assets/docs/order-workflow.svg" alt="Customer order workflow diagram" /><figcaption><a href="/assets/docs/order-workflow.svg" download>Download order workflow image</a></figcaption></figure>
+                <ul>
+                  <li>Do not approve delivery before payment is confirmed and the package is ready.</li>
+                  <li>If the website and Xendit disagree, inspect the callback before asking the customer to act.</li>
+                  <li>The Orders page is the operational fallback when WhatsApp actions are unavailable.</li>
+                </ul>
+              </article>
+
+              <article id="docs-messages" class="admin-doc-article">
+                <span class="admin-doc-number">03</span>
+                <h3>WhatsApp messages</h3>
+                <div class="admin-doc-table">
+                  <div class="is-head"><span>Event</span><span>Recipient</span><span>Purpose</span></div>
+                  <div><span>OTP verification</span><span>Customer</span><span>Confirm phone ownership</span></div>
+                  <div><span>Payment receipt</span><span>Customer</span><span>Confirm paid order and open receipt</span></div>
+                  <div><span>Admin order alert</span><span>Staff</span><span>Securely review, approve, cancel or contact the customer</span></div>
+                  <div><span>Shipping update</span><span>Customer</span><span>Courier and tracking details</span></div>
+                  <div><span>Order delivered</span><span>Customer</span><span>Close the delivery lifecycle</span></div>
+                </div>
+                <p>Template diagnostics belong in Integrations because that is where mappings are changed. Run diagnostics after changing a template name, language, phone ID or access token.</p>
+              </article>
+
+              <article id="docs-refunds" class="admin-doc-article">
+                <span class="admin-doc-number">04</span>
+                <h3>Cancellations and refunds</h3>
+                <p>Cancellation changes the order state. Refund changes the money state. They are related but never interchangeable.</p>
+                <div class="admin-doc-split">
+                  <div><strong>Cancelled before payment</strong><span>No refund is required.</span></div>
+                  <div><strong>Cancelled after payment</strong><span>Confirm refund status separately.</span></div>
+                  <div><strong>QRIS or card</strong><span>Automatic refund can be tested.</span></div>
+                  <div><strong>Virtual account</strong><span>May require manual bank payout; do not use for automatic-refund testing.</span></div>
+                </div>
+              </article>
+
+              <article id="docs-maintenance" class="admin-doc-article">
+                <span class="admin-doc-number">05</span>
+                <h3>Maintenance schedule</h3>
+                <div class="admin-doc-checklist">
+                  <div><strong>Daily</strong><span>Paid orders, delivery issues, failed messages and refund status.</span></div>
+                  <div><strong>Weekly</strong><span>Low stock, WhatsApp diagnostics and one receipt/tracking link.</span></div>
+                  <div><strong>Monthly</strong><span>Cloudflare events, Xendit settlements, account access and backups.</span></div>
+                  <div><strong>Before release</strong><span>Test, review diff, preserve rollback point, deploy, then smoke-test.</span></div>
+                </div>
+              </article>
+
+              <article id="docs-developer" class="admin-doc-article">
+                <span class="admin-doc-number">06</span>
+                <h3>Developer handover</h3>
+                <p><strong>Architecture:</strong> Cloudflare → Railway Node server → persistent Railway volume at <code>/app/data</code>. GitHub is the source and release history.</p>
+                <div class="admin-doc-code"><code>node --check server.js
+node --check admin.js
+node --test server.test.js</code></div>
+                <div class="admin-doc-split">
+                  <div><strong>server.js</strong><span>Payments, orders, webhooks, WhatsApp and Biteship.</span></div>
+                  <div><strong>cart.js</strong><span>Checkout and payment selection.</span></div>
+                  <div><strong>admin.js</strong><span>Admin controls and diagnostics.</span></div>
+                  <div><strong>invoice.js</strong><span>Receipts, tracking and printable documents.</span></div>
+                </div>
+                <div class="admin-doc-callout is-danger"><strong>Incident rule</strong><span>Record order number and time, compare Admin with the provider dashboard, inspect Railway logs, repair the callback cause, then replay the webhook where supported. Never ask the customer to pay twice.</span></div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="promo" hidden>
+          <h2>Promo Spotlight</h2>
+          <div class="admin-grid">
+            <div class="admin-field">
+              <label for="promoItemId">Featured product</label>
+              <select id="promoItemId"></select>
+            </div>
+            <div class="admin-field">
+              <label for="promoButtonLabel">Button label</label>
+              <input id="promoButtonLabel" type="text" />
+            </div>
+            <div class="admin-field">
+              <label for="promoKickerInput">Promo kicker</label>
+              <input id="promoKickerInput" type="text" />
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="story" hidden>
+          <div class="admin-section-head">
+            <div><h2>Homepage Carousel</h2><p class="helper-text">Edit slides and see the selected area highlighted in the draft preview.</p></div>
+            <button id="addStorySlideButton" class="admin-button secondary" type="button">Add slide</button>
+          </div>
+          <div class="story-slide-editor-list" id="brandStorySlideList"></div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="categories" hidden>
+          <div class="admin-section-head">
+            <div><h2>Categories</h2><p class="helper-text">Keep category ids stable if products already use them.</p></div>
+            <button id="addCategoryButton" class="admin-button secondary" type="button">Add category</button>
+          </div>
+          <div id="categoryList" class="product-editor-list"></div>
+        </section>
+
+        <section class="admin-panel" data-admin-section="catalog" hidden>
+          <div class="admin-section-head">
+            <div>
+              <span class="admin-card-kicker">Storefront inventory</span>
+              <h2>Products</h2>
+              <p class="helper-text">Search, open only the product you need, then publish all changes together.</p>
+            </div>
+            <div class="admin-inventory-actions">
+              <label class="admin-catalog-search"><span>Search products</span><input id="adminProductSearch" type="search" placeholder="Name, SKU or category" /></label>
+              <button id="addProductButton" class="admin-button secondary" type="button">Add product</button>
+            </div>
+          </div>
+          <div id="productList" class="product-editor-list"></div>
+        </section>
+
+        <aside id="storefrontPreviewPanel" class="admin-preview-panel" hidden>
+          <div class="admin-preview-toolbar">
+            <div>
+              <span class="admin-card-kicker" id="previewEditorLabel">Storefront editor</span>
+              <strong id="previewEditorTitle">Draft preview</strong>
+            </div>
+            <div class="admin-preview-devices" aria-label="Preview size">
+              <button class="is-active" type="button" data-preview-device="mobile" aria-label="Mobile preview">Mobile</button>
+              <button type="button" data-preview-device="desktop" aria-label="Desktop preview">Desktop</button>
+            </div>
+          </div>
+          <div class="admin-preview-note">
+            <span class="admin-preview-dot"></span>
+            <span>Updates as you edit. Customers see changes only after you publish.</span>
+          </div>
+          <div id="storefrontPreviewViewport" class="admin-preview-viewport is-mobile">
+            <iframe id="storefrontPreviewFrame" title="Bakeaholic storefront preview" src="/index.html?admin-preview=1"></iframe>
+          </div>
+          <div class="admin-preview-footer">
+            <button id="refreshStorefrontPreview" class="admin-text-button" type="button">Refresh preview</button>
+            <a id="previewOpenLink" href="/index.html" target="_blank" rel="noreferrer">Open storefront ↗</a>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <script src="admin.js?v=20260729-payment-reasons-v29"></script>
+  </body>
+</html>

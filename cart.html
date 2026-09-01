@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Checkout | Bakeaholic Online Shop</title>
+    <link rel="icon" type="image/jpeg" href="/assets/bakeaholic-logo.jpg?v=20260604-session-cart" />
+    <link rel="apple-touch-icon" href="/assets/bakeaholic-logo.jpg?v=20260604-session-cart" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="styles.css?v=20260728-card-confirmation-v1" />
+  </head>
+  <body class="cart-is-empty">
+    <div class="mobile-shell checkout-shell">
+      <header class="page-header">
+        <a class="back-link" id="backToStoreLink" href="/index.html">←</a>
+        <div class="page-header-copy"><h1 id="checkoutPageTitle">Checkout</h1><p id="checkoutPageSubtitle"></p></div>
+        <span></span>
+      </header>
+
+      <section class="test-banner" id="modeBanner" hidden>
+        <strong>Sandbox test mode</strong>
+        <p>This checkout is isolated, so you can test payment and cancel flows safely.</p>
+      </section>
+
+      <main class="cart-layout">
+        <section class="cart-section checkout-delivery-details" id="deliveryDetailsSection">
+          <button class="address-strip" id="addressButton" type="button">
+            <div>
+              <p class="address-title" id="addressTitle">Set your delivery address</p>
+              <p class="address-text" id="addressText"></p>
+            </div>
+            <span class="address-arrow">›</span>
+          </button>
+          <div class="delivery-fee-line" id="deliveryFeeLine"></div>
+          <div class="checkout-delivery-card" id="deliveryNotesSection">
+            <button class="delivery-instructions-button" id="deliveryInstructionsButton" type="button">
+              <span>Add delivery instructions</span>
+              <span>⌄</span>
+            </button>
+            <textarea id="deliveryNotesInput" class="large-textarea compact-instructions" placeholder="Apt 4B, leave at front door, don't ring the bell..." hidden></textarea>
+          </div>
+        </section>
+
+        <aside class="checkout-side" aria-label="Order checkout summary">
+          <section class="cart-section checkout-summary-card">
+            <div class="section-title-wrap">
+              <h2 id="checkoutSummaryTitle">Order summary</h2>
+            </div>
+            <div class="summary-list">
+              <div class="summary-row">
+                <span>Price</span>
+                <strong id="subtotalValue">Rp 0</strong>
+              </div>
+              <div class="summary-row">
+                <span>Delivery fee</span>
+                <strong id="deliveryValue">Rp 0</strong>
+              </div>
+              <div class="summary-row" id="discountRow" hidden>
+                <span id="discountLabel">Discount</span>
+                <strong id="discountValue">-Rp 0</strong>
+              </div>
+              <div class="summary-row">
+                <button class="summary-toggle" id="taxToggleButton" type="button" aria-expanded="false">
+                  Tax & fees <span>⌄</span>
+                </button>
+                <strong id="taxValue">Rp 0</strong>
+              </div>
+              <div class="summary-row summary-breakdown-row" id="taxBreakdownRow" hidden>
+                <span>Government tax (10%)</span>
+                <strong id="taxBreakdownValue">Rp 0</strong>
+              </div>
+              <div class="summary-row total-row">
+                <span>Total</span>
+                <strong id="totalValue">Rp 0</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="cart-section checkout-voucher-card">
+            <div class="section-title-wrap">
+              <h2>Discount voucher</h2>
+            </div>
+            <div class="voucher-row">
+              <input id="voucherInput" type="text" placeholder="Input voucher code" />
+              <button class="primary-button compact-button" id="applyVoucherButton" type="button">Apply</button>
+            </div>
+            <p class="helper-copy" id="voucherMessage" hidden></p>
+          </section>
+
+          <section class="cart-section checkout-items-card">
+            <div class="section-head-inline">
+              <h2 id="selectedItemsTitle">Selected items (0)</h2>
+              <a class="secondary-link" id="addItemsLink" href="/index.html">+ Add Items</a>
+            </div>
+            <div id="cartItems"></div>
+          </section>
+        </aside>
+
+        <section class="cart-section checkout-upsell-section" id="upsellSection" hidden>
+          <div class="section-title-wrap">
+            <h2>You may also like</h2>
+            <p>Optional add-on if you want one more treat with this order.</p>
+          </div>
+          <div id="upsellCard"></div>
+        </section>
+
+        <section class="cart-section checkout-customer-card">
+          <div class="section-title-wrap">
+            <h2 id="checkoutCustomerTitle">Customer details</h2>
+            <p>We use these details for order handoff and WhatsApp confirmation.</p>
+          </div>
+          <div class="stacked-form">
+            <label class="modal-field">
+              <span>Name</span>
+              <input id="customerNameInput" type="text" placeholder="Your full name" />
+            </label>
+            <label class="modal-field">
+              <span>Email</span>
+              <input id="customerEmailInput" type="email" placeholder="you@example.com" />
+            </label>
+            <label class="modal-field">
+              <span>Phone</span>
+              <input id="customerPhoneInput" type="tel" placeholder="+62..." />
+            </label>
+            <label class="modal-field" id="addressField">
+              <span>Address</span>
+              <textarea id="customerAddressInput" placeholder="Choose delivery location or type your full address" rows="3"></textarea>
+            </label>
+            <button class="secondary-button address-inline-button" id="changeAddressInlineButton" type="button">
+              Choose delivery location
+            </button>
+          </div>
+        </section>
+
+        <section class="cart-section checkout-payment-card">
+          <div class="section-head-inline">
+            <h2 id="checkoutPaymentTitle">Choose payment method</h2>
+          </div>
+          <button class="payment-change-button" id="changePaymentMethodButton" type="button" hidden>
+            <span aria-hidden="true">←</span>
+            <strong>Select a different payment method</strong>
+          </button>
+          <div class="payment-method-card" id="selectedPaymentButton" hidden>
+            <span class="payment-logo" id="paymentLogo">QRIS</span>
+            <div>
+              <strong id="paymentMethodLabel">QRIS</strong>
+              <p id="paymentMethodHint">Scan QR to pay from any e-wallet or banking app</p>
+            </div>
+            <span class="address-arrow">›</span>
+          </div>
+          <div class="payment-method-list inline-payment-method-list" id="inlinePaymentMethodList"></div>
+          <button class="primary-button full-width checkout-payment-submit" id="submitOrderButton" type="button">
+            Continue to payment
+          </button>
+          <div class="checkout-xendit-panel" id="checkoutXenditPanel" hidden></div>
+        </section>
+
+        <section class="cart-section checkout-message-card" id="checkoutMessageSection" hidden>
+          <p class="checkout-message" id="checkoutMessage"></p>
+        </section>
+
+      </main>
+
+      <footer class="site-footer cart-site-footer">
+        <img class="footer-logo" src="/assets/bakeaholic-logo.jpg" alt="Bakeaholic Bali" />
+        <p class="footer-tagline">Bali's original packaged treats and wholesome snacks.</p>
+        <div class="footer-row">
+          <div class="footer-contact">
+            <strong>CONTACT US</strong>
+            <a id="footerWhatsappLink" class="footer-icon-link" href="#" target="_blank" rel="noreferrer">
+              <span class="footer-icon" aria-hidden="true">☎</span>
+              <span class="footer-link-label">WhatsApp</span>
+            </a>
+          </div>
+          <div class="footer-follow">
+            <span>Follow us</span>
+            <a id="footerInstagramLink" class="footer-icon-link" href="#" target="_blank" rel="noreferrer">
+              <span class="footer-icon" aria-hidden="true">◎</span>
+            </a>
+          </div>
+        </div>
+        <div class="footer-links">
+          <a id="footerTermsLink" href="/terms.html">Terms and Conditions</a>
+          <a id="footerPrivacyLink" href="/terms.html#privacy">Privacy Policy</a>
+        </div>
+      </footer>
+    </div>
+
+    <div class="modal-scrim" id="modalScrim" hidden></div>
+
+    <section class="modal-card payment-modal" id="paymentModal" hidden>
+      <div class="modal-head">
+        <h2>Select Payment Method</h2>
+        <button class="icon-close" id="closePaymentModal" type="button">×</button>
+      </div>
+      <div class="payment-method-list" id="paymentMethodList"></div>
+    </section>
+
+    <section class="modal-card compact-modal" id="whatsappModal" hidden>
+      <div class="modal-head">
+        <h2>Enter your WhatsApp Number</h2>
+        <button class="icon-close" id="closeWhatsappModal" type="button">×</button>
+      </div>
+      <p class="modal-copy" id="whatsappPrompt">
+        We will use your WhatsApp number for order confirmation.
+      </p>
+      <p class="modal-message" id="whatsappMessage" hidden></p>
+      <label class="modal-field">
+        <span>WhatsApp Number</span>
+        <div class="phone-input-row">
+          <span class="phone-prefix">+62</span>
+          <input id="whatsappInput" type="tel" placeholder="Enter your WhatsApp number" />
+        </div>
+      </label>
+      <button class="primary-button full-width" id="saveWhatsappButton" type="button">
+        Continue
+      </button>
+    </section>
+
+    <section class="modal-card compact-modal" id="otpModal" hidden>
+      <div class="modal-head">
+        <h2>Enter OTP Code</h2>
+        <button class="icon-close" id="closeOtpModal" type="button">×</button>
+      </div>
+      <p class="modal-copy" id="otpPrompt">
+        We have sent a verification code to your WhatsApp number.
+      </p>
+      <div class="test-otp-card" id="testOtpCard" hidden>
+        <span>Sandbox test code</span>
+        <strong id="testOtpCode"></strong>
+        <button class="text-action" id="copyOtpButton" type="button">Copy code</button>
+      </div>
+      <p class="modal-message" id="otpMessage" hidden></p>
+      <label class="modal-field">
+        <span>OTP Code</span>
+        <input id="otpInput" type="text" inputmode="numeric" maxlength="6" placeholder="6 digit code" />
+      </label>
+      <button class="primary-button full-width" id="verifyOtpButton" type="button">
+        Verify
+      </button>
+      <div class="otp-actions">
+        <button class="text-action otp-action-link" id="resendOtpButton" type="button">
+          Resend OTP
+        </button>
+        <p class="modal-copy" id="otpTimerText"></p>
+        <button class="text-action otp-action-link" id="changePhoneButton" type="button">
+          Change Phone Number
+        </button>
+      </div>
+    </section>
+
+    <section class="modal-card" id="detailsModal" hidden>
+      <div class="modal-head">
+        <h2 id="detailsModalTitle">Delivery details</h2>
+        <button class="icon-close" id="closeDetailsModal" type="button">×</button>
+      </div>
+      <div class="modal-form">
+        <label class="modal-field">
+          <span>Name</span>
+          <input id="modalNameInput" type="text" placeholder="Your full name" />
+        </label>
+        <label class="modal-field">
+          <span>Phone</span>
+          <input id="modalPhoneInput" type="tel" placeholder="+62..." />
+        </label>
+        <label class="modal-field">
+          <span>Email</span>
+          <input id="modalEmailInput" type="email" placeholder="you@example.com" />
+        </label>
+        <label class="modal-field">
+          <span id="modalAddressLabel">Address</span>
+          <textarea id="modalAddressInput" placeholder="Street, district, landmark"></textarea>
+        </label>
+      </div>
+      <button class="primary-button full-width" id="saveDetailsButton" type="button">
+        Save details
+      </button>
+    </section>
+
+    <section class="modal-card location-modal" id="locationModal" hidden>
+      <div class="modal-head">
+        <h2>Address Details</h2>
+        <button class="icon-close" id="closeLocationModal" type="button">×</button>
+      </div>
+      <div class="location-search-row">
+        <input id="locationSearchInput" type="text" placeholder="Search delivery address in Bali" />
+        <button class="primary-button compact-button" id="searchLocationButton" type="button">Find</button>
+      </div>
+      <div class="location-map" id="locationMap"></div>
+      <div class="location-summary">
+        <strong id="selectedLocationLabel">No location selected yet</strong>
+        <p id="selectedLocationAddress">Search or tap the map to pin a delivery location.</p>
+        <p id="selectedLocationFee" class="location-fee-copy">Delivery fee will be calculated after you pin the address.</p>
+      </div>
+      <label class="modal-field location-notes-field">
+        <button class="location-notes-toggle" id="locationNotesToggle" type="button">
+          <span>Location notes (optional)</span>
+          <span>⌄</span>
+        </button>
+        <textarea id="locationNotesInput" placeholder="e.g. House/unit/floor number" hidden></textarea>
+      </label>
+      <div class="location-actions">
+        <button class="secondary-button full-width" id="useCurrentLocationButton" type="button">Use Current Location</button>
+        <button class="primary-button full-width" id="saveLocationButton" type="button">Save Address</button>
+      </div>
+    </section>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="location-picker.js?v=20260618-address-fallback"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <script src="meta-pixel.js?v=20260817-bakeaholic-dataset"></script>
+    <script src="cart.js?v=20260813-meta-tracking"></script>
+  </body>
+</html>
