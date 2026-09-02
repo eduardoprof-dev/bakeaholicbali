@@ -30,12 +30,28 @@
     }).catch(() => {});
   }
 
+  let lastProductViewKey = "";
+
   window.BakeaholicAnalytics = {
     track(name, parameters = {}, eventId = "") {
       const resolvedEventId = eventId || createEventId(name);
       window.fbq("track", name, parameters, { eventID: resolvedEventId });
       sendServerEvent(name, parameters, resolvedEventId);
       return resolvedEventId;
+    },
+    viewProduct(item) {
+      const itemId = String(item?.id || "").trim();
+      const price = Number(item?.price);
+      if (!itemId || !Number.isFinite(price)) return "";
+      const viewKey = `${window.location.pathname}|${itemId}`;
+      if (viewKey === lastProductViewKey) return "";
+      lastProductViewKey = viewKey;
+      return this.track("ViewContent", {
+        content_ids: [itemId],
+        content_type: "product",
+        currency: "IDR",
+        value: price
+      });
     },
     purchase(order) {
       if (!order?.id || !order?.pricing) return;

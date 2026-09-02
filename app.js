@@ -146,6 +146,7 @@ let pendingOtpPhone = "";
 let otpResendAvailableAt = 0;
 let otpTimerId = 0;
 let volatileCartSessionId = "";
+let volatileCartSessionCreatedAt = 0;
 const pendingCartAdds = new Set();
 const cartQuantitySyncs = new Map();
 const isAdminPreview = params.has("admin-preview");
@@ -279,14 +280,29 @@ function createCartSessionId() {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function saveCartSessionId(sessionId) {
+function saveCartSessionId(sessionId, createdAt = 0) {
   const normalized = String(sessionId || "").toLowerCase();
   if (!/^[a-f0-9]{32}$/.test(normalized)) {
     return "";
   }
+  let sessionCreatedAt = Number(createdAt || 0);
+  if (!(sessionCreatedAt > 0)) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(cartSessionKey) || "null");
+      if (String(stored?.id || "").toLowerCase() === normalized) {
+        sessionCreatedAt = Number(stored?.createdAt || stored?.updatedAt || 0);
+      }
+    } catch (_error) {
+      // A fresh creation time below safely replaces malformed legacy storage.
+    }
+  }
+  if (!(sessionCreatedAt > 0)) {
+    sessionCreatedAt = Date.now();
+  }
   volatileCartSessionId = normalized;
+  volatileCartSessionCreatedAt = sessionCreatedAt;
   try {
-    localStorage.setItem(cartSessionKey, JSON.stringify({ id: normalized, updatedAt: Date.now() }));
+    localStorage.setItem(cartSessionKey, JSON.stringify({ id: normalized, createdAt: sessionCreatedAt }));
   } catch (_error) {
     // The in-memory session still prevents an old cookie cart from being reused this visit.
   }
@@ -297,9 +313,9 @@ function storedCartSessionId() {
   try {
     const stored = JSON.parse(localStorage.getItem(cartSessionKey) || "null");
     const sessionId = String(stored?.id || "").toLowerCase();
-    const updatedAt = Number(stored?.updatedAt || 0);
-    if (/^[a-f0-9]{32}$/.test(sessionId) && updatedAt > 0 && Date.now() - updatedAt <= cartSessionMaxAgeMs) {
-      return sessionId;
+    const createdAt = Number(stored?.createdAt || stored?.updatedAt || 0);
+    if (/^[a-f0-9]{32}$/.test(sessionId) && createdAt > 0 && Date.now() - createdAt <= cartSessionMaxAgeMs) {
+      return saveCartSessionId(sessionId, createdAt);
     }
     localStorage.removeItem(cartSessionKey);
   } catch (_error) {
@@ -310,15 +326,26 @@ function storedCartSessionId() {
       // Ignore unavailable browser storage.
     }
   }
+  volatileCartSessionId = "";
+  volatileCartSessionCreatedAt = 0;
   return "";
 }
 
 function getCartSessionId() {
+  const storedSessionId = storedCartSessionId();
   const urlSessionId = String(params.get("cart_session") || "");
-  if (/^[a-f0-9]{32}$/i.test(urlSessionId)) {
-    return saveCartSessionId(urlSessionId);
+  if (/^[a-f0-9]{32}$/i.test(urlSessionId) && storedSessionId === urlSessionId.toLowerCase()) {
+    return storedSessionId;
   }
-  return storedCartSessionId() || volatileCartSessionId || saveCartSessionId(createCartSessionId());
+  if (storedSessionId) {
+    return storedSessionId;
+  }
+  if (volatileCartSessionId && volatileCartSessionCreatedAt > 0 && Date.now() - volatileCartSessionCreatedAt <= cartSessionMaxAgeMs) {
+    return volatileCartSessionId;
+  }
+  volatileCartSessionId = "";
+  volatileCartSessionCreatedAt = 0;
+  return saveCartSessionId(createCartSessionId());
 }
 
 function rememberCartSession(payload) {
@@ -787,6 +814,7 @@ function openProductModal(itemId, updateUrl = false) {
   if (!item) return;
 
   selectedProductId = item.id;
+  window.BakeaholicAnalytics?.viewProduct(item);
   productModalImage.src = versionedAsset(item.imagePath);
   productModalImage.alt = item.name;
   productModalImage.className = "product-modal-image";

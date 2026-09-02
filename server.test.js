@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const vm = require("node:vm");
 
 const {
   adminPermissions,
@@ -97,6 +98,57 @@ test("bundle and voucher discounts remain separate from tax and delivery", () =>
   assert.equal(bundle.amount, 50000);
   assert.equal(combined.amount, 60000);
   assert.equal(combined.code, "BLISS4+WELCOME");
+});
+
+function createMetaPixelHarness(pathname = "/products/bliss-peanutella") {
+  const fetches = [];
+  const fbqCalls = [];
+  const window = {
+    location: { origin: "https://bakeaholicbali.com", pathname },
+    crypto: { randomUUID: () => "test-event-id" },
+    fetch: async (url, options) => { fetches.push({ url, options }); return { ok: true }; },
+    sessionStorage: { getItem: () => null, setItem: () => {} }
+  };
+  window.fbq = (...args) => fbqCalls.push(args);
+  const document = { createElement: () => ({}), head: { appendChild: () => {} } };
+  const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "meta-pixel.js"), "utf8");
+  vm.runInNewContext(source, { window, document, Date, Math, Number, String, Object, Array });
+  return { window, fetches, fbqCalls };
+}
+
+test("product ViewContent uses one stable exact product payload", () => {
+  for (const [itemId, price] of [
+    ["bliss-peanutella", 75000],
+    ["cookie-lamington", 20000],
+    ["oats-banoffee-pie", 25000],
+    ["mallow-vanilla", 7500]
+  ]) {
+    const harness = createMetaPixelHarness(`/products/${itemId}`);
+    const item = { id: itemId, price };
+    harness.window.BakeaholicAnalytics.viewProduct(item);
+    harness.window.BakeaholicAnalytics.viewProduct(item);
+
+    const viewContentCalls = harness.fbqCalls.filter((entry) => entry[0] === "track" && entry[1] === "ViewContent");
+    assert.equal(viewContentCalls.length, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(viewContentCalls[0][2])), {
+      content_ids: [itemId], content_type: "product", currency: "IDR", value: price
+    });
+    const serverEvents = harness.fetches
+      .filter((entry) => entry.url === "/api/meta/events")
+      .map((entry) => JSON.parse(entry.options.body))
+      .filter((entry) => entry.eventName === "ViewContent");
+    assert.equal(serverEvents.length, 1);
+    assert.deepEqual(serverEvents[0].customData, {
+      content_ids: [itemId], content_type: "product", currency: "IDR", value: price
+    });
+  }
+});
+
+test("pixel is public and product UI calls the privacy-safe ViewContent helper", () => {
+  const serverSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "server.js"), "utf8");
+  const appSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "app.js"), "utf8");
+  assert.match(serverSource, /"meta-pixel\.js"/);
+  assert.match(appSource, /BakeaholicAnalytics\?\.viewProduct\(item\)/);
 });
 
 test("provider delivered status cannot complete an order without observed courier handoff", () => {

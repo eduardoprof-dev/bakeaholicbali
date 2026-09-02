@@ -3082,6 +3082,7 @@ const publicStaticFiles = new Set([
   "invoice.html",
   "invoice.js",
   "location-picker.js",
+  "meta-pixel.js",
   "orders.html",
   "orders.js",
   "pay.html",
