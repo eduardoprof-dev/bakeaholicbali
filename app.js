@@ -147,6 +147,7 @@ let otpResendAvailableAt = 0;
 let otpTimerId = 0;
 let volatileCartSessionId = "";
 let volatileCartSessionCreatedAt = 0;
+let volatileCartSessionLastMutatedAt = 0;
 const pendingCartAdds = new Set();
 const cartQuantitySyncs = new Map();
 const isAdminPreview = params.has("admin-preview");
@@ -280,29 +281,51 @@ function createCartSessionId() {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function saveCartSessionId(sessionId, createdAt = 0) {
+function isCurrentCartSessionTimestamp(value, now = Date.now()) {
+  const timestamp = Number(value || 0);
+  return Number.isFinite(timestamp)
+    && timestamp > 0
+    && timestamp <= now
+    && now - timestamp < cartSessionMaxAgeMs;
+}
+
+function saveCartSessionId(sessionId, createdAt = 0, lastMutatedAt = 0) {
   const normalized = String(sessionId || "").toLowerCase();
   if (!/^[a-f0-9]{32}$/.test(normalized)) {
     return "";
   }
   let sessionCreatedAt = Number(createdAt || 0);
+  let sessionLastMutatedAt = Number(lastMutatedAt || 0);
   if (!(sessionCreatedAt > 0)) {
     try {
       const stored = JSON.parse(localStorage.getItem(cartSessionKey) || "null");
       if (String(stored?.id || "").toLowerCase() === normalized) {
-        sessionCreatedAt = Number(stored?.createdAt || stored?.updatedAt || 0);
+        sessionCreatedAt = Number(stored?.createdAt || 0);
+        sessionLastMutatedAt = sessionLastMutatedAt || Number(stored?.lastMutatedAt || stored?.createdAt || 0);
       }
     } catch (_error) {
       // A fresh creation time below safely replaces malformed legacy storage.
     }
+  }
+  const now = Date.now();
+  if (!Number.isFinite(sessionCreatedAt) || sessionCreatedAt <= 0 || sessionCreatedAt > now) {
+    sessionCreatedAt = now;
+  }
+  if (!isCurrentCartSessionTimestamp(sessionLastMutatedAt, now)) {
+    sessionLastMutatedAt = sessionCreatedAt;
   }
   if (!(sessionCreatedAt > 0)) {
     sessionCreatedAt = Date.now();
   }
   volatileCartSessionId = normalized;
   volatileCartSessionCreatedAt = sessionCreatedAt;
+  volatileCartSessionLastMutatedAt = sessionLastMutatedAt;
   try {
-    localStorage.setItem(cartSessionKey, JSON.stringify({ id: normalized, createdAt: sessionCreatedAt }));
+    localStorage.setItem(cartSessionKey, JSON.stringify({
+      id: normalized,
+      createdAt: sessionCreatedAt,
+      lastMutatedAt: sessionLastMutatedAt
+    }));
   } catch (_error) {
     // The in-memory session still prevents an old cookie cart from being reused this visit.
   }
@@ -313,9 +336,10 @@ function storedCartSessionId() {
   try {
     const stored = JSON.parse(localStorage.getItem(cartSessionKey) || "null");
     const sessionId = String(stored?.id || "").toLowerCase();
-    const createdAt = Number(stored?.createdAt || stored?.updatedAt || 0);
-    if (/^[a-f0-9]{32}$/.test(sessionId) && createdAt > 0 && Date.now() - createdAt <= cartSessionMaxAgeMs) {
-      return saveCartSessionId(sessionId, createdAt);
+    const createdAt = Number(stored?.createdAt || 0);
+    const lastMutatedAt = Number(stored?.lastMutatedAt || stored?.createdAt || 0);
+    if (/^[a-f0-9]{32}$/.test(sessionId) && isCurrentCartSessionTimestamp(lastMutatedAt)) {
+      return saveCartSessionId(sessionId, createdAt, lastMutatedAt);
     }
     localStorage.removeItem(cartSessionKey);
   } catch (_error) {
@@ -328,6 +352,7 @@ function storedCartSessionId() {
   }
   volatileCartSessionId = "";
   volatileCartSessionCreatedAt = 0;
+  volatileCartSessionLastMutatedAt = 0;
   return "";
 }
 
@@ -340,21 +365,55 @@ function getCartSessionId() {
   if (storedSessionId) {
     return storedSessionId;
   }
-  if (volatileCartSessionId && volatileCartSessionCreatedAt > 0 && Date.now() - volatileCartSessionCreatedAt <= cartSessionMaxAgeMs) {
+  if (volatileCartSessionId && isCurrentCartSessionTimestamp(volatileCartSessionLastMutatedAt)) {
     return volatileCartSessionId;
   }
   volatileCartSessionId = "";
   volatileCartSessionCreatedAt = 0;
+  volatileCartSessionLastMutatedAt = 0;
   return saveCartSessionId(createCartSessionId());
 }
 
-function rememberCartSession(payload) {
+function cartSessionMetadata(sessionId) {
+  const normalized = String(sessionId || "").toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(normalized)) return null;
+  if (volatileCartSessionId === normalized && isCurrentCartSessionTimestamp(volatileCartSessionLastMutatedAt)) {
+    return {
+      createdAt: volatileCartSessionCreatedAt,
+      lastMutatedAt: volatileCartSessionLastMutatedAt
+    };
+  }
+  return null;
+}
+
+function rememberCartSession(payload, { mutated = false } = {}) {
   const sessionId = String(payload?.cartSessionId || "");
   if (!/^[a-f0-9]{32}$/i.test(sessionId)) {
     return;
   }
-  saveCartSessionId(sessionId);
+  saveCartSessionId(sessionId, 0, mutated ? Date.now() : 0);
 }
+
+function syncCartSessionFromStorage(event) {
+  if (event.key !== cartSessionKey) return;
+  try {
+    const stored = JSON.parse(event.newValue || "null");
+    const sessionId = String(stored?.id || "").toLowerCase();
+    const createdAt = Number(stored?.createdAt || 0);
+    const lastMutatedAt = Number(stored?.lastMutatedAt || stored?.createdAt || 0);
+    if (/^[a-f0-9]{32}$/.test(sessionId) && isCurrentCartSessionTimestamp(lastMutatedAt)) {
+      saveCartSessionId(sessionId, createdAt, lastMutatedAt);
+      return;
+    }
+  } catch (_error) {
+    // A bad cross-tab value cannot revive an expired cart session.
+  }
+  volatileCartSessionId = "";
+  volatileCartSessionCreatedAt = 0;
+  volatileCartSessionLastMutatedAt = 0;
+}
+
+window.addEventListener("storage", syncCartSessionFromStorage);
 
 function cartPageUrl() {
   const search = new URLSearchParams();
@@ -371,7 +430,10 @@ function cartPageUrl() {
 
 function request(path, options = {}) {
   const cartSessionId = getCartSessionId();
+  const cartSession = cartSessionMetadata(cartSessionId);
   const requestUrl = new URL(path, window.location.origin);
+  const method = String(options.method || "GET").toUpperCase();
+  const isCartMutation = requestUrl.pathname === "/api/cart" && ["POST", "PATCH"].includes(method);
   if (cartSessionId) {
     requestUrl.searchParams.set("cart_session", cartSessionId);
   }
@@ -381,7 +443,11 @@ function request(path, options = {}) {
     headers: {
       "Content-Type": "application/json",
       "X-App-Mode": appMode,
-      ...(cartSessionId ? { "X-Cart-Session": cartSessionId } : {}),
+      ...(cartSessionId ? {
+        "X-Cart-Session": cartSessionId,
+        "X-Cart-Session-Created-At": String(cartSession?.createdAt || ""),
+        "X-Cart-Session-Last-Mutated-At": String(cartSession?.lastMutatedAt || "")
+      } : {}),
       ...(options.headers || {})
     }
   }).then(async (response) => {
@@ -391,7 +457,7 @@ function request(path, options = {}) {
       error.status = response.status;
       throw error;
     }
-    rememberCartSession(payload);
+    rememberCartSession(payload, { mutated: isCartMutation });
     return payload;
   });
 }

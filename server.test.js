@@ -59,6 +59,7 @@ const {
   xenditKeyMode,
   hashAdminPassword,
   hashRecoveryCode,
+  isCurrentCartMutationTimestamp,
   generateRecoveryCodes,
   verifyAdminPassword,
   base32Encode,
@@ -71,6 +72,17 @@ const {
   computeAutomaticBundleDiscount,
   combineDiscounts
 } = require("./server");
+
+test("cart mutation expiry handles exact, stale, missing, invalid and future timestamps", () => {
+  const now = Date.parse("2026-09-03T09:00:00.000Z");
+  const day = 24 * 60 * 60 * 1000;
+  assert.equal(isCurrentCartMutationTimestamp(now - day + 1, now), true);
+  assert.equal(isCurrentCartMutationTimestamp(now - day, now), false);
+  assert.equal(isCurrentCartMutationTimestamp(now - day - 1, now), false);
+  assert.equal(isCurrentCartMutationTimestamp(0, now), false);
+  assert.equal(isCurrentCartMutationTimestamp("invalid", now), false);
+  assert.equal(isCurrentCartMutationTimestamp(now + 1, now), false);
+});
 
 test("five-day mix-and-match promotion applies across flavours and then expires", () => {
   const lineItems = [

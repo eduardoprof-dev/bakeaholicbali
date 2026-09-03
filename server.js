@@ -2797,16 +2797,25 @@ function loadSessionCarts(targetPath) {
       return new Map();
     }
     return new Map(
-      Object.entries(parsed)
-        .filter(([sessionId, items]) => /^[a-f0-9]{32}$/i.test(sessionId) && items && typeof items === "object")
-        .map(([sessionId, items]) => [
-          sessionId.toLowerCase(),
-          new Map(
-            Object.entries(items)
-              .map(([itemId, quantity]) => [itemId, Number(quantity)])
-              .filter(([itemId, quantity]) => findMenuItem(itemId) && Number.isFinite(quantity) && quantity > 0)
-          )
-        ])
+      Object.entries(parsed).flatMap(([sessionId, storedCart]) => {
+        if (!/^[a-f0-9]{32}$/i.test(sessionId) || !storedCart || typeof storedCart !== "object") {
+          return [];
+        }
+        const isTimestampedRecord = !Array.isArray(storedCart)
+          && storedCart.items
+          && typeof storedCart.items === "object"
+          && !Array.isArray(storedCart.items);
+        const items = isTimestampedRecord ? storedCart.items : storedCart;
+        const cart = new Map(
+          Object.entries(items)
+            .map(([itemId, quantity]) => [itemId, Number(quantity)])
+            .filter(([itemId, quantity]) => findMenuItem(itemId) && Number.isFinite(quantity) && quantity > 0)
+        );
+        // Legacy quantity-only carts remain readable just long enough for a client with a
+        // valid local mutation timestamp to migrate them; all other legacy carts expire.
+        cart.lastMutatedAt = isTimestampedRecord ? Number(storedCart.lastMutatedAt || 0) : 0;
+        return [[sessionId.toLowerCase(), cart]];
+      })
     );
   } catch (_error) {
     return new Map();
@@ -2823,7 +2832,10 @@ function saveSessionCarts(targetPath, carts) {
       }
     }
     if (Object.keys(items).length) {
-      payload[sessionId] = items;
+      payload[sessionId] = {
+        items,
+        lastMutatedAt: Number(cart.lastMutatedAt || 0)
+      };
     }
   }
   writeJsonFile(targetPath, payload);
@@ -2976,6 +2988,9 @@ const CUSTOMER_SESSION_COOKIE = "bakeaholic_customer_session";
 const ADMIN_SESSION_COOKIE = "bakeaholic_admin_session";
 const CART_SESSION_COOKIE = "bakeaholic_cart_session";
 const CART_SESSION_HEADER = "x-cart-session";
+const CART_SESSION_CREATED_AT_HEADER = "x-cart-session-created-at";
+const CART_SESSION_LAST_MUTATED_AT_HEADER = "x-cart-session-last-mutated-at";
+const CART_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const ADMIN_SESSION_TTL_SECONDS = 60 * 15;
 const SESSION_SECRET = process.env.SESSION_SECRET
@@ -3339,6 +3354,25 @@ function ensureCartSession(request, response) {
   return sessionId;
 }
 
+function isCurrentCartMutationTimestamp(value, now = Date.now()) {
+  const timestamp = Number(value || 0);
+  return Number.isFinite(timestamp)
+    && timestamp > 0
+    && timestamp <= now
+    && now - timestamp < CART_SESSION_MAX_AGE_MS;
+}
+
+function clientCartMutationTimestamp(request) {
+  const lastMutatedAt = request.headers[CART_SESSION_LAST_MUTATED_AT_HEADER];
+  const createdAt = request.headers[CART_SESSION_CREATED_AT_HEADER];
+  if (isCurrentCartMutationTimestamp(lastMutatedAt)) {
+    return Number(lastMutatedAt);
+  }
+  // Pre-migration clients only know creation time. It may preserve a young cart once,
+  // but is never refreshed by reads and is replaced by an actual mutation timestamp later.
+  return isCurrentCartMutationTimestamp(createdAt) ? Number(createdAt) : 0;
+}
+
 function getSessionCartState(mode, request, response) {
   const storeState = getStoreState(mode);
   const sessionId = ensureCartSession(request, response);
@@ -3346,12 +3380,23 @@ function getSessionCartState(mode, request, response) {
   if (!storeState.carts.has(sessionId)) {
     storeState.carts.set(sessionId, new Map());
   }
+  const cart = storeState.carts.get(sessionId);
+  if (cart.size && !isCurrentCartMutationTimestamp(cart.lastMutatedAt)) {
+    const migrationTimestamp = clientCartMutationTimestamp(request);
+    if (migrationTimestamp) {
+      cart.lastMutatedAt = migrationTimestamp;
+    } else {
+      cart.clear();
+    }
+    storeState.carts.set(sessionId, cart);
+    saveSessionCarts(cartsPathForMode(mode), storeState.carts);
+  }
   return {
     storeState,
     sessionId,
     cartState: {
       ...storeState,
-      cart: storeState.carts.get(sessionId)
+      cart
     }
   };
 }
@@ -7566,12 +7611,14 @@ function handleCartUpsert(mode, storeState, response, body, strategy, cartSessio
   const nextQuantity = strategy(item, quantity);
   if (nextQuantity <= 0) {
     storeState.cart.delete(item.id);
+    storeState.cart.lastMutatedAt = Date.now();
     saveSessionCarts(cartsPathForMode(mode), getStoreState(mode).carts);
     sendJson(response, 200, buildCartSummary(storeState, { cartSessionId }));
     return;
   }
 
   storeState.cart.set(item.id, nextQuantity);
+  storeState.cart.lastMutatedAt = Date.now();
   saveSessionCarts(cartsPathForMode(mode), getStoreState(mode).carts);
   sendJson(response, 200, buildCartSummary(storeState, { cartSessionId }));
 }
@@ -9086,6 +9133,7 @@ module.exports = {
   xenditKeyMode,
   hashAdminPassword,
   hashRecoveryCode,
+  isCurrentCartMutationTimestamp,
   generateRecoveryCodes,
   verifyAdminPassword,
   base32Encode,
