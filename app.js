@@ -672,10 +672,10 @@ function renderCatalog() {
                 (item) => {
                   const quantity = cartQuantityForItem(item.id);
                   return `
-                  <article class="product-card" role="button" tabindex="0" data-product-id="${escapeHtml(item.id)}" aria-label="View ${escapeHtml(item.name)} details">
-                    <div class="product-thumb-wrap" ${mediaFrameStyle(item)}>
+                  <article class="product-card" data-product-id="${escapeHtml(item.id)}">
+                    <button class="product-details-trigger product-thumb-wrap" type="button" data-product-details="${escapeHtml(item.id)}" aria-label="View ${escapeHtml(item.name)} details" ${mediaFrameStyle(item)}>
                       <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" ${productImageStyle(item)} />
-                    </div>
+                    </button>
                     <div class="product-copy">
                       <div class="product-topline">
                         <h3>${escapeHtml(item.name)}</h3>
@@ -722,14 +722,8 @@ function renderCatalog() {
     });
   });
 
-  catalog.querySelectorAll("[data-product-id]").forEach((card) => {
-    card.addEventListener("click", () => openProductModal(card.dataset.productId));
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        openProductModal(card.dataset.productId);
-      }
-    });
+  catalog.querySelectorAll("[data-product-details]").forEach((button) => {
+    button.addEventListener("click", () => openProductModal(button.dataset.productDetails));
   });
 }
 
@@ -739,6 +733,14 @@ function cartQuantityForItem(itemId) {
 
 function currentPromoItem() {
   return state.items.find((item) => item.id === state.promo?.itemId) || null;
+}
+
+function bundleComponentText(item) {
+  if (!item?.isBundle || !Array.isArray(item.bundleComponents)) return "";
+  return item.bundleComponents.map((component) => {
+    const product = state.items.find((entry) => entry.id === component.itemId);
+    return `${component.quantity} × ${product?.name || component.itemId}`;
+  }).join(" · ");
 }
 
 function renderLimitedBundles() {

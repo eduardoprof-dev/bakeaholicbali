@@ -4880,6 +4880,21 @@ body::before {
   width: fit-content;
 }
 
+.product-details-trigger {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.product-details-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 14px;
+}
+
 .item-quantity-badge {
   position: absolute;
   right: -8px;
@@ -4928,15 +4943,12 @@ body::before {
 }
 
 .product-card {
-  cursor: pointer;
   transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
-.product-card:hover,
-.product-card:focus-visible {
+.product-card:hover {
   border-color: rgba(107, 66, 38, 0.24);
   box-shadow: 0 12px 28px rgba(55, 34, 22, 0.08);
-  outline: none;
   transform: translateY(-1px);
 }
 
