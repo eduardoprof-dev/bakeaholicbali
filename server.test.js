@@ -93,14 +93,25 @@ test("five-day mix-and-match promotion applies across flavours and then expires"
   ];
   const activeAt = Date.parse("2026-09-03T12:00:00+08:00");
   assert.equal(bundlePromotionIsActive(activeAt), true);
+  assert.equal(bundlePromotionIsActive(activeAt, "BLISS4"), true);
+  assert.equal(bundlePromotionIsActive(activeAt, "COOKIES12"), false);
   const active = computeAutomaticBundleDiscount(lineItems, activeAt);
-  assert.equal(active.amount, 90000);
-  assert.equal(active.code, "BLISS4+COOKIES12");
+  assert.equal(active.amount, 50000);
+  assert.equal(active.code, "BLISS4");
   const expiredAt = Date.parse("2026-09-06T00:00:00+08:00");
   assert.equal(bundlePromotionIsActive(expiredAt), false);
   const expired = computeAutomaticBundleDiscount(lineItems, expiredAt);
   assert.equal(expired.amount, 0);
   assert.equal(expired.code, "");
+  const cookieStart = Date.parse("2026-09-07T08:00:00+08:00");
+  const cookieEnd = Date.parse("2026-09-12T00:00:00+08:00");
+  assert.equal(bundlePromotionIsActive(cookieStart - 1, "COOKIES12"), false);
+  assert.equal(bundlePromotionIsActive(cookieStart, "COOKIES12"), true);
+  assert.equal(bundlePromotionIsActive(cookieEnd - 1, "COOKIES12"), true);
+  assert.equal(bundlePromotionIsActive(cookieEnd, "COOKIES12"), false);
+  const cookieOnly = computeAutomaticBundleDiscount(lineItems, Date.parse("2026-09-08T12:00:00+08:00"));
+  assert.equal(cookieOnly.amount, 40000);
+  assert.equal(cookieOnly.code, "COOKIES12");
 });
 
 test("bundle and voucher discounts remain separate from tax and delivery", () => {

@@ -5282,23 +5282,28 @@ function biteshipActualPrice(payload = {}, body = {}) {
   return price == null ? null : Number(price);
 }
 
-const AUTOMATIC_BUNDLE_PROMO_START = Date.parse("2026-09-01T00:00:00+08:00");
-const AUTOMATIC_BUNDLE_PROMO_END = Date.parse("2026-09-06T00:00:00+08:00");
+const AUTOMATIC_BUNDLE_WINDOWS = Object.freeze({
+  BLISS4: Object.freeze({ start: Date.parse("2026-09-01T00:00:00+08:00"), end: Date.parse("2026-09-06T00:00:00+08:00") }),
+  COOKIES12: Object.freeze({ start: Date.parse("2026-09-07T08:00:00+08:00"), end: Date.parse("2026-09-12T00:00:00+08:00") })
+});
 const AUTOMATIC_BUNDLES = Object.freeze([
   { id: "BLISS4", category: "bliss-balls", quantity: 4, bundlePrice: 250000, label: "Any 4 Bliss Balls packs for Rp250K" },
   { id: "COOKIES12", category: "oatmeal-cookies", quantity: 12, bundlePrice: 200000, label: "Any 12 Oatmeal Cookies for Rp200K" }
 ]);
 
-function bundlePromotionIsActive(now = Date.now()) {
+function bundlePromotionIsActive(now = Date.now(), offerId = "") {
   const timestamp = Number(now);
-  return timestamp >= AUTOMATIC_BUNDLE_PROMO_START && timestamp < AUTOMATIC_BUNDLE_PROMO_END;
+  const windows = offerId
+    ? [AUTOMATIC_BUNDLE_WINDOWS[offerId]]
+    : Object.values(AUTOMATIC_BUNDLE_WINDOWS);
+  return windows.some((window) => window && timestamp >= window.start && timestamp < window.end);
 }
 
 function computeAutomaticBundleDiscount(lineItems = [], now = Date.now()) {
-  if (!bundlePromotionIsActive(now)) return { code: "", label: "", amount: 0, bundles: [] };
   const applied = [];
   let amount = 0;
   for (const offer of AUTOMATIC_BUNDLES) {
+    if (!bundlePromotionIsActive(now, offer.id)) continue;
     const eligible = lineItems.filter((entry) => entry?.item?.category === offer.category && entry.item.isBundle !== true);
     const quantity = eligible.reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
     const bundleCount = Math.floor(quantity / offer.quantity);

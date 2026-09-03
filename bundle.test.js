@@ -30,7 +30,7 @@ test("homepage places Limited Bundles immediately after the order banner", () =>
   assert.match(html, /id="orderBanner"[\s\S]*?id="promoCard"[\s\S]*?class="brand-story-card"/);
   assert.doesNotMatch(html, /Best Seller/);
   assert.match(html, /Pick your flavours/);
-  assert.match(html, /Ends 5 September/);
+  assert.match(html, /Choose your flavours/);
   assert.match(html, /id="limitedBundleCarouselControls"/);
   assert.match(html, /aria-label="Previous bundle"/);
   assert.match(html, /aria-label="Next bundle"/);
