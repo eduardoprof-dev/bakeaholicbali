@@ -547,17 +547,21 @@ function adminWhatsappNumbers() {
     .filter(Boolean))].slice(0, 3);
 }
 
-function verifiedCustomerWhatsappNumber(order, configuredAdminNumbers = adminWhatsappNumbers()) {
+function verifiedCustomerWhatsappNumber(order) {
   const verifiedAt = String(order?.customer?.phoneVerifiedAt || "").trim();
   const recipient = formatIndonesianPhone(order?.customer?.phone);
   if (!verifiedAt || !recipient || recipient.length < 10) {
     throw new Error("A verified customer WhatsApp number is required");
   }
-  const adminRecipients = new Set((configuredAdminNumbers || [])
-    .map((value) => formatIndonesianPhone(value))
-    .filter(Boolean));
-  if (adminRecipients.has(recipient)) {
-    throw new Error("Customer WhatsApp recipient must not be an admin recipient");
+
+  // Customer-purpose templates go only to the verified order owner. An owner
+  // may legitimately also be a configured staff member, so role membership is
+  // not a reason to redirect or suppress their customer message. New orders
+  // snapshot the authenticated session phone as `verifiedPhone`; legacy orders
+  // use their already-verified recipient snapshot without inferring a new one.
+  const verifiedOwner = formatIndonesianPhone(order?.customer?.verifiedPhone || order?.customer?.phone);
+  if (!verifiedOwner || recipient !== verifiedOwner) {
+    throw new Error("Customer WhatsApp recipient must match the verified order owner");
   }
   return recipient;
 }
@@ -1422,6 +1426,40 @@ async function sendWhatsappPaymentReminder(order) {
   });
 }
 
+async function maybeSendWhatsappPaymentReminder(order, step = "") {
+  if (order?.status !== "awaiting_payment") {
+    return { sent: false, skipped: true, reason: "not_awaiting_payment" };
+  }
+  if (!isWhatsappCloudReady() || !process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME) {
+    return { sent: false, skipped: true, reason: "template_or_whatsapp_not_configured" };
+  }
+
+  const reminderFlow = ensurePaymentReminderFlow(order);
+  const sentKey = `${step}SentAt`;
+  const queuedKey = `${step}QueuedAt`;
+  if (step && (reminderFlow[sentKey] || reminderFlow[queuedKey])) {
+    return { sent: false, skipped: true, reason: reminderFlow[sentKey] ? "already_sent" : "already_queued" };
+  }
+
+  if (step) reminderFlow[queuedKey] = new Date().toISOString();
+  try {
+    const response = await sendWhatsappPaymentReminder(order);
+    if (step) {
+      reminderFlow[sentKey] = new Date().toISOString();
+      reminderFlow[`${step}MessageId`] = response?.messages?.[0]?.id || "";
+      delete reminderFlow[queuedKey];
+      delete reminderFlow[`${step}Error`];
+    }
+    return { sent: true, messageId: response?.messages?.[0]?.id || "" };
+  } catch (error) {
+    if (step) {
+      delete reminderFlow[queuedKey];
+      reminderFlow[`${step}Error`] = error.message;
+    }
+    return { sent: false, skipped: false, error: error.message };
+  }
+}
+
 async function sendWhatsappPaymentExpired(order) {
   const templateName = String(process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME || "").trim();
   if (!templateName) {
@@ -1622,10 +1660,14 @@ function paymentReminderFlowTimes(createdAt = new Date().toISOString()) {
 }
 
 function ensurePaymentReminderFlow(order) {
-  order.paymentReminderFlow = {
-    ...paymentReminderFlowTimes(order.createdAt),
-    ...(order.paymentReminderFlow || {})
-  };
+  const defaults = paymentReminderFlowTimes(order.createdAt);
+  if (!order.paymentReminderFlow || typeof order.paymentReminderFlow !== "object") {
+    order.paymentReminderFlow = { ...defaults };
+    return order.paymentReminderFlow;
+  }
+  Object.entries(defaults).forEach(([key, value]) => {
+    if (!order.paymentReminderFlow[key]) order.paymentReminderFlow[key] = value;
+  });
   return order.paymentReminderFlow;
 }
 
@@ -1697,14 +1739,9 @@ async function processPaymentReminderStep(mode, orderId, step) {
       return { handled: false, reason: "already_sent" };
     }
     if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME) {
-      try {
-        const response = await sendWhatsappPaymentReminder(order);
-        reminderFlow[`${step}SentAt`] = new Date().toISOString();
-        reminderFlow[`${step}MessageId`] = response?.messages?.[0]?.id || "";
-        delete reminderFlow[`${step}Error`];
-      } catch (error) {
-        reminderFlow[`${step}Error`] = error.message;
-        console.warn(`WhatsApp payment reminder failed for ${order.id} (${step}): ${error.message}`);
+      const reminder = await maybeSendWhatsappPaymentReminder(order, step);
+      if (!reminder.sent && !reminder.skipped) {
+        console.warn(`WhatsApp payment reminder failed for ${order.id} (${step}): ${reminder.error}`);
       }
     } else {
       reminderFlow[`${step}Skipped`] = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
@@ -7196,7 +7233,8 @@ async function createOrderForSession(mode, payload, session, cartOverride = null
     customer: {
       ...(payload.customer || {}),
       phone: `+${formatIndonesianPhone(session.phone)}`,
-      phoneVerifiedAt: session.verifiedAt || new Date().toISOString()
+      phoneVerifiedAt: session.verifiedAt || new Date().toISOString(),
+      verifiedPhone: formatIndonesianPhone(session.phone)
     }
   };
   return createOrder(mode, body, cartOverride, cartSessionId, metaAttribution);
@@ -9015,6 +9053,7 @@ module.exports = {
   receiptWhatsappParameters,
   runWhatsappTemplateDiagnostics,
   maybeSendWhatsappPaymentReceipt,
+  maybeSendWhatsappPaymentReminder,
   maybeSendWhatsappAdminAlert,
   sendWhatsappAdminAlert,
   sendWhatsappAdminRefundUpdate,

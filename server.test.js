@@ -33,6 +33,7 @@ const {
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
   maybeSendWhatsappPaymentReceipt,
+  maybeSendWhatsappPaymentReminder,
   maybeSendWhatsappAdminAlert,
   sendWhatsappAdminAlert,
   sendWhatsappAdminRefundUpdate,
@@ -166,22 +167,88 @@ test("delivery recovery alerts are limited to verified recoverable courier state
   assert.equal(isDeliveryRecoveryStatus("picked_up"), false);
 });
 
-test("customer WhatsApp templates require the verified customer recipient and reject admin crossover", () => {
+test("customer WhatsApp templates use only the verified order owner, including an owner who is also staff", () => {
   const customer = {
     customer: {
       phone: "+62 811 222 3333",
+      verifiedPhone: "628112223333",
       phoneVerifiedAt: "2026-09-01T00:00:00.000Z"
     }
   };
-  assert.equal(verifiedCustomerWhatsappNumber(customer, ["628122223333"]), "628112223333");
+  assert.equal(verifiedCustomerWhatsappNumber(customer), "628112223333");
+  assert.equal(verifiedCustomerWhatsappNumber({
+    customer: { phone: "628111111111", verifiedPhone: "628111111111", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" }
+  }), "628111111111");
   assert.throws(
-    () => verifiedCustomerWhatsappNumber(customer, ["628112223333"]),
-    /must not be an admin recipient/i
+    () => verifiedCustomerWhatsappNumber({
+      customer: { phone: "628111111111", verifiedPhone: "628999999999", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" }
+    }),
+    /must match the verified order owner/i
   );
   assert.throws(
     () => verifiedCustomerWhatsappNumber({ customer: { phone: "+62 811 222 3333" } }, []),
     /verified customer WhatsApp number is required/i
   );
+});
+
+test("payment reminders preserve customer/staff roles, deduplicate retries, and stop after payment or cancellation", async () => {
+  const previousFetch = global.fetch;
+  const envKeys = ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ADMIN_NUMBER", "WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME", "WHATSAPP_ADMIN_TEMPLATE_NAME"];
+  const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const recipients = [];
+  Object.assign(process.env, {
+    WHATSAPP_ACCESS_TOKEN: "test-token",
+    WHATSAPP_PHONE_NUMBER_ID: "123456",
+    WHATSAPP_ADMIN_NUMBER: "628111111111,628222222222",
+    WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: "payment_update_order",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2"
+  });
+  global.fetch = async (_url, options) => {
+    recipients.push(JSON.parse(options.body).to);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return { ok: true, status: 200, text: async () => JSON.stringify({ messages: [{ id: "wamid.reminder" }] }) };
+  };
+  const order = {
+    id: "BAK-ROLE-TEST",
+    status: "awaiting_payment",
+    customer: { phone: "628111111111", verifiedPhone: "628111111111", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
+    pricing: { total: 75000 },
+    payment: {},
+    receiptToken: "role-test-token"
+  };
+  try {
+    const results = await Promise.all([
+      maybeSendWhatsappPaymentReminder(order, "first"),
+      maybeSendWhatsappPaymentReminder(order, "first")
+    ]);
+    assert.equal(results.filter((result) => result.sent).length, 1);
+    assert.deepEqual(recipients, ["628111111111"]);
+    assert.equal(order.paymentReminderFlow.firstMessageId, "wamid.reminder");
+    assert.equal(order.paymentReminderFlow.firstQueuedAt, undefined);
+
+    await sendWhatsappAdminAlert(order, "Staff review only");
+    assert.deepEqual(recipients, ["628111111111", "628111111111", "628222222222"]);
+
+    order.status = "paid";
+    assert.deepEqual(await maybeSendWhatsappPaymentReminder(order, "second"), {
+      sent: false, skipped: true, reason: "not_awaiting_payment"
+    });
+    order.status = "cancelled";
+    assert.deepEqual(await maybeSendWhatsappPaymentReminder(order, "second"), {
+      sent: false, skipped: true, reason: "not_awaiting_payment"
+    });
+    order.status = "expired";
+    assert.deepEqual(await maybeSendWhatsappPaymentReminder(order, "second"), {
+      sent: false, skipped: true, reason: "not_awaiting_payment"
+    });
+    assert.deepEqual(recipients, ["628111111111", "628111111111", "628222222222"]);
+  } finally {
+    global.fetch = previousFetch;
+    for (const key of envKeys) {
+      if (previousEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEnv[key];
+    }
+  }
 });
 
 test("delivery recovery accepts only the exact failed shipment and a replay-safe action ID", () => {
