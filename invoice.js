@@ -56,6 +56,13 @@ function paymentLabel(order) {
   return payment.label || "-";
 }
 
+function fixedReceiptPdfUrl() {
+  const search = new URLSearchParams({ id: orderId });
+  if (token) search.set("token", token);
+  if (appMode === "test") search.set("mode", "test");
+  return `/api/order/receipt.pdf?${search.toString()}`;
+}
+
 async function requestDocument() {
   const search = new URLSearchParams({ id: orderId });
   if (token) search.set("token", token);
@@ -128,7 +135,7 @@ function renderDocument(payload) {
           </div>
         </div>
         <div class="invoice-header-actions print-hide">
-          <button class="admin-button" type="button" id="printInvoiceButton">Print</button>
+          <button class="admin-button" type="button" id="printInvoiceButton">Open fixed A5 PDF</button>
           <a class="admin-button secondary" id="openInvoiceBrowserButton" href="${escapeHtml(window.location.href)}" target="_blank" rel="noreferrer" hidden>Open in browser</a>
         </div>
       </header>
@@ -203,13 +210,11 @@ function renderDocument(payload) {
   }
   printButton?.addEventListener("click", (event) => {
     event.preventDefault();
-    window.focus();
-    if (typeof window.print !== "function") {
+    const pdfWindow = window.open(fixedReceiptPdfUrl(), "_blank");
+    if (!pdfWindow) {
       openInBrowserButton.hidden = false;
       openInBrowserButton.focus();
-      return;
     }
-    window.print();
   });
 }
 

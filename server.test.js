@@ -74,7 +74,8 @@ const {
   serializeCookie,
   bundlePromotionIsActive,
   computeAutomaticBundleDiscount,
-  combineDiscounts
+  combineDiscounts,
+  buildFixedA5ReceiptPdf
 } = require("./server");
 
 test("cart mutation expiry handles exact, stale, missing, invalid and future timestamps", () => {
@@ -86,6 +87,38 @@ test("cart mutation expiry handles exact, stale, missing, invalid and future tim
   assert.equal(isCurrentCartMutationTimestamp(0, now), false);
   assert.equal(isCurrentCartMutationTimestamp("invalid", now), false);
   assert.equal(isCurrentCartMutationTimestamp(now + 1, now), false);
+});
+
+test("fixed customer receipts are one A5 PDF page for standard and longer orders", () => {
+  const line = (index) => ({
+    itemId: `bliss-${index}`,
+    quantity: index % 3 + 1,
+    item: { name: `Bakeaholic Bliss Ball flavour ${index + 1}`, price: 75000 },
+    lineTotal: (index % 3 + 1) * 75000
+  });
+  const document = (lineCount) => ({
+    store: { name: "Bakeaholic Bali", perkTitle: "WhatsApp +62 815-5700-627" },
+    order: {
+      id: "BAK-0147",
+      status: "preparing",
+      itemCount: lineCount,
+      customer: { name: "Ibu Lina", phone: "628111596778", email: "maiareview@gmail.com" },
+      fulfillment: {
+        address: "Gg. Tunjung Sari, Sanur, Denpasar Selatan, Kota Denpasar, Bali 80227, Indonesia",
+        shipment: { orderId: "biteship-0147", status: "allocated", courier: { company: "Grab" } }
+      },
+      payment: { label: "Credit / Debit Card" },
+      lineItems: Array.from({ length: lineCount }, (_, index) => line(index)),
+      pricing: { subtotal: lineCount * 75000, deliveryFee: 26000, tax: 26100, total: lineCount * 75000 + 52100 }
+    }
+  });
+  for (const lineCount of [3, 18]) {
+    const pdf = buildFixedA5ReceiptPdf(document(lineCount)).toString("ascii");
+    assert.match(pdf, /\/MediaBox \[0 0 419\.53 595\.28\]/);
+    assert.match(pdf, /\/Type \/Pages \/Kids \[3 0 R\] \/Count 1/);
+    assert.match(pdf, /BAK-0147/);
+    assert.match(pdf, new RegExp(`flavour ${lineCount}`));
+  }
 });
 
 test("five-day mix-and-match promotion applies across flavours and then expires", () => {

@@ -7055,6 +7055,178 @@ function buildOrderDocument(order) {
   };
 }
 
+// The Android print pipeline is free to replace HTML's requested paper size
+// with the printer's selected media. A real PDF gives it one fixed A5 page to
+// scale as a whole instead of asking it to reflow the receipt into that media.
+const A5_PDF_WIDTH = 419.53;
+const A5_PDF_HEIGHT = 595.28;
+
+function pdfText(value, maxLength = 80) {
+  return String(value == null ? "" : value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7e]/g, "-")
+    .replace(/[\\()]/g, "\\$&")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function pdfMoney(value) {
+  return `Rp ${Math.round(Number(value) || 0).toLocaleString("id-ID")}`;
+}
+
+function pdfLines(value, maxLength, limit = 2) {
+  const words = pdfText(value, maxLength * limit * 2).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length <= maxLength || !line) {
+      line = next;
+      continue;
+    }
+    lines.push(line);
+    if (lines.length >= limit) return lines;
+    line = word;
+  }
+  if (line && lines.length < limit) lines.push(line);
+  return lines;
+}
+
+function buildFixedA5ReceiptPdf(documentPayload) {
+  const { store = {}, order = {} } = documentPayload || {};
+  const commands = ["1 J", "1 j"];
+  const left = 18;
+  const right = A5_PDF_WIDTH - left;
+  let y = A5_PDF_HEIGHT - 22;
+  const ink = "0.12 0.1 0.09";
+  const muted = "0.36 0.32 0.29";
+  const cocoa = "0.38 0.21 0.15";
+  const pale = "0.96 0.93 0.9";
+  const line = "0.82 0.78 0.74";
+  const text = (font, size, x, baseline, value, color = ink, align = "left") => {
+    const safe = pdfText(value);
+    if (!safe) return;
+    const width = safe.length * size * 0.49;
+    const positionedX = align === "right" ? x - width : x;
+    commands.push(`BT /${font} ${size.toFixed(2)} Tf ${color} rg 1 0 0 1 ${positionedX.toFixed(2)} ${baseline.toFixed(2)} Tm (${safe}) Tj ET`);
+  };
+  const rule = (fromX, fromY, toX, toY, color = line, width = 0.55) => {
+    commands.push(`${color} RG ${width.toFixed(2)} w ${fromX.toFixed(2)} ${fromY.toFixed(2)} m ${toX.toFixed(2)} ${toY.toFixed(2)} l S`);
+  };
+  const fill = (x, bottom, width, height, color) => {
+    commands.push(`${color} rg ${x.toFixed(2)} ${bottom.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f`);
+  };
+
+  // Keep the compact fixed-page document dependency-free. The existing logo is
+  // a raster asset; a full vector wordmark is safer here than embedding and
+  // potentially clipping a JPEG in a hand-authored PDF stream.
+  text("F2", 12, left, y - 9, store.name || "Bakeaholic Bali", cocoa);
+  text("F1", 7.2, left, y - 20, store.perkTitle || "Bali, Indonesia", muted);
+  text("F2", 8.5, right, y - 9, "INVOICE / RECEIPT", cocoa, "right");
+  text("F2", 15, right, y - 23, order.id || "ORDER", ink, "right");
+  y -= 33;
+  rule(left, y, right, y);
+
+  const status = humanizeOrderStatus(order) || "Order";
+  y -= 16;
+  text("F2", 7.1, left, y, "CUSTOMER", muted);
+  text("F2", 7.1, left + 198, y, "DELIVERY ADDRESS", muted);
+  y -= 11;
+  text("F2", 9.1, left, y, order.customer?.name || "Customer");
+  const address = order.fulfillment?.address || order.customer?.address || "-";
+  pdfLines(address, 36, 2).forEach((entry, index) => text("F1", 8, left + 198, y - index * 10, entry));
+  y -= 12;
+  text("F1", 8, left, y, order.customer?.phone || "");
+  y -= 11;
+  text("F1", 7.4, left, y, order.customer?.email || "", muted);
+  y -= 14;
+  text("F2", 7.1, left, y, "PAYMENT", muted);
+  text("F2", 7.1, left + 198, y, "ORDER", muted);
+  y -= 11;
+  text("F1", 8, left, y, order.payment?.label || "-");
+  text("F1", 8, left + 198, y, `Status: ${status}`);
+  y -= 11;
+  text("F1", 7.4, left, y, order.paidAt ? `Paid: ${new Date(order.paidAt).toLocaleString("en-GB")}` : "Payment pending", muted);
+  text("F1", 7.4, left + 198, y, `Items: ${order.itemCount || 0}`, muted);
+
+  const shipment = order.fulfillment?.shipment || {};
+  const courier = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || shipment.raw?.courier?.name || "";
+  if (shipment.orderId || shipment.status || courier) {
+    y -= 21;
+    fill(left, y - 30, right - left, 30, pale);
+    text("F2", 7.1, left + 7, y - 9, "DELIVERY TRACKING", cocoa);
+    text("F2", 10, left + 7, y - 21, courier || "Delivery partner");
+    text("F1", 7.6, left + 94, y - 21, `Status: ${shipment.status || order.status || "-"}`, muted);
+    text("F1", 7.6, left + 220, y - 21, `Waybill: ${shipment.waybillId || "-"}`, muted);
+    y -= 39;
+  } else {
+    y -= 12;
+  }
+
+  const rows = order.lineItems || [];
+  const tableTop = y;
+  const tableBottom = 104;
+  const rowHeight = Math.max(4.2, Math.min(10.5, (tableTop - tableBottom - 15) / Math.max(rows.length, 1)));
+  const rowFont = Math.max(4.7, Math.min(7.9, rowHeight - 1.8));
+  fill(left, y - 13, right - left, 13, cocoa);
+  text("F2", 7, left + 4, y - 8.5, "ITEM", "1 1 1");
+  text("F2", 7, left + 230, y - 8.5, "QTY", "1 1 1");
+  text("F2", 7, left + 278, y - 8.5, "PRICE", "1 1 1");
+  text("F2", 7, right - 4, y - 8.5, "TOTAL", "1 1 1", "right");
+  y -= 13;
+  for (const entry of rows) {
+    y -= rowHeight;
+    const itemName = entry.item?.name || entry.itemId || "Item";
+    text("F1", rowFont, left + 4, y + 1.5, itemName.slice(0, rowHeight < 6 ? 40 : 34));
+    text("F1", rowFont, left + 236, y + 1.5, String(entry.quantity || 0));
+    text("F1", rowFont, left + 280, y + 1.5, pdfMoney(entry.item?.price || 0));
+    text("F2", rowFont, right - 4, y + 1.5, pdfMoney(entry.lineTotal || 0), ink, "right");
+    rule(left, y - 1.8, right, y - 1.8, line, 0.35);
+  }
+
+  const pricing = order.pricing || {};
+  // Reserve a fixed totals block below the last item row. The previous HTML
+  // receipt allowed the browser to move this block onto a second page; a
+  // fixed PDF must keep the table and totals visually separate on this page.
+  const totalsY = Math.max(42, y - 55);
+  const labelX = right - 132;
+  text("F1", 7.2, labelX, totalsY + 26, "Subtotal", muted);
+  text("F2", 7.2, right, totalsY + 26, pdfMoney(pricing.subtotal || 0), ink, "right");
+  text("F1", 7.2, labelX, totalsY + 15, "Delivery fee", muted);
+  text("F2", 7.2, right, totalsY + 15, pdfMoney(pricing.deliveryFee || 0), ink, "right");
+  text("F1", 7.2, labelX, totalsY + 4, "Tax", muted);
+  text("F2", 7.2, right, totalsY + 4, pdfMoney(pricing.tax || 0), ink, "right");
+  rule(labelX, totalsY - 3, right, totalsY - 3, cocoa, 0.8);
+  text("F2", 10, labelX, totalsY - 16, "TOTAL PAID", cocoa);
+  text("F2", 11, right, totalsY - 16, pdfMoney(pricing.total || 0), cocoa, "right");
+  text("F1", 6.8, (left + right) / 2, 20, "Bakeaholic Bali - keep this receipt for delivery handoff.", muted, "right");
+
+  const content = commands.join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A5_PDF_WIDTH} ${A5_PDF_HEIGHT}] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>`,
+    `<< /Length ${Buffer.byteLength(content, "ascii")} >>\nstream\n${content}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"
+  ];
+  let pdf = "%PDF-1.4\n% fixed-a5-receipt\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf, "ascii"));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(pdf, "ascii");
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(pdf, "ascii");
+}
+
 function buildWhatsappUrl(order) {
   const phone = normalizePhoneNumber(catalog.store.orderWhatsapp || catalog.store.perkTitle);
   if (!phone) return null;
@@ -8220,6 +8392,29 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "GET" && pathname === "/api/order/receipt.pdf") {
+    const orderId = String(requestUrl.searchParams.get("id") || "").trim();
+    const token = String(requestUrl.searchParams.get("token") || "").trim();
+    const order = findOrder(mode, orderId);
+    const adminSession = currentAdminSession(request);
+    const customerSession = currentCustomerSession(request);
+    const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
+    const customerOwnsDocument = customerSession && order && customerOwnsOrder(customerSession, order);
+    if (!order || (!tokenMatches && !adminSession && !customerOwnsDocument)) {
+      sendJson(response, 404, { error: "Order document not found" });
+      return true;
+    }
+    const document = buildOrderDocument(order);
+    const filename = `${String(order.id || "receipt").replace(/[^a-z0-9_-]+/gi, "-")}-receipt.pdf`;
+    response.writeHead(200, {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${filename}"`,
+      ...defaultSecurityHeaders("private, no-store, max-age=0")
+    });
+    response.end(buildFixedA5ReceiptPdf(document));
+    return true;
+  }
+
   if (request.method === "GET" && pathname.startsWith("/api/order/document/")) {
     const ref = decodeURIComponent(pathname.replace("/api/order/document/", ""));
     const parsedRef = parsePublicOrderReference(ref);
@@ -9219,6 +9414,7 @@ module.exports = {
   bundlePromotionIsActive,
   computeAutomaticBundleDiscount,
   combineDiscounts,
+  buildFixedA5ReceiptPdf,
   buildFulfillmentGroups,
   normalizeMarketplaceCatalog,
   productMarketplaceFields
