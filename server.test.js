@@ -20,6 +20,8 @@ const {
   buildXenditPaymentSessionPayload,
   adminWhatsappParameters,
   adminWhatsappNumbers,
+  isProductionRuntime,
+  isShipmentAllocatedForMessaging,
   availablePaymentMethods,
   configuredWhatsappOrderTemplateName,
   customerShippingWhatsappParameters,
@@ -51,6 +53,7 @@ const {
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   normalizedShipmentStatus,
+  normalizeWhatsappOrderTemplateName,
   shipmentHasObservedHandoff,
   providerStatusCanCompleteOrder,
   isDeliveryRecoveryStatus,
@@ -76,6 +79,7 @@ const {
   verifyTotp,
   verifiedCustomerWhatsappNumber,
   verifiedBiteshipDeliveryProofUrl,
+  verifyMetaWebhookSignature,
   productionCookieDomain,
   serializeCookie,
   bundlePromotionIsActive,
@@ -223,6 +227,42 @@ test("provider delivered status cannot complete an order without observed courie
   assert.equal(providerStatusCanCompleteOrder({}, "delivered"), false);
   assert.equal(providerStatusCanCompleteOrder({ pickupObservedAt: "2026-09-01T00:00:00.000Z" }, "delivered"), true);
   assert.equal(providerStatusCanCompleteOrder({}, "picked_up"), true);
+});
+
+test("shipping successors wait for Biteship courier allocation", () => {
+  assert.equal(isShipmentAllocatedForMessaging({ status: "confirmed" }), false);
+  assert.equal(isShipmentAllocatedForMessaging({ status: "allocated" }), true);
+  assert.equal(isShipmentAllocatedForMessaging({ status: "accepted" }), true);
+  assert.equal(isShipmentAllocatedForMessaging({ status: "picked_up" }), true);
+  assert.equal(isShipmentAllocatedForMessaging({ status: "courier_not_found" }), false);
+});
+
+test("Meta webhook verification fails closed in production when the app secret is absent", () => {
+  const previous = {
+    nodeEnv: process.env.NODE_ENV,
+    railwayEnvironment: process.env.RAILWAY_ENVIRONMENT,
+    appSecret: process.env.WHATSAPP_APP_SECRET
+  };
+  const request = { headers: {} };
+  try {
+    process.env.NODE_ENV = "production";
+    delete process.env.RAILWAY_ENVIRONMENT;
+    delete process.env.WHATSAPP_APP_SECRET;
+    assert.equal(isProductionRuntime(), true);
+    assert.equal(verifyMetaWebhookSignature(request, "{}"), false);
+    process.env.NODE_ENV = "test";
+    assert.equal(isProductionRuntime(), false);
+    assert.equal(verifyMetaWebhookSignature(request, "{}"), true);
+    process.env.WHATSAPP_APP_SECRET = "test-secret";
+    const signature = `sha256=${require("node:crypto").createHmac("sha256", "test-secret").update("{}").digest("hex")}`;
+    assert.equal(verifyMetaWebhookSignature({ headers: { "x-hub-signature-256": signature } }, "{}"), true);
+    assert.equal(verifyMetaWebhookSignature({ headers: { "x-hub-signature-256": "sha256:wrong" } }, "{}"), false);
+  } finally {
+    for (const [key, value] of Object.entries({ NODE_ENV: previous.nodeEnv, RAILWAY_ENVIRONMENT: previous.railwayEnvironment, WHATSAPP_APP_SECRET: previous.appSecret })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test("delivery proof redirect exposes only verified HTTPS provider proof", () => {
@@ -534,7 +574,7 @@ test("concurrent paid-event processing sends each WhatsApp notification only onc
     WHATSAPP_ACCESS_TOKEN: "test-token",
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111,628222222222,628333333333",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5",
     WHATSAPP_RECEIPT_TEMPLATE_NAME: "payment_receipt"
   });
   global.fetch = async (_url, options) => {
@@ -737,7 +777,7 @@ test("approved detailed admin alert overrides the deprecated review template", a
     WHATSAPP_ACCESS_TOKEN: "test-token",
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111",
-    WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: "admin_order_review_v1",
+    WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: "__retired_template_sentinel__",
     WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5"
   });
   global.fetch = async (_url, options) => {
@@ -781,7 +821,7 @@ test("approved detailed admin alert overrides the deprecated review template", a
   ]);
 });
 
-test("staff quick replies lead to a redacted secure route review without booking", () => {
+test("legacy staff-review helper remains redacted and does not book delivery", () => {
   const previousSiteUrl = process.env.PUBLIC_SITE_URL;
   process.env.PUBLIC_SITE_URL = "https://bakeaholicbali.com";
   try {
@@ -959,15 +999,21 @@ test("admin diagnostics exercise every configured template without creating an o
   ]);
 });
 
-test("status templates select the paid confirmation for legacy settings", () => {
+test("status templates normalize retired order-received settings to payment confirmation", () => {
   const previous = process.env.WHATSAPP_ORDER_TEMPLATE_NAME;
-  process.env.WHATSAPP_ORDER_TEMPLATE_NAME = "order_received";
+  process.env.WHATSAPP_ORDER_TEMPLATE_NAME = "__retired_template_sentinel__";
   try {
     assert.equal(configuredWhatsappOrderTemplateName(whatsappOrder()), "payment_confirmed");
   } finally {
     if (previous === undefined) delete process.env.WHATSAPP_ORDER_TEMPLATE_NAME;
     else process.env.WHATSAPP_ORDER_TEMPLATE_NAME = previous;
   }
+});
+
+test("saved integration template names migrate to payment confirmation", () => {
+  assert.equal(normalizeWhatsappOrderTemplateName("order_status_update"), "payment_confirmed");
+  assert.equal(normalizeWhatsappOrderTemplateName("order_received"), "payment_confirmed");
+  assert.equal(normalizeWhatsappOrderTemplateName("payment_confirmed"), "payment_confirmed");
 });
 
 test("shipping notifications wait for a real Biteship booking", () => {

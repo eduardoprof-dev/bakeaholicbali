@@ -447,8 +447,14 @@ async function checkWhatsappCloudConfig() {
     adminDeliveryRecoveryTemplateName: process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME || "",
     adminDeliveryCompleteTemplateName: process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME || "",
     adminNumberConfigured: Boolean(process.env.WHATSAPP_ADMIN_NUMBER),
+    appSecretConfigured: Boolean(String(process.env.WHATSAPP_APP_SECRET || "").trim()),
     ok: false
   };
+
+  if (isProductionRuntime() && !result.appSecretConfigured) {
+    result.error = "WhatsApp app secret is required for production webhook signature verification";
+    return result;
+  }
 
   if (!token || !phoneNumberId) {
     result.error = "WhatsApp access token or phone number ID is missing";
@@ -1567,6 +1573,101 @@ async function sendVerifiedCustomerContactToStaff(message = {}) {
   }
 }
 
+function currentV5PaidOrderAction(message = {}) {
+  const matched = findStaffNotificationFromReply(message, "adminWhatsappNotifications");
+  if (!isCurrentStaffV5ContactReply(matched)) {
+    throw new Error("This action must be tapped on the current requesting staff member's v5 paid-order alert.");
+  }
+  const { order, notification, staffNumber } = matched;
+  if (order.status !== "paid" || order.payment?.status !== "paid" || order.fulfillment?.type !== "delivery") {
+    throw new Error("This v5 paid-order action is no longer available for the current order.");
+  }
+  if (!notification?.v5ApprovalSnapshot || !sameShipmentRequestSnapshot(notification.v5ApprovalSnapshot, shipmentRequestSnapshot(order))) {
+    throw new Error("The pickup, drop-off, items, or courier service changed after this alert. Review the order before acting.");
+  }
+  return { ...matched, order, notification, staffNumber };
+}
+
+function claimV5PaidOrderAction(order, message, action, staffNumber) {
+  const actionId = whatsappInboundActionKey(message, `v5-${action}`);
+  const actions = order.whatsappV5Actions || {};
+  if (actions[actionId]) {
+    return { actionId, replay: true, record: actions[actionId] };
+  }
+  const record = {
+    action,
+    orderId: order.id,
+    staffRecipient: maskedWhatsappNumber(staffNumber),
+    contextMessageId: String(message.context?.id || "").trim(),
+    claimedAt: new Date().toISOString(),
+    status: "processing"
+  };
+  order.whatsappV5Actions = { ...actions, [actionId]: record };
+  persistWhatsappNotificationClaim(order);
+  return { actionId, replay: false, record };
+}
+
+async function approveV5PaidOrderFromWhatsapp(message = {}) {
+  const initial = currentV5PaidOrderAction(message);
+  return withDeliveryRecoveryLock("live", initial.order.id, async () => {
+    const matched = currentV5PaidOrderAction(message);
+    const { order, notification, staffNumber } = matched;
+    if (order.fulfillment?.shipment?.orderId) throw new Error("A Biteship delivery is already active for this order.");
+    const claim = claimV5PaidOrderAction(order, message, "approve", staffNumber);
+    if (claim.replay) return { sent: false, skipped: true, reason: "already_claimed", orderId: order.id };
+    try {
+      // Reuse the exact route/items/service quoted for this alert. The live
+      // rate must remain acceptable before a single provider booking is made.
+      const liveRate = await fetchBiteshipRebookQuote(order, notification.v5ApprovalSnapshot);
+      const approved = await approveOrderForDelivery("live", order.id, {
+        role: "whatsapp_admin", name: `WhatsApp staff ${maskedWhatsappNumber(staffNumber)}`
+      });
+      const shipment = approved.fulfillment?.shipment || {};
+      if (!shipment.orderId) throw new Error("Biteship did not create a delivery booking.");
+      order.whatsappV5Actions[claim.actionId] = {
+        ...claim.record,
+        status: "completed",
+        completedAt: new Date().toISOString(),
+        shipmentId: shipment.orderId,
+        verifiedRate: liveRate
+      };
+      persistWhatsappNotificationClaim(order);
+      return { sent: true, orderId: order.id, shipmentId: shipment.orderId, shipmentStatus: shipment.status || "" };
+    } catch (error) {
+      order.whatsappV5Actions[claim.actionId] = { ...claim.record, status: "failed", failedAt: new Date().toISOString(), error: error.message };
+      persistWhatsappNotificationClaim(order);
+      throw error;
+    }
+  });
+}
+
+async function scheduleV5CancelFromWhatsapp(message = {}) {
+  const initial = currentV5PaidOrderAction(message);
+  return withDeliveryRecoveryLock("live", initial.order.id, async () => {
+    const { order, staffNumber } = currentV5PaidOrderAction(message);
+    if (order.fulfillment?.shipment?.orderId || order.adminPendingAction?.token) {
+      throw new Error("This order already has a delivery or governed action in progress.");
+    }
+    const claim = claimV5PaidOrderAction(order, message, "cancel", staffNumber);
+    if (claim.replay) return { sent: false, skipped: true, reason: "already_claimed", orderId: order.id };
+    try {
+      await scheduleAdminOrderAction("live", order.id, "cancel", staffNumber);
+      order.whatsappV5Actions[claim.actionId] = {
+        ...claim.record,
+        status: "undo_window",
+        undoToken: order.adminPendingAction?.token || "",
+        executeAt: order.adminPendingAction?.executeAt || ""
+      };
+      persistWhatsappNotificationClaim(order);
+      return { sent: true, orderId: order.id, undoToken: order.adminPendingAction?.token || "" };
+    } catch (error) {
+      order.whatsappV5Actions[claim.actionId] = { ...claim.record, status: "failed", failedAt: new Date().toISOString(), error: error.message };
+      persistWhatsappNotificationClaim(order);
+      throw error;
+    }
+  });
+}
+
 async function requestReplacementDriverFromWhatsapp(message = {}) {
   const matched = findStaffNotificationFromReply(message, "adminDeliveryRecoveryNotifications");
   if (!matched) throw new Error("Request new driver must be tapped on this staff member's verified recovery alert.");
@@ -2327,7 +2428,10 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
   order.adminWhatsappNotifications = {
     ...previousNotification,
     lastNotificationKey: eventKey,
-    queuedAt: new Date().toISOString()
+    queuedAt: new Date().toISOString(),
+    ...(String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim() === "admin_order_alert_v5"
+      ? { v5ApprovalSnapshot: shipmentRequestSnapshot(order) }
+      : {})
   };
   persistWhatsappNotificationClaim(order);
   try {
@@ -2365,6 +2469,12 @@ async function notifyShipmentUpdate(order, eventKey = "") {
     };
   }
   const shipment = order.fulfillment?.shipment || {};
+  if (!isShipmentAllocatedForMessaging(shipment)) {
+    return {
+      customer: { sent: false, skipped: true, reason: "courier_not_allocated" },
+      admin: { sent: false, skipped: true, reason: "courier_not_allocated" }
+    };
+  }
   if (!replacementTrackingNotificationReady(shipment)) {
     return {
       customer: { sent: false, skipped: true, reason: "replacement_courier_not_allocated" },
@@ -2382,6 +2492,11 @@ async function notifyShipmentUpdate(order, eventKey = "") {
   const customer = await maybeSendWhatsappShippingUpdate(order, customerKey);
   const admin = await maybeSendWhatsappShippingUpdate(order, shipmentKey, { admin: true });
   return { customer, admin };
+}
+
+function isShipmentAllocatedForMessaging(shipment = {}) {
+  return ["allocated", "accepted", "picking_up", "pickingup", "picked", "picked_up", "in_transit", "on_delivery", "delivered"]
+    .includes(normalizedShipmentStatus(shipment.status));
 }
 
 function shouldAlertAdminForBiteshipWebhook({ shipmentStatus = "", priceChanged = false } = {}) {
@@ -2593,7 +2708,7 @@ async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options 
 function verifyMetaWebhookSignature(request, rawBody) {
   const appSecret = String(process.env.WHATSAPP_APP_SECRET || "").trim();
   if (!appSecret) {
-    return true;
+    return !isProductionRuntime();
   }
 
   const signatureHeader = String(request.headers["x-hub-signature-256"] || "");
@@ -2603,6 +2718,11 @@ function verifyMetaWebhookSignature(request, rawBody) {
     .digest("hex")}`;
 
   return timingSafeEqualString(signatureHeader, expectedSignature);
+}
+
+function isProductionRuntime() {
+  return String(process.env.NODE_ENV || "").toLowerCase() === "production"
+    || String(process.env.RAILWAY_ENVIRONMENT || "").toLowerCase() === "production";
 }
 
 function incomingWhatsappMessages(payload) {
@@ -3038,21 +3158,15 @@ async function processWhatsappAdminCommand(message = {}) {
   }
   const cancelCommand = parseAdminCancelCommand(text);
   if (cancelCommand) {
-    cancelCommand.orderId = cancelCommand.orderId || orderIdFromWhatsappReplyContext(message);
-    const cancelOrderId = resolveAdminCommandOrderId(cancelCommand, ["paid", "preparing"]);
-    const order = findOrder("live", cancelOrderId);
-    await sendAdminOrderActionReview(order, "cancel", message.from);
-    return { handled: true, action: "cancel_review_required", orderId: order.id };
+    const result = await scheduleV5CancelFromWhatsapp(message);
+    return { handled: true, action: "cancel_undo_window", orderId: result.orderId || "", skipped: Boolean(result.skipped) };
   }
   const approveCommand = parseAdminApproveCommand(text);
   if (!approveCommand) {
     return { handled: false, reason: "not_approve_command" };
   }
-  approveCommand.orderId = approveCommand.orderId || orderIdFromWhatsappReplyContext(message);
-  const orderId = resolveAdminCommandOrderId(approveCommand, ["paid"]);
-  const order = findOrder("live", orderId);
-  await sendAdminOrderActionReview(order, "approve", message.from);
-  return { handled: true, action: "approve_review_required", orderId: order.id };
+  const result = await approveV5PaidOrderFromWhatsapp(message);
+  return { handled: true, action: "approve_delivery_requested", orderId: result.orderId || "", shipmentId: result.shipmentId || "", skipped: Boolean(result.skipped) };
 }
 
 async function processWhatsappWebhook(payload) {
@@ -3108,6 +3222,13 @@ function isPlaceholderValue(value = "") {
 
 function configuredValue(...values) {
   return values.find((value) => !isPlaceholderValue(value)) || "";
+}
+
+function normalizeWhatsappOrderTemplateName(value = "") {
+  const templateName = String(value || "").trim();
+  return ["order_status_update", "order_received"].includes(templateName)
+    ? "payment_confirmed"
+    : templateName;
 }
 
 function xenditKeyMode(value = "") {
@@ -3206,9 +3327,7 @@ function saveIntegrationSettings(input = {}) {
     whatsappAppSecret: secretValue("whatsappAppSecret"),
     whatsappGraphVersion: String(input.whatsappGraphVersion || "v22.0").trim() || "v22.0",
     whatsappOtpTemplateName: String(input.whatsappOtpTemplateName || "").trim(),
-    whatsappOrderTemplateName: String(input.whatsappOrderTemplateName || "").trim() === "order_status_update"
-      ? "order_received"
-      : String(input.whatsappOrderTemplateName || "").trim(),
+    whatsappOrderTemplateName: normalizeWhatsappOrderTemplateName(input.whatsappOrderTemplateName),
     whatsappReceiptTemplateName: String(input.whatsappReceiptTemplateName || "").trim(),
     whatsappPaymentReminderTemplateName: String(input.whatsappPaymentReminderTemplateName || "").trim(),
     whatsappPaymentExpiredTemplateName: String(input.whatsappPaymentExpiredTemplateName || "").trim(),
@@ -10182,6 +10301,8 @@ module.exports = {
   adminOrderReviewWhatsappParameters,
   adminWhatsappParameters,
   adminWhatsappNumbers,
+  isProductionRuntime,
+  isShipmentAllocatedForMessaging,
   applyXenditInvoiceStatusToOrder,
   applyXenditPaymentRequestStatusToOrder,
   applyXenditQrCodeStatusToOrder,
@@ -10222,6 +10343,7 @@ module.exports = {
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   normalizedShipmentStatus,
+  normalizeWhatsappOrderTemplateName,
   isRecoverableFailedShipmentStatus,
   shipmentHasObservedHandoff,
   providerStatusCanCompleteOrder,
@@ -10234,6 +10356,7 @@ module.exports = {
   sameShipmentRequestSnapshot,
   findStaffNotificationFromReply,
   isCurrentStaffV5ContactReply,
+  verifyMetaWebhookSignature,
   isContactCustomerCommand,
   isSupportedImageBuffer,
   metaAttributionFromRequest,
