@@ -1182,7 +1182,7 @@ function adminOrderReviewWhatsappParameters(order) {
   return [
     order.id,
     order.status === "paid"
-      ? "Stock and fulfilment review required"
+      ? "Approve delivery, contact customer, or cancel/refund in secure Admin"
       : "Order status review required"
   ];
 }
@@ -1253,12 +1253,14 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
     throw new Error("Admin WhatsApp number or template name is missing");
   }
 
+  const parameters = reviewTemplateName
+    ? adminOrderReviewWhatsappParameters(order)
+    : adminWhatsappParameters(order, eventLabel);
+
   const deliveries = await Promise.allSettled(adminNumbers.map((adminNumber) => sendWhatsappTemplateMessage(
     adminNumber,
     templateName,
-    reviewTemplateName
-      ? adminOrderReviewWhatsappParameters(order)
-      : adminWhatsappParameters(order, eventLabel),
+    parameters,
     {
       languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
       ...(reviewTemplateName ? {} : {
@@ -1290,6 +1292,8 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
     throw new Error(results.map((result) => result.error).filter(Boolean).join("; ") || "Admin WhatsApp delivery failed");
   }
   return {
+    templateName,
+    parameters,
     messages: deliveries.flatMap((delivery) => (
       delivery.status === "fulfilled" ? delivery.value?.messages || [] : []
     )),
@@ -1969,6 +1973,7 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
       ...order.adminWhatsappNotifications,
       lastNotificationKey: eventKey,
       lastSentAt: new Date().toISOString(),
+      templateName: messageResponse?.templateName || "",
       messageId: messageResponse?.messages?.[0]?.id || order.adminWhatsappNotifications?.messageId || "",
       recipients: messageResponse?.results || []
     };
@@ -3794,6 +3799,7 @@ function normalizeCustomerDetails(input = {}) {
     lastName,
     email: String(input.email || "").trim().toLowerCase(),
     phone: normalizePhoneNumber(input.phone),
+    verifiedPhone: formatIndonesianPhone(input.verifiedPhone),
     address: String(input.address || "").trim(),
     notes: String(input.notes || "").trim(),
     phoneVerifiedAt: String(input.phoneVerifiedAt || "").trim()
@@ -6976,6 +6982,9 @@ function enrichOrder(order, options = {}) {
     ...publicOrder,
     payment,
     ...(refund ? { refund } : {}),
+    ...(options.includeAdminCustomerWhatsappUrl
+      ? { whatsappUrl: adminCustomerWhatsappUrl(order) }
+      : {}),
     documentUrl: getPublicDocumentUrl(order),
     lineItems: order.items
       .map(({ itemId, quantity, components = [] }) => {
@@ -7049,6 +7058,23 @@ function buildWhatsappUrl(order) {
   lines.push(`Status: ${order.status}`);
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
+}
+
+function adminCustomerWhatsappUrl(order) {
+  let recipient = "";
+  try {
+    recipient = verifiedCustomerWhatsappNumber(order);
+  } catch (_error) {
+    return "";
+  }
+  const firstName = String(order?.customer?.firstName || order?.customer?.name || "there")
+    .trim()
+    .split(/\s+/)[0];
+  const message = [
+    `Hi ${firstName || "there"}, this is Bakeaholic Bali.`,
+    `We are contacting you about order ${String(order?.id || "").trim()}.`
+  ].join("\n");
+  return `https://wa.me/${recipient}?text=${encodeURIComponent(message)}`;
 }
 
 function customerOwnsOrder(session, order) {
@@ -8179,7 +8205,7 @@ function handleApi(requestUrl, request, response) {
     // immediately, then reconcile unresolved card payments in the background.
     sendJson(response, 200, {
       mode,
-      orders: storeState.orders.map((order) => enrichOrder(order))
+      orders: storeState.orders.map((order) => enrichOrder(order, { includeAdminCustomerWhatsappUrl: true }))
     });
     scheduleUnresolvedCardPaymentSweep(mode);
     return true;
@@ -9075,6 +9101,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  adminCustomerWhatsappUrl,
   adminPermissions,
   adminOrderReviewButtonQuery,
   adminOrderReviewWhatsappParameters,
@@ -9139,6 +9166,7 @@ module.exports = {
   hashAdminPassword,
   hashRecoveryCode,
   isCurrentCartMutationTimestamp,
+  normalizeCustomerDetails,
   generateRecoveryCodes,
   verifyAdminPassword,
   base32Encode,

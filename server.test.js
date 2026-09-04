@@ -3,6 +3,7 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const {
+  adminCustomerWhatsappUrl,
   adminPermissions,
   adminOrderReviewButtonQuery,
   adminOrderReviewWhatsappParameters,
@@ -60,6 +61,7 @@ const {
   hashAdminPassword,
   hashRecoveryCode,
   isCurrentCartMutationTimestamp,
+  normalizeCustomerDetails,
   generateRecoveryCodes,
   verifyAdminPassword,
   base32Encode,
@@ -212,6 +214,26 @@ test("customer WhatsApp templates use only the verified order owner, including a
     () => verifiedCustomerWhatsappNumber({ customer: { phone: "+62 811 222 3333" } }, []),
     /verified customer WhatsApp number is required/i
   );
+});
+
+test("checkout preserves the verified owner snapshot and Admin contact targets only that customer", () => {
+  const customer = normalizeCustomerDetails({
+    name: "Customer Example",
+    phone: "+62 811 222 3333",
+    verifiedPhone: "628112223333",
+    phoneVerifiedAt: "2026-09-04T08:51:58.948Z"
+  });
+  assert.equal(customer.verifiedPhone, "628112223333");
+
+  const contactUrl = new URL(adminCustomerWhatsappUrl({ id: "BAK-0147", customer }));
+  assert.equal(contactUrl.hostname, "wa.me");
+  assert.equal(contactUrl.pathname, "/628112223333");
+  assert.match(contactUrl.searchParams.get("text"), /Bakeaholic Bali/);
+  assert.match(contactUrl.searchParams.get("text"), /BAK-0147/);
+  assert.equal(adminCustomerWhatsappUrl({
+    id: "BAK-0148",
+    customer: { ...customer, verifiedPhone: "628999999999" }
+  }), "");
 });
 
 test("payment reminders preserve customer/staff roles, deduplicate retries, and stop after payment or cancellation", async () => {
@@ -613,7 +635,7 @@ test("secure order-review alerts exclude customer details and carry only the ord
   assert.equal(adminOrderReviewButtonQuery(order), "BAK-0106");
   assert.deepEqual(adminOrderReviewWhatsappParameters(order, "This input is deliberately ignored"), [
     "BAK-0106",
-    "Stock and fulfilment review required"
+    "Approve delivery, contact customer, or cancel/refund in secure Admin"
   ]);
   assert.doesNotMatch(JSON.stringify(adminOrderReviewWhatsappParameters(order, "Private Customer +6281234567890")), /Private Customer|6281234567890/);
 
@@ -641,7 +663,8 @@ test("secure order-review alerts exclude customer details and carry only the ord
   };
 
   try {
-    await sendWhatsappAdminAlert(order, "Stock review required");
+    const result = await sendWhatsappAdminAlert(order, "Stock review required");
+    assert.equal(result.templateName, "admin_order_review");
   } finally {
     global.fetch = previousFetch;
     for (const [key, value] of Object.entries({
@@ -657,7 +680,7 @@ test("secure order-review alerts exclude customer details and carry only the ord
 
   assert.equal(payload.template.name, "admin_order_review");
   const body = payload.template.components.find((component) => component.type === "body");
-  assert.deepEqual(body.parameters.map((parameter) => parameter.text), ["BAK-0106", "Stock and fulfilment review required"]);
+  assert.deepEqual(body.parameters.map((parameter) => parameter.text), ["BAK-0106", "Approve delivery, contact customer, or cancel/refund in secure Admin"]);
   assert.equal(payload.template.components.some((component) => component.type === "header"), false);
   const reviewButton = payload.template.components.find((component) => component.type === "button");
   assert.equal(reviewButton.sub_type, "url");
