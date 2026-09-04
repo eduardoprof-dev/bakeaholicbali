@@ -9,6 +9,8 @@ const {
   adminPermissions,
   adminOrderReviewButtonQuery,
   adminOrderReviewWhatsappParameters,
+  applyXenditInvoiceStatusToOrder,
+  applyXenditPaymentRequestStatusToOrder,
   applyXenditQrCodeStatusToOrder,
   applyXenditPaymentSessionStatusToOrder,
   applyXenditRefundStatusToOrder,
@@ -24,6 +26,7 @@ const {
   defaultSecurityHeaders,
   findOrderPaymentByXenditReference,
   hasBiteshipShipmentForMessaging,
+  isCurrentStaffV5ContactReply,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
   isFailedXenditPaymentEvent,
@@ -32,6 +35,7 @@ const {
   metaUserDataFromOrder,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,
+  paymentReminderFlowTimes,
   orderIdFromWhatsappReplyContext,
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
@@ -71,6 +75,7 @@ const {
   totpCode,
   verifyTotp,
   verifiedCustomerWhatsappNumber,
+  verifiedBiteshipDeliveryProofUrl,
   productionCookieDomain,
   serializeCookie,
   bundlePromotionIsActive,
@@ -220,6 +225,25 @@ test("provider delivered status cannot complete an order without observed courie
   assert.equal(providerStatusCanCompleteOrder({}, "picked_up"), true);
 });
 
+test("delivery proof redirect exposes only verified HTTPS provider proof", () => {
+  const order = {
+    fulfillment: {
+      shipment: {
+        deliveryProof: {
+          verified: true,
+          available: true,
+          images: ["https://proof.biteship.com/delivery-1.jpg", "http://unsafe.example/proof.jpg"],
+          signatureUrl: "https://proof.biteship.com/signature-1.png"
+        }
+      }
+    }
+  };
+  assert.equal(verifiedBiteshipDeliveryProofUrl(order), "https://proof.biteship.com/delivery-1.jpg");
+  assert.equal(verifiedBiteshipDeliveryProofUrl(order, 1), "https://proof.biteship.com/signature-1.png");
+  assert.equal(verifiedBiteshipDeliveryProofUrl(order, 2), "");
+  assert.equal(verifiedBiteshipDeliveryProofUrl({ fulfillment: { shipment: { deliveryProof: { ...order.fulfillment.shipment.deliveryProof, verified: false } } } }), "");
+});
+
 test("delivery recovery alerts are limited to verified recoverable courier states", () => {
   assert.equal(isDeliveryRecoveryStatus("cancelled"), true);
   assert.equal(isDeliveryRecoveryStatus("rejected"), true);
@@ -282,7 +306,7 @@ test("payment reminders preserve customer/staff roles, deduplicate retries, and 
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111,628222222222",
     WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: "payment_update_order",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v4"
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5"
   });
   global.fetch = async (_url, options) => {
     recipients.push(JSON.parse(options.body).to);
@@ -293,7 +317,7 @@ test("payment reminders preserve customer/staff roles, deduplicate retries, and 
     id: "BAK-ROLE-TEST",
     status: "awaiting_payment",
     customer: { phone: "628111111111", verifiedPhone: "628111111111", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
-    pricing: { total: 75000 },
+    pricing: { subtotal: 75000, deliveryFee: 0, tax: 0, discount: { amount: 0 }, total: 75000 },
     payment: {},
     receiptToken: "role-test-token"
   };
@@ -457,7 +481,7 @@ test("admin alerts fan out to all three configured recipients", async () => {
     WHATSAPP_ACCESS_TOKEN: "test-token",
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111, 628222222222;628333333333",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v4"
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5"
   });
   global.fetch = async (_url, options) => {
     const payload = JSON.parse(options.body);
@@ -652,6 +676,22 @@ test("WhatsApp quick replies resolve the order from each admin recipient message
   assert.equal(orderIdFromWhatsappReplyContext({}, orders), "");
 });
 
+test("Contact customer accepts only the current recipient-bound v5 quick reply", () => {
+  const now = Date.parse("2026-09-04T10:00:00.000Z");
+  const current = {
+    order: { id: "BAK-0134", status: "paid" },
+    recipient: { recipient: "628111111111", messageId: "wamid.current" },
+    staffNumber: "628111111111",
+    notification: { templateName: "admin_order_alert_v5", lastSentAt: "2026-09-04T09:55:00.000Z" }
+  };
+  assert.equal(isCurrentStaffV5ContactReply(current, now), true);
+  assert.equal(isCurrentStaffV5ContactReply({ ...current, notification: { ...current.notification, templateName: "legacy_template" } }, now), false);
+  assert.equal(isCurrentStaffV5ContactReply({ ...current, recipient: null }, now), false);
+  assert.equal(isCurrentStaffV5ContactReply({ ...current, staffNumber: "" }, now), false);
+  assert.equal(isCurrentStaffV5ContactReply({ ...current, notification: { ...current.notification, lastSentAt: "2026-09-04T09:49:59.000Z" } }, now), false);
+  assert.equal(isCurrentStaffV5ContactReply({ ...current, notification: { ...current.notification, lastSentAt: "2026-09-04T10:00:01.000Z" } }, now), false);
+});
+
 test("paid admin alert describes an unbooked delivery and required approval", () => {
   const parameters = adminWhatsappParameters({
     id: "BAK-0105",
@@ -698,7 +738,7 @@ test("approved detailed admin alert overrides the deprecated review template", a
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111",
     WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: "admin_order_review_v1",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v4"
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5"
   });
   global.fetch = async (_url, options) => {
     payload = JSON.parse(options.body);
@@ -711,7 +751,7 @@ test("approved detailed admin alert overrides the deprecated review template", a
 
   try {
     const result = await sendWhatsappAdminAlert(order, "Payment received - awaiting staff approval");
-    assert.equal(result.templateName, "admin_order_alert_v4");
+    assert.equal(result.templateName, "admin_order_alert_v5");
   } finally {
     global.fetch = previousFetch;
     for (const [key, value] of Object.entries({
@@ -726,7 +766,7 @@ test("approved detailed admin alert overrides the deprecated review template", a
     }
   }
 
-  assert.equal(payload.template.name, "admin_order_alert_v4");
+  assert.equal(payload.template.name, "admin_order_alert_v5");
   const body = payload.template.components.find((component) => component.type === "body");
   assert.equal(body.parameters.length, 9);
   assert.equal(body.parameters[1].text, "BAK-0106");
@@ -852,8 +892,8 @@ test("admin diagnostics exercise every configured template without creating an o
     WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: "payment_update_order",
     WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME: "order_cancelled_unpaid",
     WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME: "order_cancelled",
-    WHATSAPP_SHIPPING_TEMPLATE_NAME: "shipping_update",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v4",
+    WHATSAPP_SHIPPING_TEMPLATE_NAME: "shipping_update_v2",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5",
     WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update_v2",
     WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME: "admin_driver_cancelled_v1",
     WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME: "refund_completed",
@@ -897,8 +937,8 @@ test("admin diagnostics exercise every configured template without creating an o
     payment_update_order: 1,
     order_cancelled_unpaid: 1,
     order_cancelled: 1,
-    shipping_update: 4,
-    admin_order_alert_v4: 9,
+    shipping_update_v2: 4,
+    admin_order_alert_v5: 9,
     admin_driver_cancelled_v1: 4,
     admin_shipping_update_v2: 4,
     refund_completed: 3,
@@ -1094,6 +1134,48 @@ test("temporary inactive QRIS or VA status does not expire an active checkout", 
   assert.equal(isOrderPaymentWindowExpired({
     expiresAt: "2026-07-27T10:15:00.000Z"
   }, Date.parse("2026-07-27T10:15:00.000Z")), true);
+});
+
+test("unpaid lifecycle is exactly +2/+4/+5 minutes", () => {
+  const createdAt = "2026-09-04T00:00:00.000Z";
+  const flow = paymentReminderFlowTimes(createdAt);
+  assert.equal(flow.version, 2);
+  assert.equal(Date.parse(flow.firstReminderAt) - Date.parse(createdAt), 2 * 60 * 1000);
+  assert.equal(Date.parse(flow.secondReminderAt) - Date.parse(createdAt), 4 * 60 * 1000);
+  assert.equal(Date.parse(flow.expireAt) - Date.parse(createdAt), 5 * 60 * 1000);
+});
+
+test("late Xendit success is held for staff review across providers and stale expiry cannot reopen it", () => {
+  const lateOrder = (provider) => ({
+    id: `BAK-LATE-${provider}`,
+    status: "expired",
+    expiresAt: "2026-09-04T00:00:00.000Z",
+    customer: { phone: "6281234567890" },
+    items: [],
+    lineItems: [],
+    pricing: { subtotal: 75000, deliveryFee: 0, tax: 0, discount: { amount: 0 }, total: 75000 },
+    payment: { provider, status: "expired" },
+    fulfillment: { type: "delivery" }
+  });
+  const cases = [
+    ["xendit_invoice", applyXenditInvoiceStatusToOrder, { status: "PAID" }, { status: "EXPIRED" }],
+    ["xendit_qr_code", applyXenditQrCodeStatusToOrder, { status: "SUCCESS" }, { status: "EXPIRED" }],
+    ["xendit_virtual_account", applyXenditVirtualAccountStatusToOrder, { status: "PAID" }, { status: "EXPIRED" }],
+    ["xendit_payments_api", applyXenditPaymentRequestStatusToOrder, { status: "SUCCEEDED" }, { status: "EXPIRED" }],
+    ["xendit_components", applyXenditPaymentSessionStatusToOrder, { status: "COMPLETED" }, { status: "EXPIRED" }]
+  ];
+  for (const [provider, applyStatus, success, staleExpiry] of cases) {
+    const order = lateOrder(provider);
+    applyStatus(order, success);
+    assert.equal(order.status, "paid_late_review", provider);
+    assert.equal(order.payment.status, "paid", provider);
+    assert.equal(order.latePaymentReview.status, "manual_review_required", provider);
+    assert.match(order.latePaymentReview.message, /Do not prepare or book delivery/i, provider);
+    assert.equal(order.fulfillment.shipment, undefined, provider);
+    applyStatus(order, staleExpiry);
+    assert.equal(order.status, "paid_late_review", `${provider} stale expiry`);
+    assert.equal(order.payment.status, "paid", `${provider} stale expiry`);
+  }
 });
 
 test("inactive QRIS and VA instruments remain payable until the checkout expires", () => {

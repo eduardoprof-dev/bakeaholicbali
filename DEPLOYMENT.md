@@ -47,7 +47,7 @@ Optional but recommended for live messaging:
 - `WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME=order_cancelled`
 - `WHATSAPP_SHIPPING_TEMPLATE_NAME=...`
 - `WHATSAPP_ADMIN_NUMBER=...`
-- `WHATSAPP_ADMIN_TEMPLATE_NAME=admin_order_alert_v4`
+- `WHATSAPP_ADMIN_TEMPLATE_NAME=admin_order_alert_v5`
 - `WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME=admin_shipping_update_v2`
 - `WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME=admin_driver_cancelled_v1`
 - `WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME=admin_delivery_complete_v1`
@@ -55,7 +55,7 @@ Optional but recommended for live messaging:
 - `WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME=admin_refund_update`
 - `WHATSAPP_TEMPLATE_LANGUAGE=en`
 
-`admin_order_alert_v4` replaces the legacy paid-order alert. It keeps the established nine body variables: event/status, order ID, safe customer-details notice, safe alert-privacy notice, total, payment method, delivery status, invoice URL, and action text. It has exactly three quick replies in this visible order: `Approve`, `Contact customer`, `Cancel`; map their payloads to `APPROVE BAK-0001`, `CONTACT_CUSTOMER`, and `CANCEL BAK-0001`. Do not configure a URL button and do not use the rejected `admin_order_alert_v3` contract. On Contact customer, the app accepts only a reply from the configured staff recipient to that recipient's exact v4 message, then sends that staff recipient alone a Cloud API contact card for the OTP-verified order owner (or a staff-only `wa.me` session link if contact cards are unsupported).
+`admin_order_alert_v5` replaces the legacy paid-order alert. It keeps the established nine body variables: event/status, order ID, safe customer-details notice, safe alert-privacy notice, total, payment method, delivery status, invoice URL, and action text. It has exactly three quick replies in this visible order: `Approve`, `Contact customer`, `Cancel`; map their payloads to `APPROVE BAK-0001`, `CONTACT_CUSTOMER`, and `CANCEL BAK-0001`. Do not configure a URL button and do not use the rejected `admin_order_alert_v3` contract. On Contact customer, the app accepts only a reply from the configured staff recipient to that recipient's exact v5 message, then sends that staff recipient alone a Cloud API contact card for the OTP-verified order owner (or a staff-only `wa.me` session link if contact cards are unsupported).
 
 Customer payment reminders should use the app's WhatsApp templates. The payment reminder template button should point to `https://bakeaholicbali.com/pay.html?ref={{1}}`; the app sends a secure order reference so customers land on the Bakeaholic waiting-payment page first. Receipt buttons should point to `https://bakeaholicbali.com/invoice.html?ref={{1}}`.
 
@@ -72,12 +72,16 @@ For `shipping_update_v2` and `admin_shipping_update_v2`, use their established f
 
 `refund_completed` is sent to the verified order owner only after the authenticated Xendit refund callback reaches `processed`; a pending/requested refund never sends it. `admin_refund_update` is sent to staff for the same processed terminal event or a terminal failure.
 
-Daily delivery approval can start from WhatsApp. The v4 Approve reply resolves the clicked alert and sends the requesting staff member to a redacted secure pickup/drop-off review; it does not create a driver. Cancel similarly opens the controlled refund review. Explicit `APPROVE BAK-0001` and `CANCEL BAK-0001` remain context-checked staff commands. Repeated actions are rejected by saved order state.
+The unpaid payment window is provider-aligned at +5 minutes, with reminders at +2 and +4 minutes. If Xendit reports a successful capture after local expiry/cancellation, the order is retained as `paid_late_review` for staff, with payment truth and audit preserved; it never reopens fulfillment, clears the already-expired cart again, or books delivery automatically. Use the governed refund workflow where appropriate.
+
+Admin delivery proof is never included in customer responses. Orders staff can open only an authenticated, no-store Admin proof redirect; it resolves solely a stored, verified HTTPS Biteship proof URL and otherwise shows the explicit unavailable state.
+
+Daily delivery approval can start from WhatsApp. The v5 Approve reply resolves the clicked alert and sends the requesting staff member to a redacted secure pickup/drop-off review; it does not create a driver. Cancel similarly opens the controlled refund review. Explicit `APPROVE BAK-0001` and `CANCEL BAK-0001` remain context-checked staff commands. Repeated actions are rejected by saved order state.
 
 ## Lifecycle template migration order
 
-1. In Meta, use submitted `admin_driver_cancelled_v1` (ID `28967992756135901`) and obtain approval for `admin_order_alert_v4`, `shipping_update_v2`, `admin_shipping_update_v2`, and `admin_delivery_complete_v1` with the contracts above. Keep `admin_order_alert_v3` unused.
-2. Set the listed environment values, including refund templates, on the release candidate. Do not enable a URL button on v4 or recovery v3.
+1. In Meta, use submitted `admin_driver_cancelled_v1` (ID `28967992756135901`) and obtain approval for `admin_order_alert_v5`, `shipping_update_v2`, `admin_shipping_update_v2`, and `admin_delivery_complete_v1` with the contracts above. Keep `admin_order_alert_v3` unused.
+2. Set the listed environment values, including refund templates, on the release candidate. Do not enable a URL button on v5 or on `admin_driver_cancelled_v1`.
 3. Deploy the tested code once. Existing unpaid reminder records are versioned to the +2/+4/+5-minute schedule; old persisted 60-second staff-action records are not rescheduled at startup.
 4. Verify authenticated webhook health and the templates' Meta approval before any resend. Never use diagnostics/resends to create a shipment, customer contact, cancellation, refund, or payment change.
 

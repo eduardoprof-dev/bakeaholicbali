@@ -355,6 +355,10 @@ const integrationFields = {
   whatsappAdminNumber3: document.getElementById("whatsappAdminNumber3Input"),
   whatsappAdminTemplateName: document.getElementById("whatsappAdminTemplateNameInput"),
   whatsappAdminShippingTemplateName: document.getElementById("whatsappAdminShippingTemplateNameInput"),
+  whatsappAdminDeliveryRecoveryTemplateName: document.getElementById("whatsappAdminDeliveryRecoveryTemplateNameInput"),
+  whatsappAdminDeliveryCompleteTemplateName: document.getElementById("whatsappAdminDeliveryCompleteTemplateNameInput"),
+  whatsappRefundCompletedTemplateName: document.getElementById("whatsappRefundCompletedTemplateNameInput"),
+  whatsappAdminRefundTemplateName: document.getElementById("whatsappAdminRefundTemplateNameInput"),
   whatsappTemplateLanguage: document.getElementById("whatsappTemplateLanguageInput")
 };
 const secretIntegrationKeys = new Set([
@@ -1197,6 +1201,20 @@ function renderAdminOrders() {
       : order.fulfillment?.shipmentError
         ? order.fulfillment.shipmentError
         : "Not requested yet";
+    // Proof is provider-verified before it is stored. Do not surface Biteship's
+    // raw payload here: staff need only an authenticated HTTPS proof link (or a
+    // clear absence), not untrusted driver/customer metadata.
+    const deliveryProofAvailable = Boolean(order.fulfillment?.shipment?.deliveryProofAvailable);
+    const deliveryProofDetails = order.fulfillment?.shipment?.orderId
+      ? `
+        <div class="admin-delivery-note">
+          <strong>Official delivery proof</strong><br>
+          ${deliveryProofAvailable
+            ? `<a href="/api/admin/orders/${encodeURIComponent(order.id)}/delivery-proof" target="_blank" rel="noopener noreferrer">Open verified Biteship proof</a>`
+            : "No verified provider proof is available yet."}
+        </div>
+      `
+      : "";
     const notificationErrors = [
       order.whatsappShippingNotificationError ? `Customer shipping WhatsApp: ${order.whatsappShippingNotificationError}` : "",
       order.adminWhatsappShippingNotificationError ? `Admin shipping WhatsApp: ${order.adminWhatsappShippingNotificationError}` : "",
@@ -1282,6 +1300,7 @@ function renderAdminOrders() {
             <small>${escapeHtml(shipmentText)}</small>
           </div>
         </div>
+        ${deliveryProofDetails}
         ${canApprove ? `
           <div class="admin-delivery-note">
             <strong>Driver route to verify before requesting</strong><br>
@@ -2437,6 +2456,10 @@ async function saveIntegrations() {
       ].map((value) => value.trim()).filter(Boolean).slice(0, 3).join(","),
       whatsappAdminTemplateName: integrationFields.whatsappAdminTemplateName.value.trim(),
       whatsappAdminShippingTemplateName: integrationFields.whatsappAdminShippingTemplateName.value.trim(),
+      whatsappAdminDeliveryRecoveryTemplateName: integrationFields.whatsappAdminDeliveryRecoveryTemplateName.value.trim(),
+      whatsappAdminDeliveryCompleteTemplateName: integrationFields.whatsappAdminDeliveryCompleteTemplateName.value.trim(),
+      whatsappRefundCompletedTemplateName: integrationFields.whatsappRefundCompletedTemplateName.value.trim(),
+      whatsappAdminRefundTemplateName: integrationFields.whatsappAdminRefundTemplateName.value.trim(),
       whatsappTemplateLanguage: integrationFields.whatsappTemplateLanguage.value.trim()
     };
     const response = await request("/api/admin/integrations", {
