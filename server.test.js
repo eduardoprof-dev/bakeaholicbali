@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const vm = require("node:vm");
+const path = require("node:path");
 
 const {
   addressArea,
@@ -22,6 +23,7 @@ const {
   adminWhatsappNumbers,
   approveV5PaidOrderFromWhatsapp,
   isProductionRuntime,
+  isPublicStaticFile,
   isShipmentAllocatedForMessaging,
   availablePaymentMethods,
   configuredWhatsappOrderTemplateName,
@@ -134,6 +136,11 @@ test("fixed customer receipts are one A5 PDF page for standard and longer orders
     assert.match(pdf, /BAK-0147/);
     assert.match(pdf, new RegExp(`flavour ${lineCount}`));
   }
+});
+
+test("A5 invoice print stylesheet is publicly served with the invoice", () => {
+  assert.equal(isPublicStaticFile(path.join(process.cwd(), "invoice-print.css")), true);
+  assert.equal(isPublicStaticFile(path.join(process.cwd(), ".env")), false);
 });
 
 test("five-day mix-and-match promotion applies across flavours and then expires", () => {
