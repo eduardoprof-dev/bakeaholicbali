@@ -1011,6 +1011,7 @@ test("admin diagnostics exercise every configured template without creating an o
     "WHATSAPP_ADMIN_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME",
     "WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME",
     "WHATSAPP_TEMPLATE_LANGUAGE"
@@ -1031,6 +1032,7 @@ test("admin diagnostics exercise every configured template without creating an o
     WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5",
     WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update_v2",
     WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME: "admin_driver_cancelled_v1",
+    WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME: "admin_delivery_complete_v1",
     WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME: "refund_completed",
     WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME: "admin_refund_update",
     WHATSAPP_TEMPLATE_LANGUAGE: "en_US"
@@ -1059,7 +1061,7 @@ test("admin diagnostics exercise every configured template without creating an o
   assert.equal(diagnostic.synthetic, true);
   assert.equal(diagnostic.charged, false);
   assert.equal(diagnostic.orderCreated, false);
-  assert.equal(payloads.length, 13);
+  assert.equal(payloads.length, 14);
   const bodyCounts = Object.fromEntries(payloads.map((payload) => {
     const body = payload.template.components?.find((component) => component.type === "body");
     return [payload.template.name, body?.parameters?.length || 0];
@@ -1075,6 +1077,7 @@ test("admin diagnostics exercise every configured template without creating an o
     shipping_update_v2: 4,
     admin_order_alert_v5: 9,
     admin_driver_cancelled_v1: 4,
+    admin_delivery_complete_v1: 3,
     admin_shipping_update_v2: 4,
     refund_completed: 3,
     admin_refund_update: 4
@@ -1092,6 +1095,17 @@ test("admin diagnostics exercise every configured template without creating an o
   assert.deepEqual(driverCancelledPayload.template.components.filter((component) => component.type === "button").map((button) => [button.index, button.sub_type, button.parameters[0].payload]), [
     ["0", "quick_reply", "REQUEST_NEW_DRIVER"]
   ]);
+  for (const templateName of ["payment_receipt", "payment_update_order", "order_cancelled_unpaid", "shipping_update_v2", "refund_completed"]) {
+    const payload = payloads.find((item) => item.template.name === templateName);
+    const button = payload.template.components.find((component) => component.type === "button" && component.sub_type === "url");
+    assert.equal(button.parameters.length, 1);
+    assert.equal(button.parameters[0].type, "text");
+    assert.match(button.parameters[0].text, /^[a-f0-9]{36}$/);
+  }
+  const deliveryCompletePayload = payloads.find((payload) => payload.template.name === "admin_delivery_complete_v1");
+  const deliveryCompleteButton = deliveryCompletePayload.template.components.find((component) => component.type === "button" && component.sub_type === "url");
+  assert.deepEqual(deliveryCompleteButton.parameters.map((parameter) => parameter.type), ["text"]);
+  assert.match(deliveryCompleteButton.parameters[0].text, /^WA-TEST-/);
 });
 
 test("status templates normalize retired order-received settings to payment confirmation", () => {

@@ -622,7 +622,7 @@ async function runWhatsappTemplateDiagnostics() {
         languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
         headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
         headerDocumentFilename: `${order.id}-payment-receipt.pdf`,
-        urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: order.receiptToken }] }]
+        urlButtonParameters: [{ index: "0", text: order.receiptToken }]
       })
     },
     {
@@ -630,7 +630,7 @@ async function runWhatsappTemplateDiagnostics() {
       templateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME,
       send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME, paymentReminderWhatsappParameters(order), {
         languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-        urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: order.receiptToken }] }]
+        urlButtonParameters: [{ index: "0", text: order.receiptToken }]
       })
     },
     {
@@ -638,7 +638,7 @@ async function runWhatsappTemplateDiagnostics() {
       templateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME,
       send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME, paymentExpiredWhatsappParameters(order), {
         languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-        urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: order.receiptToken }] }]
+        urlButtonParameters: [{ index: "0", text: order.receiptToken }]
       })
     },
     {
@@ -651,7 +651,7 @@ async function runWhatsappTemplateDiagnostics() {
       templateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME,
       send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME, customerShippingWhatsappParameters(order), {
         languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-        urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: order.receiptToken }] }]
+        urlButtonParameters: [{ index: "0", text: order.receiptToken }]
       })
     },
     {
@@ -670,6 +670,16 @@ async function runWhatsappTemplateDiagnostics() {
       )
     },
     {
+      key: "admin_delivery_complete",
+      templateName: process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME,
+      send: () => sendWhatsappTemplateMessage(
+        recipient,
+        process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME,
+        adminDeliveryCompleteWhatsappParameters(order),
+        { languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en", urlButtonParameters: [{ index: "0", text: adminOrderReviewButtonQuery(order) }] }
+      )
+    },
+    {
       key: "admin_shipping",
       templateName: process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME,
       send: () => sendWhatsappShippingUpdate(order, { admin: true })
@@ -679,7 +689,7 @@ async function runWhatsappTemplateDiagnostics() {
       templateName: process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "refund_completed",
       send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "refund_completed", refundWhatsappParameters(order), {
         languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-        urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: order.receiptToken }] }]
+        urlButtonParameters: [{ index: "0", text: order.receiptToken }]
       })
     },
     {
