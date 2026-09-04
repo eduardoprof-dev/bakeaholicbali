@@ -53,6 +53,7 @@ const {
   isRecoverableFailedShipmentStatus,
   replacementTrackingNotificationReady,
   assertDeliveryRecoveryRequest,
+  shipmentRequestSnapshot,
   xenditPaymentAmount,
   xenditOrderReferenceIds,
   xenditQrExternalIds,
@@ -281,7 +282,7 @@ test("payment reminders preserve customer/staff roles, deduplicate retries, and 
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111,628222222222",
     WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: "payment_update_order",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2"
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v4"
   });
   global.fetch = async (_url, options) => {
     recipients.push(JSON.parse(options.body).to);
@@ -333,12 +334,17 @@ test("payment reminders preserve customer/staff roles, deduplicate retries, and 
 
 test("delivery recovery accepts only the exact failed shipment and a replay-safe action ID", () => {
   const order = {
-    status: "delivery_issue",
+    status: "preparing",
+    payment: { status: "paid" },
+    pricing: { deliveryFee: 10000, shipping: { total: 10000 } },
+    customer: { address: "Customer road", phone: "6281234567890" },
     fulfillment: {
       type: "delivery",
+      address: "Customer road", location: { lat: -8.6, lng: 115.2 },
       shipment: { orderId: "ship-failed-1", status: "courier_not_found" }
     }
   };
+  order.fulfillment.shipment.requestSnapshot = shipmentRequestSnapshot(order);
   assert.equal(
     assertDeliveryRecoveryRequest(order, "ship-failed-1", "recovery_action_123456"),
     "ship-failed-1"
@@ -451,7 +457,7 @@ test("admin alerts fan out to all three configured recipients", async () => {
     WHATSAPP_ACCESS_TOKEN: "test-token",
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111, 628222222222;628333333333",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2"
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v4"
   });
   global.fetch = async (_url, options) => {
     const payload = JSON.parse(options.body);
@@ -692,7 +698,7 @@ test("approved detailed admin alert overrides the deprecated review template", a
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111",
     WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: "admin_order_review_v1",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2"
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v4"
   });
   global.fetch = async (_url, options) => {
     payload = JSON.parse(options.body);
@@ -705,7 +711,7 @@ test("approved detailed admin alert overrides the deprecated review template", a
 
   try {
     const result = await sendWhatsappAdminAlert(order, "Payment received - awaiting staff approval");
-    assert.equal(result.templateName, "admin_order_alert_v2");
+    assert.equal(result.templateName, "admin_order_alert_v4");
   } finally {
     global.fetch = previousFetch;
     for (const [key, value] of Object.entries({
@@ -720,17 +726,18 @@ test("approved detailed admin alert overrides the deprecated review template", a
     }
   }
 
-  assert.equal(payload.template.name, "admin_order_alert_v2");
+  assert.equal(payload.template.name, "admin_order_alert_v4");
   const body = payload.template.components.find((component) => component.type === "body");
   assert.equal(body.parameters.length, 9);
   assert.equal(body.parameters[1].text, "BAK-0106");
-  assert.equal(body.parameters[2].text, "Verified Customer");
-  assert.equal(body.parameters[3].text, "+6281234567890");
+  assert.equal(body.parameters[2].text, "Customer details available by quick reply");
+  assert.equal(body.parameters[3].text, "Verified order owner only");
   assert.equal(payload.template.components.some((component) => component.type === "header"), false);
   const buttons = payload.template.components.filter((component) => component.type === "button");
   assert.deepEqual(buttons.map((button) => [button.index, button.sub_type, button.parameters[0].payload]), [
     ["0", "quick_reply", "APPROVE BAK-0106"],
-    ["1", "quick_reply", "CANCEL BAK-0106"]
+    ["1", "quick_reply", "CONTACT_CUSTOMER"],
+    ["2", "quick_reply", "CANCEL BAK-0106"]
   ]);
 });
 
@@ -828,6 +835,7 @@ test("admin diagnostics exercise every configured template without creating an o
     "WHATSAPP_SHIPPING_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME",
     "WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME",
     "WHATSAPP_TEMPLATE_LANGUAGE"
@@ -845,8 +853,9 @@ test("admin diagnostics exercise every configured template without creating an o
     WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME: "order_cancelled_unpaid",
     WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME: "order_cancelled",
     WHATSAPP_SHIPPING_TEMPLATE_NAME: "shipping_update",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2",
-    WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v4",
+    WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update_v2",
+    WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME: "admin_driver_cancelled_v1",
     WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME: "refund_completed",
     WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME: "admin_refund_update",
     WHATSAPP_TEMPLATE_LANGUAGE: "en_US"
@@ -875,31 +884,39 @@ test("admin diagnostics exercise every configured template without creating an o
   assert.equal(diagnostic.synthetic, true);
   assert.equal(diagnostic.charged, false);
   assert.equal(diagnostic.orderCreated, false);
-  assert.equal(payloads.length, 16);
+  assert.equal(payloads.length, 13);
   const bodyCounts = Object.fromEntries(payloads.map((payload) => {
     const body = payload.template.components?.find((component) => component.type === "body");
     return [payload.template.name, body?.parameters?.length || 0];
   }));
   assert.deepEqual(bodyCounts, {
     otp_verification: 1,
-    payment_pending: 0,
-    order_received: 0,
-    order_preparing: 0,
     payment_confirmed: 0,
-    order_shipped: 0,
     order_delivered: 0,
     payment_receipt: 2,
     payment_update_order: 1,
     order_cancelled_unpaid: 1,
     order_cancelled: 1,
     shipping_update: 4,
-    admin_order_alert_v2: 9,
-    admin_shipping_update: 4,
+    admin_order_alert_v4: 9,
+    admin_driver_cancelled_v1: 4,
+    admin_shipping_update_v2: 4,
     refund_completed: 3,
     admin_refund_update: 4
   });
-  const preparingPayload = payloads.find((payload) => payload.template.name === "order_preparing");
-  assert.equal(preparingPayload.template.components, undefined);
+  assert.equal(payloads.some((payload) => payload.template.name === "order_preparing"), false);
+  const driverCancelledPayload = payloads.find((payload) => payload.template.name === "admin_driver_cancelled_v1");
+  const driverCancelledParameters = driverCancelledPayload.template.components.find((component) => component.type === "body").parameters.map((parameter) => parameter.text);
+  assert.equal(driverCancelledParameters.length, 4);
+  assert.match(driverCancelledParameters[0], /^WA-TEST-/);
+  assert.deepEqual(driverCancelledParameters.slice(1), [
+    "Template Test Courier",
+    "bakeaholic-template-test",
+    "Biteship courier_not_found before pickup/handoff"
+  ]);
+  assert.deepEqual(driverCancelledPayload.template.components.filter((component) => component.type === "button").map((button) => [button.index, button.sub_type, button.parameters[0].payload]), [
+    ["0", "quick_reply", "REQUEST_NEW_DRIVER"]
+  ]);
 });
 
 test("status templates select the paid confirmation for legacy settings", () => {

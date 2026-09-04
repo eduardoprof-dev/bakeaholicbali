@@ -300,10 +300,15 @@ function writeEnvMap(targetPath, envMap) {
     "WHATSAPP_RECEIPT_TEMPLATE_NAME",
     "WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME",
     "WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME",
+    "WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME",
     "WHATSAPP_SHIPPING_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_NUMBER",
     "WHATSAPP_ADMIN_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME",
+    "WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME",
     "WHATSAPP_TEMPLATE_LANGUAGE"
   ];
   const writtenKeys = new Set();
@@ -365,10 +370,15 @@ function getEnvironmentIntegrationConfig() {
     whatsappReceiptTemplateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME || "",
     whatsappPaymentReminderTemplateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME || "",
     whatsappPaymentExpiredTemplateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME || "",
+    whatsappOrderCancelledTemplateName: process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME || "",
     whatsappShippingTemplateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || "",
     whatsappAdminNumber: process.env.WHATSAPP_ADMIN_NUMBER || "",
     whatsappAdminTemplateName: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "",
     whatsappAdminShippingTemplateName: process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || "",
+    whatsappRefundCompletedTemplateName: process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "",
+    whatsappAdminRefundTemplateName: process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME || "",
+    whatsappAdminDeliveryRecoveryTemplateName: process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME || "",
+    whatsappAdminDeliveryCompleteTemplateName: process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME || "",
     whatsappTemplateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en"
   };
 }
@@ -426,9 +436,16 @@ async function checkWhatsappCloudConfig() {
     orderTemplateName: process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "",
     otpTemplateName: process.env.WHATSAPP_OTP_TEMPLATE_NAME || "",
     receiptTemplateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME || "",
+    paymentReminderTemplateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME || "",
+    paymentExpiredTemplateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME || "",
+    orderCancelledTemplateName: process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME || "",
     shippingTemplateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || "",
     adminTemplateName: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "",
     adminShippingTemplateName: process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || "",
+    refundCompletedTemplateName: process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "",
+    adminRefundTemplateName: process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME || "",
+    adminDeliveryRecoveryTemplateName: process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME || "",
+    adminDeliveryCompleteTemplateName: process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME || "",
     adminNumberConfigured: Boolean(process.env.WHATSAPP_ADMIN_NUMBER),
     ok: false
   };
@@ -583,29 +600,9 @@ async function runWhatsappTemplateDiagnostics() {
       send: () => sendWhatsappOtpCode(recipient, "123456")
     },
     {
-      key: "payment_pending",
-      templateName: "payment_pending",
-      send: () => sendWhatsappTemplateMessage(recipient, "payment_pending", [], orderUpdateWhatsappOptions(order, "payment_pending"))
-    },
-    {
-      key: "order_received",
-      templateName: "order_received",
-      send: () => sendWhatsappTemplateMessage(recipient, "order_received", [], orderUpdateWhatsappOptions(order, "order_received"))
-    },
-    {
-      key: "order_preparing",
-      templateName: "order_preparing",
-      send: () => sendWhatsappTemplateMessage(recipient, "order_preparing", [], orderUpdateWhatsappOptions(order, "order_preparing"))
-    },
-    {
       key: "payment_confirmed",
       templateName: "payment_confirmed",
       send: () => sendWhatsappTemplateMessage(recipient, "payment_confirmed", [], { languageCode: "en" })
-    },
-    {
-      key: "order_shipped",
-      templateName: "order_shipped",
-      send: () => sendWhatsappTemplateMessage(recipient, "order_shipped", [], orderUpdateWhatsappOptions(order, "order_shipped"))
     },
     {
       key: "order_delivered",
@@ -655,6 +652,16 @@ async function runWhatsappTemplateDiagnostics() {
       key: "admin_alert",
       templateName: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME,
       send: () => sendWhatsappAdminAlert(order, "WhatsApp template diagnostic - no live order")
+    },
+    {
+      key: "admin_driver_cancelled",
+      templateName: process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME,
+      send: () => sendWhatsappTemplateMessage(
+        recipient,
+        process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME,
+        adminDriverCancelledWhatsappParameters(order, "courier_not_found"),
+        { languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en", quickReplyButtons: [{ payload: "REQUEST_NEW_DRIVER" }] }
+      )
     },
     {
       key: "admin_shipping",
@@ -956,6 +963,36 @@ async function sendWhatsappTextMessage(to, bodyText = "") {
   return parsed;
 }
 
+// Cloud API contact cards are deliberately addressed to the requesting staff
+// member, never to the customer. A contact card gives that staff member the
+// native WhatsApp Message action without misusing Call on WhatsApp.
+async function sendWhatsappContactCard(to, customerPhone, customerName, orderId) {
+  if (!isWhatsappCloudReady()) throw new Error("WhatsApp Cloud API is not configured");
+  const recipient = formatIndonesianPhone(to);
+  const contactPhone = formatIndonesianPhone(customerPhone);
+  if (!recipient || !contactPhone) throw new Error("A verified staff recipient and customer WhatsApp number are required");
+  const response = await fetch(whatsappMessagesUrl(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: recipient,
+      type: "contacts",
+      contacts: [{
+        name: {
+          formatted_name: `${String(customerName || "Customer").trim()} — ${String(orderId || "order").trim()}`,
+          first_name: String(customerName || "Customer").trim().split(/\s+/)[0] || "Customer"
+        },
+        phones: [{ phone: contactPhone, type: "CELL", wa_id: contactPhone }]
+      }]
+    })
+  });
+  const responseText = await response.text();
+  const parsed = parseJsonSafely(responseText, {});
+  if (!response.ok) throw new Error(parsed?.error?.message || `WhatsApp contact card failed with status ${response.status}`);
+  return parsed;
+}
+
 async function sendWhatsappOtpCode(phone, code) {
   const templateName = String(process.env.WHATSAPP_OTP_TEMPLATE_NAME || "").trim();
   if (!templateName) {
@@ -1097,51 +1134,28 @@ function whatsappDocumentAttachmentUrl(url = "") {
 
 function defaultWhatsappOrderTemplateName(order) {
   const statusTemplates = {
-    awaiting_payment: "payment_pending",
     paid: "payment_confirmed",
-    preparing: "order_preparing",
-    on_delivery: "order_shipped",
-    shipped: "order_shipped",
     delivered: "order_delivered",
     complete: "order_delivered"
   };
   if (order.status === "cancelled") {
     return String(process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME || "order_cancelled").trim();
   }
-  return statusTemplates[order.status] || "order_received";
+  return statusTemplates[order.status] || "";
 }
 
 function configuredWhatsappOrderTemplateName(order) {
   const templateName = String(process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "").trim();
-  // Status-specific templates are the source of truth. Older installs may still
-  // carry the original generic `order_received` setting, which is not suitable
-  // for the paid confirmation.
-  if (
-    order.status !== "paid"
-    || !templateName
-    || templateName === "order_status_update"
-    || templateName === "order_received"
-  ) {
-    return defaultWhatsappOrderTemplateName(order);
+  if (order.status === "paid") {
+    // The owner has made payment_confirmed authoritative. Never let a legacy
+    // order-received/preparing template stand in for a verified payment event.
+    return templateName === "payment_confirmed" ? templateName : "payment_confirmed";
   }
-  return templateName;
+  return defaultWhatsappOrderTemplateName(order);
 }
 
 function orderUpdateWhatsappOptions(order, templateName) {
-  const dynamicButtonTemplates = new Set([
-    "payment_pending",
-    "order_received",
-    "order_shipped"
-  ]);
   const options = { languageCode: "en" };
-  if (dynamicButtonTemplates.has(templateName)) {
-    options.urlButtonParameters = [{
-      index: "0",
-      text: templateName === "payment_pending"
-        ? publicOrderButtonQuery(order)
-        : publicDocumentButtonQuery(order)
-    }];
-  }
   return options;
 }
 
@@ -1159,23 +1173,77 @@ async function sendWhatsappOrderUpdate(order) {
   return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, parameters, orderUpdateWhatsappOptions(order, templateName));
 }
 
-function adminWhatsappParameters(order, eventLabel = "") {
+async function maybeSendWhatsappPaymentConfirmed(order, eventKey = "") {
+  const key = String(eventKey || `order:${order?.id || "unknown"}:payment-confirmed`).trim();
+  const templateName = configuredWhatsappOrderTemplateName(order || {});
+  const previous = order?.whatsappPaymentConfirmedNotification;
+  const skipReason = (() => {
+    if (order?.status !== "paid") return "order_not_paid";
+    if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
+    if (templateName !== "payment_confirmed") return "payment_confirmed_template_not_configured";
+    if (previous?.claimedAt || previous?.lastSentAt) return "already_claimed";
+    return "";
+  })();
+  if (skipReason) return { sent: false, skipped: true, reason: skipReason };
+
+  const claimedAt = new Date().toISOString();
+  order.whatsappPaymentConfirmedNotification = {
+    lastNotificationKey: key,
+    templateName,
+    claimedAt
+  };
+  persistWhatsappNotificationClaim(order);
+  try {
+    const recipient = verifiedCustomerWhatsappNumber(order);
+    const response = await sendWhatsappOrderUpdate(order);
+    const messageId = response?.messages?.[0]?.id || "";
+    order.whatsappPaymentConfirmedNotification = {
+      ...order.whatsappPaymentConfirmedNotification,
+      lastSentAt: new Date().toISOString(),
+      messageId
+    };
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: key,
+      templateName,
+      audience: "customer",
+      recipient,
+      messageId
+    });
+    persistWhatsappNotificationClaim(order);
+    return { sent: true, messageId };
+  } catch (error) {
+    order.whatsappPaymentConfirmedNotification = {
+      ...order.whatsappPaymentConfirmedNotification,
+      failedAt: new Date().toISOString(),
+      error: error.message
+    };
+    persistWhatsappNotificationClaim(order);
+    return { sent: false, skipped: false, error: error.message };
+  }
+}
+
+function adminWhatsappParameters(order, eventLabel = "", options = {}) {
   const documentUrl = adminOrderDocumentUrl(order);
   const shipmentStatus = order.fulfillment?.shipment?.status || "Not booked yet";
+  let customerName = order.customer?.name || "Customer";
   let customerWhatsapp = "Verify in secure Admin";
-  try {
-    customerWhatsapp = `+${verifiedCustomerWhatsappNumber(order)}`;
-  } catch (_error) {
-    // Never place an unverified number in the staff template. Legacy orders can
-    // still be reviewed through the protected Admin link.
+  if (options.privacySafe) {
+    customerName = "Customer details available by quick reply";
+    customerWhatsapp = "Verified order owner only";
+  } else {
+    try {
+      customerWhatsapp = `+${verifiedCustomerWhatsappNumber(order)}`;
+    } catch (_error) {
+      // Never place an unverified number in a legacy staff template.
+    }
   }
   const staffAction = order.status === "paid"
-    ? "Use Approve to open the secure pickup/drop-off review before requesting a driver. Use Contact customer in Admin if clarification is needed, or Cancel to open the controlled refund review."
+    ? "Use Approve to open the secure pickup/drop-off review before requesting a driver. Contact customer sends this staff recipient the verified customer contact card, or Cancel opens the controlled refund review."
     : "No staff action needed.";
   return [
     eventLabel || humanizeOrderStatus(order),
     order.id,
-    order.customer?.name || "Customer",
+    customerName,
     customerWhatsapp,
     `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`,
     order.payment?.label || "",
@@ -1252,6 +1320,18 @@ function adminShippingWhatsappParameters(order) {
   ];
 }
 
+function adminDriverCancelledWhatsappParameters(order, shipmentStatus = "") {
+  const shipment = order?.fulfillment?.shipment || {};
+  const courier = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || "-";
+  const failedReference = shipment.orderId || shipment.waybillId || biteshipTrackingIdFromUrl(shipment.trackingLink) || "-";
+  return [
+    String(order?.id || "-").trim() || "-",
+    String(courier || "-").trim() || "-",
+    String(failedReference || "-").trim() || "-",
+    `Biteship ${normalizedShipmentStatus(shipmentStatus) || "failed"} before pickup/handoff`
+  ];
+}
+
 async function sendWhatsappAdminAlert(order, eventLabel = "") {
   const adminNumbers = adminWhatsappNumbers();
   const templateName = String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim();
@@ -1259,7 +1339,8 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
     throw new Error("Admin WhatsApp number or template name is missing");
   }
 
-  const parameters = adminWhatsappParameters(order, eventLabel);
+  const isPrivacySafeSuccessor = templateName === "admin_order_alert_v4";
+  const parameters = adminWhatsappParameters(order, eventLabel, { privacySafe: isPrivacySafeSuccessor });
 
   const deliveries = await Promise.allSettled(adminNumbers.map((adminNumber) => sendWhatsappTemplateMessage(
     adminNumber,
@@ -1270,13 +1351,18 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
       quickReplyButtons: order.status === "paid"
         ? [
             { payload: `APPROVE ${order.id}` },
+            { payload: "CONTACT_CUSTOMER" },
             { payload: `CANCEL ${order.id}` }
           ]
-        : []
+        : [],
+      // v4 replaces the rejected v3 website-button contract. Its three quick
+      // replies are configured in Meta in this exact visible order.
+      urlButtonParameters: []
     }
   )));
   const results = deliveries.map((delivery, index) => ({
     recipient: maskedWhatsappNumber(adminNumbers[index]),
+    recipientNumber: formatIndonesianPhone(adminNumbers[index]),
     sent: delivery.status === "fulfilled",
     messageId: delivery.status === "fulfilled"
       ? delivery.value?.messages?.[0]?.id || ""
@@ -1323,6 +1409,67 @@ function updateAdminWhatsappDeliveryStatus(order, status = {}) {
   return true;
 }
 
+function recordWhatsappLifecycleDelivery(order, {
+  eventKey = "",
+  templateName = "",
+  audience = "customer",
+  recipient = "",
+  messageId = "",
+  results = []
+} = {}) {
+  const key = String(eventKey || "").trim();
+  if (!order || !key) return;
+  const deliveries = Array.isArray(results) && results.length
+    ? results.map((result) => ({
+        recipient: result.recipient || "",
+        messageId: result.messageId || "",
+        accepted: result.sent !== false,
+        acceptedAt: result.sent === false ? "" : new Date().toISOString(),
+        error: result.error || ""
+      }))
+    : [{
+        recipient: maskedWhatsappNumber(recipient),
+        messageId: String(messageId || "").trim(),
+        accepted: true,
+        acceptedAt: new Date().toISOString(),
+        error: ""
+      }];
+  order.whatsappLifecycleNotifications = {
+    ...(order.whatsappLifecycleNotifications || {}),
+    [key]: {
+      eventKey: key,
+      templateName: String(templateName || "").trim(),
+      audience,
+      acceptedAt: new Date().toISOString(),
+      deliveries
+    }
+  };
+}
+
+function updateWhatsappLifecycleDeliveryStatus(order, status = {}) {
+  const messageId = String(status.id || "").trim();
+  if (!messageId || !order?.whatsappLifecycleNotifications) return false;
+  let updated = false;
+  Object.values(order.whatsappLifecycleNotifications).forEach((notification) => {
+    const delivery = notification?.deliveries?.find((entry) => entry.messageId === messageId);
+    if (!delivery) return;
+    delivery.deliveryStatus = String(status.status || "").trim();
+    delivery.deliveryUpdatedAt = status.timestamp
+      ? new Date(Number(status.timestamp) * 1000).toISOString()
+      : new Date().toISOString();
+    const error = status.errors?.[0];
+    if (error) {
+      delivery.deliveryError = error.message || error.title || error.code || "WhatsApp delivery failed";
+      delivery.deliveryErrorCode = error.code || "";
+    } else {
+      delete delivery.deliveryError;
+      delete delivery.deliveryErrorCode;
+    }
+    updated = true;
+  });
+  return updated;
+}
+
 function orderIdFromWhatsappReplyContext(message = {}, orders = stores.live.orders) {
   const contextMessageId = String(message.context?.id || "").trim();
   if (!contextMessageId) return "";
@@ -1331,6 +1478,97 @@ function orderIdFromWhatsappReplyContext(message = {}, orders = stores.live.orde
     || entry.adminWhatsappNotifications?.recipients?.some((recipient) => recipient.messageId === contextMessageId)
   ));
   return order?.id || "";
+}
+
+function findStaffNotificationFromReply(message = {}, notificationRoot = "adminWhatsappNotifications") {
+  const contextMessageId = String(message.context?.id || "").trim();
+  const staffNumber = formatIndonesianPhone(message.from);
+  if (!contextMessageId || !staffNumber || !isConfiguredAdminWhatsapp(staffNumber)) return null;
+  for (const order of stores.live.orders) {
+    const notifications = notificationRoot === "adminWhatsappNotifications"
+      ? [order.adminWhatsappNotifications]
+      : Object.values(order[notificationRoot] || {});
+    for (const notification of notifications) {
+      const recipient = notification?.recipients?.find((entry) => (
+        entry.messageId === contextMessageId && formatIndonesianPhone(entry.recipientNumber || entry.recipient) === staffNumber
+      )) || notification?.results?.find((entry) => (
+        entry.messageId === contextMessageId && formatIndonesianPhone(entry.recipientNumber || entry.recipient) === staffNumber
+      ));
+      if (recipient) return { order, notification, recipient, contextMessageId, staffNumber };
+    }
+  }
+  return null;
+}
+
+function whatsappInboundActionKey(message = {}, prefix = "action") {
+  const source = String(message.id || "").trim() || [message.context?.id || "", message.from || "", prefix].join(":");
+  return crypto.createHash("sha256").update(`${prefix}:${source}`).digest("hex");
+}
+
+async function sendVerifiedCustomerContactToStaff(message = {}) {
+  const matched = findStaffNotificationFromReply(message, "adminWhatsappNotifications");
+  if (!matched) throw new Error("Contact customer must be tapped on this staff member's paid-order alert.");
+  const { order, staffNumber } = matched;
+  if (order.status !== "paid") throw new Error("This paid-order customer contact action is no longer available.");
+  const customerPhone = verifiedCustomerWhatsappNumber(order);
+  const actionId = whatsappInboundActionKey(message, "contact-customer");
+  const actions = order.whatsappContactCustomerActions || {};
+  if (actions[actionId]?.claimedAt || actions[actionId]?.sentAt) return { sent: false, skipped: true, reason: "already_claimed" };
+  order.whatsappContactCustomerActions = {
+    ...actions,
+    [actionId]: { orderId: order.id, staffRecipient: maskedWhatsappNumber(staffNumber), claimedAt: new Date().toISOString() }
+  };
+  persistWhatsappNotificationClaim(order);
+  try {
+    let response;
+    let channel = "contact_card";
+    try {
+      response = await sendWhatsappContactCard(staffNumber, customerPhone, order.customer?.name || "Customer", order.id);
+    } catch (contactError) {
+      channel = "wa_me_link";
+      response = await sendWhatsappTextMessage(
+        staffNumber,
+        `Customer contact for ${order.id}: https://wa.me/${customerPhone}?text=${encodeURIComponent(`Hi, this is Bakeaholic Bali about order ${order.id}.`)}`
+      );
+      order.whatsappContactCustomerActions[actionId].contactCardError = contactError.message;
+    }
+    const messageId = response?.messages?.[0]?.id || "";
+    order.whatsappContactCustomerActions[actionId] = {
+      ...order.whatsappContactCustomerActions[actionId], channel, sentAt: new Date().toISOString(), messageId
+    };
+    recordWhatsappLifecycleDelivery(order, { eventKey: `order:${order.id}:contact-customer:${actionId}`, templateName: channel, audience: "staff", recipient: staffNumber, messageId });
+    persistWhatsappNotificationClaim(order);
+    return { sent: true, orderId: order.id, messageId, channel };
+  } catch (error) {
+    order.whatsappContactCustomerActions[actionId] = { ...order.whatsappContactCustomerActions[actionId], failedAt: new Date().toISOString(), error: error.message };
+    persistWhatsappNotificationClaim(order);
+    throw error;
+  }
+}
+
+async function requestReplacementDriverFromWhatsapp(message = {}) {
+  const matched = findStaffNotificationFromReply(message, "adminDeliveryRecoveryNotifications");
+  if (!matched) throw new Error("Request new driver must be tapped on this staff member's verified recovery alert.");
+  const { order, notification, staffNumber } = matched;
+  const shipmentId = String(order.fulfillment?.shipment?.orderId || "").trim();
+  if (
+    notification?.templateName !== "admin_driver_cancelled_v1"
+    || notification?.shipmentId !== shipmentId
+    || !isRecoverableFailedShipmentStatus(notification?.providerStatus)
+  ) {
+    throw new Error("This recovery alert no longer matches the active failed shipment. Please review the order.");
+  }
+  const actionId = whatsappInboundActionKey(message, "request-new-driver");
+  try {
+    const updated = await rebookBiteshipDelivery("live", order.id, {
+      role: "whatsapp_admin", name: `WhatsApp staff ${maskedWhatsappNumber(staffNumber)}`
+    }, { shipmentId, actionId });
+    return { sent: true, orderId: updated.id, replacementShipmentId: updated.fulfillment?.shipment?.orderId || "" };
+  } catch (error) {
+    // The webhook caller sends this clear failure only to message.from; no
+    // customer, payment, refund, cancellation, or self-delivery path runs.
+    throw new Error(`Replacement driver was not requested: ${error.message}`);
+  }
 }
 
 function refundWhatsappParameters(order) {
@@ -1381,6 +1619,7 @@ async function sendWhatsappAdminRefundUpdate(order) {
   )));
   const results = deliveries.map((delivery, index) => ({
     recipient: maskedWhatsappNumber(adminNumbers[index]),
+    recipientNumber: formatIndonesianPhone(adminNumbers[index]),
     sent: delivery.status === "fulfilled",
     messageId: delivery.status === "fulfilled" ? delivery.value?.messages?.[0]?.id || "" : "",
     error: delivery.status === "rejected" ? delivery.reason?.message || "WhatsApp delivery failed" : ""
@@ -1389,6 +1628,50 @@ async function sendWhatsappAdminRefundUpdate(order) {
     throw new Error(results.map((result) => result.error).filter(Boolean).join("; ") || "Admin refund WhatsApp delivery failed");
   }
   return { results };
+}
+
+async function maybeSendWhatsappRefundCompleted(order, eventKey = "") {
+  const key = String(eventKey || `order:${order?.id || "unknown"}:refund-processed`).trim();
+  const notifications = order?.refund?.notifications || {};
+  if (order?.refund?.status !== "processed") return { sent: false, skipped: true, reason: "refund_not_processed_by_xendit" };
+  if (order?.mode === "test" || !isWhatsappCloudReady() || !process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME) return { sent: false, skipped: true, reason: "template_or_whatsapp_not_configured" };
+  if (notifications.customerProcessedClaimedAt || notifications.customerProcessedSentAt) return { sent: false, skipped: true, reason: "already_claimed" };
+  order.refund.notifications = { ...notifications, customerProcessedClaimedAt: new Date().toISOString() };
+  persistWhatsappNotificationClaim(order);
+  try {
+    const recipient = verifiedCustomerWhatsappNumber(order);
+    const response = await sendWhatsappRefundCompleted(order);
+    const messageId = response?.messages?.[0]?.id || "";
+    order.refund.notifications = { ...order.refund.notifications, customerProcessedSentAt: new Date().toISOString(), customerProcessedMessageId: messageId };
+    recordWhatsappLifecycleDelivery(order, { eventKey: key, templateName: process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME, audience: "customer", recipient, messageId });
+    persistWhatsappNotificationClaim(order);
+    return { sent: true, messageId };
+  } catch (error) {
+    order.refund.notifications = { ...order.refund.notifications, customerProcessedFailedAt: new Date().toISOString(), customerProcessedError: error.message };
+    persistWhatsappNotificationClaim(order);
+    return { sent: false, error: error.message };
+  }
+}
+
+async function maybeSendWhatsappAdminRefundTerminalUpdate(order, eventKey = "") {
+  const key = String(eventKey || `order:${order?.id || "unknown"}:refund-${order?.refund?.status || "unknown"}`).trim();
+  const notifications = order?.refund?.notifications || {};
+  if (!["processed", "failed"].includes(order?.refund?.status)) return { sent: false, skipped: true, reason: "refund_not_terminal" };
+  if (order?.mode === "test" || !isWhatsappCloudReady() || !process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME) return { sent: false, skipped: true, reason: "template_or_whatsapp_not_configured" };
+  if (notifications.adminTerminalClaimedAt || notifications.adminTerminalSentAt) return { sent: false, skipped: true, reason: "already_claimed" };
+  order.refund.notifications = { ...notifications, adminTerminalClaimedAt: new Date().toISOString() };
+  persistWhatsappNotificationClaim(order);
+  try {
+    const response = await sendWhatsappAdminRefundUpdate(order);
+    order.refund.notifications = { ...order.refund.notifications, adminTerminalSentAt: new Date().toISOString(), adminTerminalResults: response.results };
+    recordWhatsappLifecycleDelivery(order, { eventKey: key, templateName: process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME, audience: "staff", results: response.results });
+    persistWhatsappNotificationClaim(order);
+    return { sent: true };
+  } catch (error) {
+    order.refund.notifications = { ...order.refund.notifications, adminTerminalFailedAt: new Date().toISOString(), adminTerminalError: error.message };
+    persistWhatsappNotificationClaim(order);
+    return { sent: false, error: error.message };
+  }
 }
 
 async function sendWhatsappPaymentReceipt(order) {
@@ -1437,25 +1720,37 @@ async function maybeSendWhatsappPaymentReminder(order, step = "") {
 
   const reminderFlow = ensurePaymentReminderFlow(order);
   const sentKey = `${step}SentAt`;
-  const queuedKey = `${step}QueuedAt`;
-  if (step && (reminderFlow[sentKey] || reminderFlow[queuedKey])) {
-    return { sent: false, skipped: true, reason: reminderFlow[sentKey] ? "already_sent" : "already_queued" };
+  const claimedKey = `${step}ClaimedAt`;
+  if (step && (reminderFlow[sentKey] || reminderFlow[claimedKey])) {
+    return { sent: false, skipped: true, reason: reminderFlow[sentKey] ? "already_sent" : "already_claimed" };
   }
 
-  if (step) reminderFlow[queuedKey] = new Date().toISOString();
+  if (step) {
+    reminderFlow[claimedKey] = new Date().toISOString();
+    persistWhatsappNotificationClaim(order);
+  }
   try {
+    const recipient = verifiedCustomerWhatsappNumber(order);
     const response = await sendWhatsappPaymentReminder(order);
     if (step) {
       reminderFlow[sentKey] = new Date().toISOString();
       reminderFlow[`${step}MessageId`] = response?.messages?.[0]?.id || "";
-      delete reminderFlow[queuedKey];
       delete reminderFlow[`${step}Error`];
+      recordWhatsappLifecycleDelivery(order, {
+        eventKey: `order:${order.id}:payment-reminder:${step}`,
+        templateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME,
+        audience: "customer",
+        recipient,
+        messageId: response?.messages?.[0]?.id || ""
+      });
+      persistWhatsappNotificationClaim(order);
     }
     return { sent: true, messageId: response?.messages?.[0]?.id || "" };
   } catch (error) {
     if (step) {
-      delete reminderFlow[queuedKey];
       reminderFlow[`${step}Error`] = error.message;
+      reminderFlow[`${step}FailedAt`] = new Date().toISOString();
+      persistWhatsappNotificationClaim(order);
     }
     return { sent: false, skipped: false, error: error.message };
   }
@@ -1480,8 +1775,8 @@ async function sendWhatsappPaymentExpired(order) {
 
 async function maybeSendWhatsappPaymentExpired(order) {
   const reminderFlow = ensurePaymentReminderFlow(order);
-  if (reminderFlow.expiredMessageSentAt || reminderFlow.expiredMessageQueuedAt) {
-    return { sent: false, skipped: true, reason: "already_sent" };
+  if (reminderFlow.expiredMessageSentAt || reminderFlow.expiredMessageClaimedAt) {
+    return { sent: false, skipped: true, reason: reminderFlow.expiredMessageSentAt ? "already_sent" : "already_claimed" };
   }
   if (order.mode === "test") {
     reminderFlow.expiredSkipped = "test_order";
@@ -1492,16 +1787,27 @@ async function maybeSendWhatsappPaymentExpired(order) {
     return { sent: false, skipped: true, reason: reminderFlow.expiredSkipped };
   }
 
-  reminderFlow.expiredMessageQueuedAt = new Date().toISOString();
+  reminderFlow.expiredMessageClaimedAt = new Date().toISOString();
+  persistWhatsappNotificationClaim(order);
   try {
+    const recipient = verifiedCustomerWhatsappNumber(order);
     const response = await sendWhatsappPaymentExpired(order);
     reminderFlow.expiredMessageSentAt = new Date().toISOString();
     reminderFlow.expiredMessageId = response?.messages?.[0]?.id || "";
     delete reminderFlow.expiredError;
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: `order:${order.id}:payment-expired`,
+      templateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME,
+      audience: "customer",
+      recipient,
+      messageId: reminderFlow.expiredMessageId
+    });
+    persistWhatsappNotificationClaim(order);
     return { sent: true, messageId: reminderFlow.expiredMessageId };
   } catch (error) {
-    delete reminderFlow.expiredMessageQueuedAt;
     reminderFlow.expiredError = error.message;
+    reminderFlow.expiredMessageFailedAt = new Date().toISOString();
+    persistWhatsappNotificationClaim(order);
     return { sent: false, skipped: false, error: error.message };
   }
 }
@@ -1510,7 +1816,7 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   const skipReason = (() => {
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (!process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME) return "receipt_template_not_configured";
-    if (eventKey && order.whatsappReceiptNotification?.lastNotificationKey === eventKey) return "already_sent";
+    if (order.whatsappReceiptNotification?.queuedAt || order.whatsappReceiptNotification?.lastSentAt) return "already_claimed";
     return "";
   })();
   if (skipReason) {
@@ -1520,11 +1826,11 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   // Claim the event before the network request. Xendit can deliver a webhook at
   // the same time that checkout is polling payment status; recording only after
   // Meta responds allowed both requests to send the same receipt.
-  const previousNotification = order.whatsappReceiptNotification;
   order.whatsappReceiptNotification = {
-    ...previousNotification,
     lastNotificationKey: eventKey,
-    queuedAt: new Date().toISOString()
+    templateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME,
+    queuedAt: new Date().toISOString(),
+    claimedAt: new Date().toISOString()
   };
   persistWhatsappNotificationClaim(order);
   try {
@@ -1535,11 +1841,22 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
       lastSentAt: new Date().toISOString(),
       messageId: messageResponse?.messages?.[0]?.id || ""
     };
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: eventKey || `order:${order.id}:receipt`,
+      templateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME,
+      audience: "customer",
+      recipient: verifiedCustomerWhatsappNumber(order),
+      messageId: messageResponse?.messages?.[0]?.id || ""
+    });
     delete order.whatsappReceiptNotificationError;
     persistWhatsappNotificationClaim(order);
     return { sent: true, messageId: messageResponse?.messages?.[0]?.id || "" };
   } catch (error) {
-    order.whatsappReceiptNotification = previousNotification;
+    order.whatsappReceiptNotification = {
+      ...order.whatsappReceiptNotification,
+      failedAt: new Date().toISOString(),
+      error: error.message
+    };
     order.whatsappReceiptNotificationError = error.message;
     persistWhatsappNotificationClaim(order);
     return { sent: false, skipped: false, error: error.message };
@@ -1654,9 +1971,10 @@ function clearPaymentReminderTimers(mode, orderId) {
 function paymentReminderFlowTimes(createdAt = new Date().toISOString()) {
   const created = Date.parse(createdAt) || Date.now();
   return {
-    firstReminderAt: new Date(created + 5 * 60 * 1000).toISOString(),
-    secondReminderAt: new Date(created + 10 * 60 * 1000).toISOString(),
-    expireAt: new Date(created + 15 * 60 * 1000).toISOString()
+    version: 2,
+    firstReminderAt: new Date(created + 2 * 60 * 1000).toISOString(),
+    secondReminderAt: new Date(created + 4 * 60 * 1000).toISOString(),
+    expireAt: new Date(created + 5 * 60 * 1000).toISOString()
   };
 }
 
@@ -1664,6 +1982,13 @@ function ensurePaymentReminderFlow(order) {
   const defaults = paymentReminderFlowTimes(order.createdAt);
   if (!order.paymentReminderFlow || typeof order.paymentReminderFlow !== "object") {
     order.paymentReminderFlow = { ...defaults };
+    return order.paymentReminderFlow;
+  }
+  if (order.paymentReminderFlow.version !== defaults.version) {
+    order.paymentReminderFlow = {
+      ...order.paymentReminderFlow,
+      ...defaults
+    };
     return order.paymentReminderFlow;
   }
   Object.entries(defaults).forEach(([key, value]) => {
@@ -1706,6 +2031,7 @@ async function refreshUnpaidOrderFromXendit(order) {
     clearPaymentReminderTimers(order.mode || "live", order.id);
     clearPaidOrderCart(order);
     await maybeSendMetaPurchase(order);
+    await maybeSendWhatsappPaymentConfirmed(order, `order:${order.id}:payment-confirmed`);
     await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
   }
@@ -1733,11 +2059,8 @@ async function processPaymentReminderStep(mode, orderId, step) {
 
   if (step === "first" || step === "second") {
     const eventKey = `order:${order.id}:payment-reminder:${step}`;
-    if (step === "second" && reminderFlow.firstSentAt) {
-      return { handled: false, reason: "reminder_already_sent" };
-    }
-    if (reminderFlow[`${step}SentAt`]) {
-      return { handled: false, reason: "already_sent" };
+    if (reminderFlow[`${step}SentAt`] || reminderFlow[`${step}ClaimedAt`]) {
+      return { handled: false, reason: reminderFlow[`${step}SentAt`] ? "already_sent" : "already_claimed" };
     }
     if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME) {
       const reminder = await maybeSendWhatsappPaymentReminder(order, step);
@@ -1761,6 +2084,7 @@ async function processPaymentReminderStep(mode, orderId, step) {
   order.expiredAt = new Date().toISOString();
   order.whatsappUrl = buildWhatsappUrl(order);
   reminderFlow.expiredAt = order.expiredAt;
+  clearPaidOrderCart(order);
 
   await maybeSendWhatsappPaymentExpired(order);
 
@@ -1796,13 +2120,11 @@ function schedulePaymentReminderFlow(mode, order) {
     schedulePaymentReminderTimer(mode, order.id, "expire", reminderFlow.expireAt || order.expiresAt);
     return;
   }
-  if (!reminderFlow.firstSentAt) {
+  if (!reminderFlow.firstSentAt && !reminderFlow.firstClaimedAt) {
     schedulePaymentReminderTimer(mode, order.id, "first", reminderFlow.firstReminderAt);
-    return;
   }
-  if (!reminderFlow.secondSentAt) {
+  if (!reminderFlow.secondSentAt && !reminderFlow.secondClaimedAt) {
     schedulePaymentReminderTimer(mode, order.id, "second", reminderFlow.secondReminderAt);
-    return;
   }
   if (!reminderFlow.expiredAt) {
     schedulePaymentReminderTimer(mode, order.id, "expire", reminderFlow.expireAt || order.expiresAt);
@@ -1830,11 +2152,10 @@ async function sweepPaymentReminderFlows() {
           await processPaymentReminderStep(mode, order.id, "expire");
           continue;
         }
-        if (firstDue && !reminderFlow.firstSentAt) {
+        if (firstDue && !reminderFlow.firstSentAt && !reminderFlow.firstClaimedAt) {
           await processPaymentReminderStep(mode, order.id, "first");
-          continue;
         }
-        if (secondDue && !reminderFlow.secondSentAt) {
+        if (secondDue && !reminderFlow.secondSentAt && !reminderFlow.secondClaimedAt) {
           await processPaymentReminderStep(mode, order.id, "second");
         }
       }
@@ -1849,7 +2170,7 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
     throw new Error("Biteship shipment is not available yet; shipping WhatsApp was not sent");
   }
   const templateName = String(admin
-    ? process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || ""
+    ? process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || ""
     : process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || ""
   ).trim();
   if (!templateName) {
@@ -1857,7 +2178,7 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
   }
   const recipients = admin ? adminWhatsappNumbers() : [verifiedCustomerWhatsappNumber(order)];
   const parameters = admin ? adminShippingWhatsappParameters(order) : customerShippingWhatsappParameters(order);
-  const responses = await Promise.all(recipients.map((recipient) => sendWhatsappTemplateMessage(recipient, templateName, parameters, {
+  const deliveries = await Promise.allSettled(recipients.map((recipient) => sendWhatsappTemplateMessage(recipient, templateName, parameters, {
       languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
       urlButtonParameters: [
         {
@@ -1866,7 +2187,20 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
         }
       ]
     })));
-  return { messages: responses.flatMap((response) => response?.messages || []) };
+  const results = deliveries.map((delivery, index) => ({
+    recipient: maskedWhatsappNumber(recipients[index]),
+    sent: delivery.status === "fulfilled",
+    messageId: delivery.status === "fulfilled" ? delivery.value?.messages?.[0]?.id || "" : "",
+    error: delivery.status === "rejected" ? delivery.reason?.message || "WhatsApp delivery failed" : ""
+  }));
+  if (!results.some((result) => result.sent)) {
+    throw new Error(results.map((result) => result.error).filter(Boolean).join("; ") || "Shipping WhatsApp delivery failed");
+  }
+  return {
+    templateName,
+    results,
+    messages: deliveries.flatMap((delivery) => delivery.status === "fulfilled" ? delivery.value?.messages || [] : [])
+  };
 }
 
 async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = false } = {}) {
@@ -1878,7 +2212,7 @@ async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = f
   const skipReason = (() => {
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (admin && !process.env.WHATSAPP_ADMIN_NUMBER) return "admin_number_not_configured";
-    if (admin && !(process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME)) return "admin_shipping_template_not_configured";
+    if (admin && !process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME) return "admin_shipping_template_not_configured";
     if (!admin && !process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME) return "shipping_template_not_configured";
     if (!hasBiteshipShipmentForMessaging(order)) return "biteship_shipment_not_available";
     if (shipmentNotification.lastSentAt) return "already_sent_for_shipment";
@@ -1909,6 +2243,14 @@ async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = f
       lastSentAt: new Date().toISOString(),
       messageId: messageResponse?.messages?.[0]?.id || ""
     };
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: eventKey || `${admin ? "staff" : "customer"}:shipping:${shipmentId}`,
+      templateName: messageResponse?.templateName || (admin
+        ? process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME
+        : process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME),
+      audience: admin ? "staff" : "customer",
+      results: messageResponse?.results || []
+    });
     const nextBucket = {
       ...notificationBucket,
       // Keep the legacy top-level summary for the Admin UI while deduping by
@@ -1974,6 +2316,12 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
       messageId: messageResponse?.messages?.[0]?.id || order.adminWhatsappNotifications?.messageId || "",
       recipients: messageResponse?.results || []
     };
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: eventKey || `order:${order.id}:admin-alert`,
+      templateName: messageResponse?.templateName || process.env.WHATSAPP_ADMIN_TEMPLATE_NAME,
+      audience: "staff",
+      results: messageResponse?.results || []
+    });
     delete order.adminWhatsappNotificationError;
     persistWhatsappNotificationClaim(order);
     return { sent: true, messageId: messageResponse?.messages?.[0]?.id || "" };
@@ -2031,55 +2379,189 @@ function isDeliveryRecoveryStatus(shipmentStatus = "") {
 }
 
 async function maybeSendWhatsappAdminDeliveryRecoveryAlert(order, shipmentStatus, eventKey = "") {
-  if (!isDeliveryRecoveryStatus(shipmentStatus)) return { sent: false, skipped: true, reason: "not_recovery_status" };
+  const shipment = order?.fulfillment?.shipment || {};
+  const normalizedStatus = normalizedShipmentStatus(shipmentStatus);
+  if (!isDeliveryRecoveryStatus(normalizedStatus)) return { sent: false, skipped: true, reason: "not_recovery_status" };
+  if (order?.payment?.status !== "paid" || !["paid", "preparing"].includes(order?.status)) return { sent: false, skipped: true, reason: "order_not_paid_preparing" };
+  if (!shipment.orderId || normalizedShipmentStatus(shipment.status) !== normalizedStatus) return { sent: false, skipped: true, reason: "failed_shipment_mismatch" };
+  if (shipmentHasObservedHandoff(shipment) || shipment.replacement === true) return { sent: false, skipped: true, reason: "pickup_or_replacement_present" };
+  if (!shipment.requestSnapshot || !sameShipmentRequestSnapshot(shipment.requestSnapshot, shipmentRequestSnapshot(order))) return { sent: false, skipped: true, reason: "stored_route_items_or_service_changed" };
   const templateName = String(process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME || "").trim();
   const recipients = adminWhatsappNumbers();
   const key = String(eventKey || `delivery-recovery:${order.id}:${shipmentStatus}`).trim();
   if (!isWhatsappCloudReady() || !templateName || !recipients.length) return { sent: false, skipped: true, reason: "recovery_template_or_admin_not_configured" };
-  if (order.adminDeliveryRecoveryNotification?.lastNotificationKey === key) return { sent: false, skipped: true, reason: "already_sent" };
-  order.adminDeliveryRecoveryNotification = { lastNotificationKey: key, claimedAt: new Date().toISOString() };
-  const deliveries = await Promise.allSettled(recipients.map((recipient) => sendWhatsappTemplateMessage(recipient, templateName, [order.id, "Courier delivery needs recovery"], {
-    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-    urlButtonParameters: [{ index: "0", parameters: [{ type: "text", text: adminOrderReviewButtonQuery(order) }] }]
-  })));
-  order.adminDeliveryRecoveryNotification = { ...order.adminDeliveryRecoveryNotification, lastSentAt: new Date().toISOString(), results: deliveries.map((entry, index) => ({ recipient: maskedWhatsappNumber(recipients[index]), sent: entry.status === "fulfilled" })) };
+  const claims = order.adminDeliveryRecoveryNotifications || {};
+  if (claims[key]?.claimedAt || claims[key]?.lastSentAt) return { sent: false, skipped: true, reason: "already_claimed" };
+  order.adminDeliveryRecoveryNotifications = {
+    ...claims,
+    [key]: { templateName, claimedAt: new Date().toISOString() }
+  };
   persistWhatsappNotificationClaim(order);
-  return { sent: true, recipients: order.adminDeliveryRecoveryNotification.results };
+  if (templateName !== "admin_driver_cancelled_v1") return { sent: false, skipped: true, reason: "recovery_template_not_configured" };
+  const parameters = adminDriverCancelledWhatsappParameters(order, normalizedStatus);
+  const deliveries = await Promise.allSettled(recipients.map((recipient) => sendWhatsappTemplateMessage(recipient, templateName, parameters, {
+    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+    quickReplyButtons: [{ payload: "REQUEST_NEW_DRIVER" }]
+  })));
+  const results = deliveries.map((entry, index) => ({
+    recipient: maskedWhatsappNumber(recipients[index]),
+    recipientNumber: formatIndonesianPhone(recipients[index]),
+    sent: entry.status === "fulfilled",
+    messageId: entry.status === "fulfilled" ? entry.value?.messages?.[0]?.id || "" : "",
+    error: entry.status === "rejected" ? entry.reason?.message || "WhatsApp delivery failed" : ""
+  }));
+  order.adminDeliveryRecoveryNotifications[key] = {
+    ...order.adminDeliveryRecoveryNotifications[key],
+    shipmentId: shipment.orderId,
+    providerStatus: normalizedStatus,
+    providerVerifiedAt: new Date().toISOString(),
+    lastSentAt: results.some((result) => result.sent) ? new Date().toISOString() : "",
+    failedAt: results.some((result) => result.sent) ? "" : new Date().toISOString(),
+    results
+  };
+  order.adminDeliveryRecoveryNotification = {
+    lastNotificationKey: key,
+    ...order.adminDeliveryRecoveryNotifications[key]
+  };
+  recordWhatsappLifecycleDelivery(order, {
+    eventKey: key,
+    templateName,
+    audience: "staff",
+    results
+  });
+  persistWhatsappNotificationClaim(order);
+  if (!results.some((result) => result.sent)) {
+    return { sent: false, skipped: false, error: results.map((result) => result.error).filter(Boolean).join("; ") || "Recovery WhatsApp delivery failed" };
+  }
+  return { sent: true, recipients: results };
+}
+
+function adminDeliveryCompleteWhatsappParameters(order) {
+  const shipment = order?.fulfillment?.shipment || {};
+  const proof = shipment.deliveryProof || {};
+  return [
+    order.id,
+    normalizedShipmentStatus(shipment.status || order.status || "delivered"),
+    proof.available ? "Official Biteship proof available" : "No provider proof available"
+  ];
+}
+
+async function maybeSendWhatsappAdminDeliveryComplete(order, eventKey = "") {
+  const templateName = String(process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME || "").trim();
+  const recipients = adminWhatsappNumbers();
+  const shipmentId = String(order?.fulfillment?.shipment?.orderId || "").trim();
+  const key = String(eventKey || `biteship:${shipmentId}:delivery-complete`).trim();
+  const claims = order.adminDeliveryCompleteNotifications || {};
+  const skipReason = (() => {
+    if (order?.status !== "delivered") return "order_not_delivered";
+    if (!shipmentId) return "shipment_missing";
+    if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
+    if (templateName !== "admin_delivery_complete_v1") return "delivery_complete_template_not_configured";
+    if (!recipients.length) return "admin_number_not_configured";
+    if (claims[key]?.claimedAt || claims[key]?.lastSentAt) return "already_claimed";
+    return "";
+  })();
+  if (skipReason) return { sent: false, skipped: true, reason: skipReason };
+
+  order.adminDeliveryCompleteNotifications = {
+    ...claims,
+    [key]: { templateName, claimedAt: new Date().toISOString() }
+  };
+  persistWhatsappNotificationClaim(order);
+  const deliveries = await Promise.allSettled(recipients.map((recipient) => (
+    sendWhatsappTemplateMessage(recipient, templateName, adminDeliveryCompleteWhatsappParameters(order), {
+      languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+      urlButtonParameters: [{ index: "0", text: adminOrderReviewButtonQuery(order) }]
+    })
+  )));
+  const results = deliveries.map((entry, index) => ({
+    recipient: maskedWhatsappNumber(recipients[index]),
+    sent: entry.status === "fulfilled",
+    messageId: entry.status === "fulfilled" ? entry.value?.messages?.[0]?.id || "" : "",
+    error: entry.status === "rejected" ? entry.reason?.message || "WhatsApp delivery failed" : ""
+  }));
+  order.adminDeliveryCompleteNotifications[key] = {
+    ...order.adminDeliveryCompleteNotifications[key],
+    lastSentAt: results.some((result) => result.sent) ? new Date().toISOString() : "",
+    failedAt: results.some((result) => result.sent) ? "" : new Date().toISOString(),
+    results
+  };
+  recordWhatsappLifecycleDelivery(order, { eventKey: key, templateName, audience: "staff", results });
+  persistWhatsappNotificationClaim(order);
+  if (!results.some((result) => result.sent)) {
+    return { sent: false, skipped: false, error: results.map((result) => result.error).filter(Boolean).join("; ") || "Delivery completion WhatsApp failed" };
+  }
+  return { sent: true, recipients: results };
 }
 
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
   const notificationKey = String(options.notificationKey || "").trim();
+  const canonicalStatus = order.status === "complete" ? "delivered" : order.status;
+  const expectedTemplate = canonicalStatus === "delivered"
+    ? "order_delivered"
+    : canonicalStatus === "cancelled"
+      ? "order_cancelled"
+      : "";
+  const templateName = configuredWhatsappOrderTemplateName(order);
+  const claimKey = notificationKey || `order:${order.id}:${canonicalStatus}`;
+  const statusClaims = order.whatsappStatusNotifications || {};
   const skipReason = (() => {
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
-    if (["awaiting_payment", "payment_failed", "expired"].includes(order.status)) return "payment_status_has_dedicated_flow";
-    if (order.status === "paid") return "payment_receipt_is_confirmation";
-    if (order.status === "preparing") return "shipping_update_is_next_customer_message";
-    if (!configuredWhatsappOrderTemplateName(order)) return "template_not_configured";
+    if (!expectedTemplate) return "status_has_no_customer_template";
+    if (templateName !== expectedTemplate) return "canonical_template_not_configured";
     if (previousStatus === order.status && !notificationKey) return "same_order_status";
-    if (notificationKey && order.whatsappNotifications?.lastNotificationKey === notificationKey) return "same_biteship_status";
-    if (!notificationKey && order.whatsappNotifications?.lastStatusSent === order.status) return "already_sent_status";
+    if (statusClaims[claimKey]?.claimedAt || statusClaims[claimKey]?.lastSentAt) return "already_claimed";
     return "";
   })();
   if (skipReason) {
     return { sent: false, skipped: true, reason: skipReason };
   }
 
+  order.whatsappStatusNotifications = {
+    ...statusClaims,
+    [claimKey]: {
+      templateName,
+      claimedAt: new Date().toISOString()
+    }
+  };
+  persistWhatsappNotificationClaim(order);
   try {
+    const recipient = verifiedCustomerWhatsappNumber(order);
     const messageResponse = await sendWhatsappOrderUpdate(order);
+    const messageId = messageResponse?.messages?.[0]?.id || "";
+    order.whatsappStatusNotifications[claimKey] = {
+      ...order.whatsappStatusNotifications[claimKey],
+      lastSentAt: new Date().toISOString(),
+      messageId
+    };
     order.whatsappNotifications = {
       ...order.whatsappNotifications,
       lastStatusSent: order.status,
       ...(notificationKey ? { lastNotificationKey: notificationKey } : {}),
       lastSentAt: new Date().toISOString(),
-      messageId: messageResponse?.messages?.[0]?.id || order.whatsappNotifications?.messageId || ""
+      messageId: messageId || order.whatsappNotifications?.messageId || ""
     };
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: claimKey,
+      templateName,
+      audience: "customer",
+      recipient,
+      messageId
+    });
     delete order.whatsappNotificationError;
+    persistWhatsappNotificationClaim(order);
     return {
       sent: true,
-      messageId: messageResponse?.messages?.[0]?.id || ""
+      messageId
     };
   } catch (error) {
+    order.whatsappStatusNotifications[claimKey] = {
+      ...order.whatsappStatusNotifications[claimKey],
+      failedAt: new Date().toISOString(),
+      error: error.message
+    };
     order.whatsappNotificationError = error.message;
+    persistWhatsappNotificationClaim(order);
     return { sent: false, skipped: false, error: error.message };
   }
 }
@@ -2121,6 +2603,10 @@ function parseAdminCancelCommand(text = "") {
   const normalized = String(text || "").trim().toUpperCase();
   const match = normalized.match(/^(CANCEL|REFUND|EMPTY|NO STOCK|OUT OF STOCK)(?:\s+([A-Z]+-\d+))?$/);
   return match ? { action: match[1], orderId: match[2] || "" } : null;
+}
+
+function isContactCustomerCommand(text = "") {
+  return /^(CONTACT_CUSTOMER|CONTACT CUSTOMER)$/i.test(String(text || "").trim());
 }
 
 function parseAdminUndoCommand(text = "") {
@@ -2518,6 +3004,14 @@ async function processWhatsappAdminCommand(message = {}) {
     const order = await undoPendingAdminOrderAction("live", undoCommand);
     return { handled: true, action: "undo", orderId: order.id };
   }
+  if (isContactCustomerCommand(text)) {
+    const result = await sendVerifiedCustomerContactToStaff(message);
+    return { handled: true, action: "contact_customer", orderId: result.orderId || "", skipped: Boolean(result.skipped) };
+  }
+  if (/^(REQUEST_NEW_DRIVER|REQUEST NEW DRIVER)$/i.test(String(text || "").trim())) {
+    const result = await requestReplacementDriverFromWhatsapp(message);
+    return { handled: true, action: "request_new_driver", orderId: result.orderId, replacementShipmentId: result.replacementShipmentId };
+  }
   const cancelCommand = parseAdminCancelCommand(text);
   if (cancelCommand) {
     cancelCommand.orderId = cancelCommand.orderId || orderIdFromWhatsappReplyContext(message);
@@ -2554,6 +3048,7 @@ async function processWhatsappWebhook(payload) {
             : new Date().toISOString();
         }
         updateAdminWhatsappDeliveryStatus(order, status);
+        updateWhatsappLifecycleDeliveryStatus(order, status);
       }
     });
     saveOrders(ordersLivePath, stores.live.orders);
@@ -4430,6 +4925,61 @@ function buildShipmentItemsFromOrder(order) {
     .filter(Boolean);
 }
 
+function shipmentRequestSnapshot(order) {
+  const store = getStoreConfig();
+  const shipping = order?.pricing?.shipping || {};
+  const destination = normalizeDestination(order?.fulfillment?.location || {});
+  return {
+    version: 1,
+    pickup: {
+      address: String(store.kitchenAddress || "").trim(), lat: Number(store.kitchenLat), lng: Number(store.kitchenLng)
+    },
+    dropoff: {
+      address: String(order?.customer?.address || order?.fulfillment?.address || "").trim(),
+      lat: destination.lat == null ? null : Number(destination.lat), lng: destination.lng == null ? null : Number(destination.lng)
+    },
+    items: buildShipmentItemsFromOrder(order),
+    service: {
+      courierCompany: String(shipping.courierCode || preferredInstantCourier(getIntegrationConfig().biteshipCouriers)).toLowerCase(),
+      courierType: String(shipping.courierServiceCode || shipping.serviceType || shipping.courierServiceName || "instant").toLowerCase()
+    },
+    quotedTotal: Number(shipping.total || order?.pricing?.deliveryFee || 0)
+  };
+}
+
+function sameShipmentRequestSnapshot(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function fetchBiteshipRebookQuote(order, snapshot) {
+  const config = getIntegrationConfig();
+  if (!config.biteshipApiKey) throw new Error("Biteship API key is not configured");
+  const response = await fetch("https://api.biteship.com/v1/rates/couriers", {
+    method: "POST",
+    headers: { Authorization: biteshipAuthorizationValue(config.biteshipApiKey), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      origin_latitude: snapshot.pickup.lat,
+      origin_longitude: snapshot.pickup.lng,
+      destination_latitude: snapshot.dropoff.lat,
+      destination_longitude: snapshot.dropoff.lng,
+      couriers: snapshot.service.courierCompany,
+      items: snapshot.items
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`Biteship rebook rate check failed with status ${response.status}`);
+  const rate = (Array.isArray(payload.pricing) ? payload.pricing : []).find((entry) => (
+    String(entry.courier_code || "").toLowerCase() === snapshot.service.courierCompany
+    && String(entry.courier_service_code || entry.service_type || entry.courier_service_name || "").toLowerCase() === snapshot.service.courierType
+  ));
+  if (!rate) throw new Error("The stored Biteship courier/service is no longer available for this route.");
+  const total = Number(rate.price || rate.shipping_fee || 0);
+  if (!Number.isFinite(total) || total < 0 || total > snapshot.quotedTotal) {
+    throw new Error("The live Biteship rate changed and needs staff review before another driver can be requested.");
+  }
+  return { total, courierCode: snapshot.service.courierCompany, courierType: snapshot.service.courierType };
+}
+
 function localIndonesianPhone(phone) {
   const normalized = formatIndonesianPhone(phone);
   return normalized ? normalized.replace(/^62/, "0") : "";
@@ -4570,8 +5120,114 @@ function shipmentFromBiteshipPayload(payload = {}, fallback = {}) {
     courier,
     trackingLink: courier?.link || payload.courier_link || payload.tracking_link || payload.tracking_url || fallback.trackingLink || "",
     createdAt: fallback.createdAt || new Date().toISOString(),
-    raw: payload.raw || payload
+    raw: stripBiteshipProofFields(payload.raw || payload)
   };
+}
+
+function validatedHttpsUrl(value = "") {
+  const text = String(value || "").trim();
+  if (!text || text.length > 2048) return "";
+  try {
+    const parsed = new URL(text);
+    const hostname = parsed.hostname.toLowerCase();
+    const privateIpv4 = /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname);
+    const privateHost = hostname === "localhost"
+      || hostname.endsWith(".local")
+      || hostname === "::1"
+      || hostname === "0.0.0.0"
+      || privateIpv4;
+    return parsed.protocol === "https:" && !privateHost ? parsed.toString() : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function stripBiteshipProofFields(value) {
+  if (Array.isArray(value)) return value.map(stripBiteshipProofFields);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !/(proof_of_delivery|signature)/i.test(key))
+    .map(([key, nested]) => [key, stripBiteshipProofFields(nested)]));
+}
+
+function biteshipDeliveryProof(payload = {}, expectedShipmentId = "") {
+  const normalized = shipmentFromBiteshipPayload(payload);
+  const expected = String(expectedShipmentId || "").trim();
+  const identifiers = new Set(biteshipShipmentIdentifiers(normalized));
+  if (!expected || !identifiers.has(expected)) {
+    return { available: false, images: [], signatureUrl: "", timestamp: "", verified: false };
+  }
+  const histories = [
+    ...(Array.isArray(payload?.courier?.history) ? payload.courier.history : []),
+    ...(Array.isArray(payload?.history) ? payload.history : [])
+  ];
+  const images = [...new Set(histories.flatMap((entry) => {
+    const candidates = entry?.proof_of_delivery_images
+      || entry?.proofOfDeliveryImages
+      || entry?.proof_of_delivery_image
+      || [];
+    return (Array.isArray(candidates) ? candidates : [candidates])
+      .map((candidate) => validatedHttpsUrl(candidate?.url || candidate))
+      .filter(Boolean);
+  }))].slice(0, 10);
+  const signatureUrl = histories
+    .map((entry) => validatedHttpsUrl(entry?.signature?.url || entry?.signature || entry?.proof_of_delivery_signature))
+    .find(Boolean) || "";
+  const rawTimestamp = [...histories].reverse()
+    .map((entry) => entry?.timestamp || entry?.updated_at || entry?.created_at)
+    .find(Boolean);
+  const parsedTimestamp = Date.parse(rawTimestamp || "");
+  const timestamp = Number.isFinite(parsedTimestamp) ? new Date(parsedTimestamp).toISOString() : "";
+  return {
+    available: Boolean(images.length || signatureUrl),
+    images,
+    signatureUrl,
+    timestamp,
+    verified: true
+  };
+}
+
+function biteshipPayloadHasObservedHandoff(payload = {}) {
+  const histories = [
+    ...(Array.isArray(payload?.courier?.history) ? payload.courier.history : []),
+    ...(Array.isArray(payload?.history) ? payload.history : [])
+  ];
+  return histories.some((entry) => [
+    "picked", "picked_up", "successfully_pickup", "successfully_picked_up",
+    "dropping_off", "courier_delivering", "in_transit", "on_delivery"
+  ].includes(normalizedShipmentStatus(entry?.status || entry?.name || entry?.event)));
+}
+
+function verifyBiteshipDeliveredPayload(order, payload = {}) {
+  const shipment = order?.fulfillment?.shipment || {};
+  const shipmentId = String(shipment.orderId || "").trim();
+  if (!shipmentId) throw new Error("A Biteship shipment is required for delivery confirmation");
+  const normalized = shipmentFromBiteshipPayload(payload, shipment);
+  if (!biteshipShipmentIdentifiers(normalized).includes(shipmentId)) {
+    throw new Error("Biteship delivery confirmation did not match the active shipment");
+  }
+  if (shipmentStatusToOrderStatus(normalized.status) !== "delivered") {
+    throw new Error(`Biteship has not confirmed delivery for ${shipmentId}`);
+  }
+  if (!providerStatusCanCompleteOrder({
+    ...shipment,
+    ...normalized,
+    ...(biteshipPayloadHasObservedHandoff(payload) ? { pickupObservedAt: shipment.pickupObservedAt || new Date().toISOString() } : {})
+  }, normalized.status)) {
+    throw new Error("Biteship reported delivered before a pickup or handoff was observed");
+  }
+  return {
+    payload,
+    shipment: normalized,
+    proof: biteshipDeliveryProof(payload, shipmentId)
+  };
+}
+
+async function confirmBiteshipDeliveredShipment(order) {
+  const shipmentId = String(order?.fulfillment?.shipment?.orderId || "").trim();
+  if (!shipmentId) throw new Error("A Biteship shipment is required for delivery confirmation");
+  const payload = await fetchBiteshipShipment(shipmentId);
+  return verifyBiteshipDeliveredPayload(order, payload);
 }
 
 function biteshipTrackingIdFromUrl(value = "") {
@@ -4693,6 +5349,7 @@ async function createBiteshipShipment(order, options = {}) {
             status: "confirmed",
             waybillId: parsed.details.waybill_id || ""
           }),
+          requestSnapshot: shipmentRequestSnapshot(order),
           recoveredFromDuplicateReference: true,
           duplicateReferenceResponse: parsed
         };
@@ -4703,6 +5360,7 @@ async function createBiteshipShipment(order, options = {}) {
             status: "confirmed",
             waybillId: parsed.details.waybill_id || ""
           }),
+          requestSnapshot: shipmentRequestSnapshot(order),
           recoveredFromDuplicateReference: true,
           raw: parsed
         };
@@ -4711,7 +5369,7 @@ async function createBiteshipShipment(order, options = {}) {
     throw new Error(parsed?.error || parsed?.message || `Biteship order failed with status ${response.status}`);
   }
 
-  return shipmentFromBiteshipPayload(parsed);
+  return { ...shipmentFromBiteshipPayload(parsed), requestSnapshot: shipmentRequestSnapshot(order) };
 }
 
 async function maybeCreateBiteshipShipment(order) {
@@ -4849,12 +5507,33 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
   const previousStatus = order.status;
   const providerShipment = await fetchBiteshipShipmentForOrder(order, shipment);
   const shipmentStatus = String(providerShipment.status || shipment.status || "").toLowerCase();
-  const normalizedShipment = shipmentFromBiteshipPayload(providerShipment, shipment);
-  const observedHandoff = shipmentHasObservedHandoff(shipment) || ["picked", "picked_up", "successfully_pickup", "successfully_picked_up", "dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalizedShipmentStatus(shipmentStatus));
+  let normalizedShipment = shipmentFromBiteshipPayload(providerShipment, shipment);
+  const observedHandoff = shipmentHasObservedHandoff(shipment)
+    || biteshipPayloadHasObservedHandoff(providerShipment)
+    || ["picked", "picked_up", "successfully_pickup", "successfully_picked_up", "dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalizedShipmentStatus(shipmentStatus));
   if (observedHandoff && !normalizedShipment.pickupObservedAt) normalizedShipment.pickupObservedAt = new Date().toISOString();
-  const nextOrderStatus = providerStatusCanCompleteOrder({ ...shipment, ...normalizedShipment }, shipmentStatus)
+  let deliveryProof = shipment.deliveryProof || null;
+  let deliveryVerificationError = "";
+  if (shipmentStatusToOrderStatus(shipmentStatus) === "delivered") {
+    try {
+      const verified = verifyBiteshipDeliveredPayload({
+        ...order,
+        fulfillment: { ...order.fulfillment, shipment: { ...shipment, ...normalizedShipment } }
+      }, providerShipment);
+      normalizedShipment = { ...normalizedShipment, ...verified.shipment };
+      deliveryProof = verified.proof;
+    } catch (error) {
+      deliveryVerificationError = error.message;
+    }
+  }
+  let nextOrderStatus = !deliveryVerificationError && providerStatusCanCompleteOrder({ ...shipment, ...normalizedShipment }, shipmentStatus)
     ? shipmentStatusToOrderStatus(shipmentStatus)
     : "delivery_issue";
+  const verifiedPrePickupFailure = isRecoverableFailedShipmentStatus(shipmentStatus)
+    && !observedHandoff
+    && order.payment?.status === "paid"
+    && ["paid", "preparing"].includes(previousStatus);
+  if (verifiedPrePickupFailure) nextOrderStatus = "preparing";
   order.fulfillment = {
     ...order.fulfillment,
     shipment: {
@@ -4869,8 +5548,11 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
       waybillUrl: normalizedShipment.waybillUrl || shipment.waybillUrl || "",
       updatedAt: new Date().toISOString(),
       syncedAt: new Date().toISOString(),
-          raw: providerShipment,
-          providerDeliveredAwaitingHandoffReview: shipmentStatusToOrderStatus(shipmentStatus) === "delivered" && !observedHandoff
+      raw: stripBiteshipProofFields(providerShipment),
+      requestSnapshot: shipment.requestSnapshot,
+      ...(deliveryProof ? { deliveryProof } : {}),
+      providerDeliveredAwaitingHandoffReview: shipmentStatusToOrderStatus(shipmentStatus) === "delivered" && Boolean(deliveryVerificationError),
+      deliveryVerificationError
     }
   };
   if (nextOrderStatus) {
@@ -4883,8 +5565,14 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
   ].filter(Boolean).join(":");
   if (previousStatus !== order.status) {
     await maybeSendWhatsappOrderStatus(order, previousStatus);
+    if (order.status === "delivered") {
+      await maybeSendWhatsappAdminDeliveryComplete(order, `biteship:${order.fulfillment.shipment.orderId}:delivery-complete`);
+    }
   }
   await notifyShipmentUpdate(order, shipmentNotificationKey);
+  if (verifiedPrePickupFailure) {
+    await maybeSendWhatsappAdminDeliveryRecoveryAlert(order, shipmentStatus, `${shipmentNotificationKey}:verified-recovery`);
+  }
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
 }
@@ -4929,8 +5617,17 @@ function assertDeliveryRecoveryRequest(order, expectedShipmentId, actionId) {
   if (!actionId || !/^[a-zA-Z0-9_-]{16,100}$/.test(String(actionId))) {
     throw new Error("A valid recovery action ID is required");
   }
-  if (["delivered", "returned", "delivery_failed", "cancelled"].includes(order.status)) {
-    throw new Error("This order can no longer be recovered for delivery");
+  if (order.payment?.status !== "paid" || order.status !== "preparing") {
+    throw new Error("Only a paid preparing order can request a replacement driver");
+  }
+  if (!isRecoverableFailedShipmentStatus(order.fulfillment?.shipment?.status)) {
+    throw new Error("The active Biteship shipment is not a verified pre-pickup failure");
+  }
+  if (shipmentHasObservedHandoff(order.fulfillment?.shipment || {}) || order.fulfillment?.shipment?.replacement === true) {
+    throw new Error("A collected or replacement shipment cannot be automatically rebooked");
+  }
+  if (!order.fulfillment?.shipment?.requestSnapshot || !sameShipmentRequestSnapshot(order.fulfillment.shipment.requestSnapshot, shipmentRequestSnapshot(order))) {
+    throw new Error("The stored pickup, drop-off, items, or service changed and needs staff review");
   }
   return shipmentId;
 }
@@ -5041,6 +5738,10 @@ async function rebookBiteshipDelivery(mode, orderId, session, request = {}) {
       if (!isRecoverableFailedShipmentStatus(providerStatus)) {
         throw new Error(`Biteship still shows this delivery as ${providerStatus || "active"}. It cannot be replaced yet.`);
       }
+      if (biteshipPayloadHasObservedHandoff(providerShipment) || shipmentHasObservedHandoff(previousShipment)) {
+        throw new Error("Biteship shows a pickup/handoff for this delivery. It cannot be automatically rebooked.");
+      }
+      const liveRate = await fetchBiteshipRebookQuote(order, previousShipment.requestSnapshot);
       const history = Array.isArray(order.fulfillment.shipmentHistory)
         ? [...order.fulfillment.shipmentHistory]
         : [];
@@ -5076,9 +5777,10 @@ async function rebookBiteshipDelivery(mode, orderId, session, request = {}) {
       order.whatsappUrl = buildWhatsappUrl(order);
       finishDeliveryRecoveryAction(mode, order, claim.record, "completed", {
         replacementShipmentId: shipment.orderId,
-        providerStatus
+        providerStatus,
+        verifiedRate: liveRate,
+        providerVerifiedAt: new Date().toISOString()
       });
-      await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-rebooked:${shipment.orderId}`, `Replacement Biteship delivery requested after ${providerStatus}. Customer tracking waits for courier allocation.`);
       saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
       return enrichOrder(order);
     } catch (error) {
@@ -6991,6 +7693,16 @@ function enrichOrder(order, options = {}) {
   if (!order) return null;
   const { metaAttribution: _privateMetaAttribution, ...publicOrder } = order;
   const payment = { ...(order.payment || {}) };
+  const fulfillment = order.fulfillment ? { ...order.fulfillment } : {};
+  if (fulfillment.shipment) {
+    const { deliveryProof, ...shipmentWithoutProof } = fulfillment.shipment;
+    fulfillment.shipment = {
+      ...shipmentWithoutProof,
+      ...(options.includeAdminDeliveryProofAvailability
+        ? { deliveryProofAvailable: Boolean(deliveryProof?.available) }
+        : {})
+    };
+  }
   const refund = order.refund ? { ...order.refund } : null;
   // A successful refund-request response is not the same as confirmation from
   // the payment channel. Older orders stored that request response as
@@ -7019,6 +7731,7 @@ function enrichOrder(order, options = {}) {
   }
   return {
     ...publicOrder,
+    fulfillment,
     payment,
     ...(refund ? { refund } : {}),
     ...(options.includeAdminCustomerWhatsappUrl
@@ -7443,7 +8156,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
     id: orderId,
     mode,
     createdAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
+    expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
     status: isZeroTotalOrder ? "paid" : "awaiting_payment",
     paidAt: isZeroTotalOrder ? now.toISOString() : "",
     receiptToken: crypto.randomBytes(18).toString("hex"),
@@ -7494,6 +8207,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
     schedulePaymentReminderFlow(mode, order);
   }
   if (isZeroTotalOrder) {
+    await maybeSendWhatsappPaymentConfirmed(order, `order:${order.id}:payment-confirmed`);
     await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
   }
@@ -7618,6 +8332,7 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
   if (previousStatus !== order.status) {
     if (order.status === "paid") {
       await maybeSendMetaPurchase(order);
+      await maybeSendWhatsappPaymentConfirmed(order, `order:${order.id}:payment-confirmed`);
       await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     }
     if (order.status === "paid") {
@@ -7987,7 +8702,7 @@ function handleApi(requestUrl, request, response) {
             event: payload.event || body.event || "",
             identifiers: biteshipWebhookIdentifiers(body),
             status: payload.status || body.status || "",
-            body
+            body: stripBiteshipProofFields(body)
           });
           return;
         }
@@ -8009,8 +8724,33 @@ function handleApi(requestUrl, request, response) {
         const previousStatus = order.status;
         const previousShipmentStatus = order.fulfillment?.shipment?.status || "";
         const shipmentStatus = payload.status || body.status || order.fulfillment.shipment.status || "";
-        const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
-        const normalizedShipment = shipmentFromBiteshipPayload(payload, order.fulfillment.shipment);
+        let nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
+        let normalizedShipment = shipmentFromBiteshipPayload(payload, order.fulfillment.shipment);
+        const observedHandoff = shipmentHasObservedHandoff(order.fulfillment.shipment)
+          || ["picked", "picked_up", "successfully_pickup", "successfully_picked_up", "dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalizedShipmentStatus(shipmentStatus));
+        if (observedHandoff && !normalizedShipment.pickupObservedAt) {
+          normalizedShipment.pickupObservedAt = new Date().toISOString();
+        }
+        let deliveryProof = order.fulfillment.shipment.deliveryProof || null;
+        let deliveryVerificationError = "";
+        if (nextOrderStatus === "delivered") {
+          try {
+            const verified = await confirmBiteshipDeliveredShipment({
+              ...order,
+              fulfillment: { ...order.fulfillment, shipment: { ...order.fulfillment.shipment, ...normalizedShipment } }
+            });
+            normalizedShipment = { ...normalizedShipment, ...verified.shipment };
+            deliveryProof = verified.proof;
+          } catch (error) {
+            nextOrderStatus = "delivery_issue";
+            deliveryVerificationError = error.message;
+          }
+        }
+        const verifiedPrePickupFailure = isRecoverableFailedShipmentStatus(shipmentStatus)
+          && !observedHandoff
+          && order.payment?.status === "paid"
+          && ["paid", "preparing"].includes(previousStatus);
+        if (verifiedPrePickupFailure) nextOrderStatus = "preparing";
         const actualPrice = biteshipActualPrice(payload, body);
         const quotedPrice = Number(order.pricing?.deliveryFee || 0);
         const previousActualPrice = Number(order.fulfillment?.shipment?.actualPrice);
@@ -8058,8 +8798,12 @@ function handleApi(requestUrl, request, response) {
             body.tracking_url ||
             order.fulfillment.shipment.trackingLink ||
             "",
+          pickupObservedAt: normalizedShipment.pickupObservedAt || order.fulfillment.shipment.pickupObservedAt || "",
           updatedAt: new Date().toISOString(),
-          lastWebhook: body
+          lastWebhook: stripBiteshipProofFields(body),
+          ...(deliveryProof ? { deliveryProof } : {}),
+          providerDeliveredAwaitingHandoffReview: shipmentStatusToOrderStatus(shipmentStatus) === "delivered" && Boolean(deliveryVerificationError),
+          deliveryVerificationError
         };
         if (nextOrderStatus) {
           order.status = nextOrderStatus;
@@ -8072,6 +8816,9 @@ function handleApi(requestUrl, request, response) {
         const whatsappResult = previousStatus !== order.status
           ? await maybeSendWhatsappOrderStatus(order, previousStatus)
           : { sent: false, skipped: true, reason: "same_order_status" };
+        const adminDeliveryCompleteWhatsappResult = previousStatus !== order.status && order.status === "delivered"
+          ? await maybeSendWhatsappAdminDeliveryComplete(order, `biteship:${order.fulfillment.shipment.orderId}:delivery-complete`)
+          : { sent: false, skipped: true, reason: "order_not_newly_delivered" };
         const shippingWhatsappResult = await notifyShipmentUpdate(order, shipmentNotificationKey);
         const adminWhatsappResult = shouldAlertAdminForBiteshipWebhook({ shipmentStatus, priceChanged })
           ? await maybeSendWhatsappAdminAlert(
@@ -8082,7 +8829,9 @@ function handleApi(requestUrl, request, response) {
                 : `Biteship ${shipmentStatus || "delivery update"}`
             )
           : { sent: false, skipped: true, reason: "normal_biteship_status" };
-        const deliveryRecoveryWhatsappResult = await maybeSendWhatsappAdminDeliveryRecoveryAlert(order, shipmentStatus, shipmentNotificationKey);
+        const deliveryRecoveryWhatsappResult = verifiedPrePickupFailure
+          ? await maybeSendWhatsappAdminDeliveryRecoveryAlert(order, shipmentStatus, `${shipmentNotificationKey}:verified-recovery`)
+          : { sent: false, skipped: true, reason: "not_verified_pre_pickup_failure" };
         recordBiteshipWebhookLog({
           matched: true,
           event: payload.event || body.event || "",
@@ -8098,10 +8847,11 @@ function handleApi(requestUrl, request, response) {
           priceChanged,
           merchantAbsorbedAmount,
           whatsappResult,
+          adminDeliveryCompleteWhatsappResult,
           shippingWhatsappResult,
           adminWhatsappResult,
           deliveryRecoveryWhatsappResult,
-          body
+          body: stripBiteshipProofFields(body)
         });
         saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);
       })
@@ -8439,7 +9189,10 @@ function handleApi(requestUrl, request, response) {
     // immediately, then reconcile unresolved card payments in the background.
     sendJson(response, 200, {
       mode,
-      orders: storeState.orders.map((order) => enrichOrder(order, { includeAdminCustomerWhatsappUrl: true }))
+      orders: storeState.orders.map((order) => enrichOrder(order, {
+        includeAdminCustomerWhatsappUrl: true,
+        includeAdminDeliveryProofAvailability: true
+      }))
     });
     scheduleUnresolvedCardPaymentSweep(mode);
     return true;
@@ -9074,24 +9827,10 @@ function handleApi(requestUrl, request, response) {
           }
           if (refundOrder.refund.status !== previousRefundStatus) {
             if (refundOrder.mode !== "test" && isWhatsappCloudReady()) {
-              // The request notification was already sent when the admin
-              // cancelled the order. Only a failure needs another alert.
-              if (refundOrder.refund.status === "failed" && !refundOrder.refund.notifications?.adminFailureSentAt) {
-                try {
-                  const adminResponse = await sendWhatsappAdminRefundUpdate(refundOrder);
-                  refundOrder.refund.notifications = {
-                    ...(refundOrder.refund.notifications || {}),
-                    adminFailureSentAt: new Date().toISOString(),
-                    adminFailureResults: adminResponse.results
-                  };
-                } catch (error) {
-                  refundOrder.refund.notifications = {
-                    ...(refundOrder.refund.notifications || {}),
-                    adminFailureError: error.message,
-                    adminFailureAttemptedAt: new Date().toISOString()
-                  };
-                }
-              }
+              // Xendit processed is the first confirmed terminal success;
+              // do not send refund_completed for requested or pending states.
+              await maybeSendWhatsappRefundCompleted(refundOrder, `order:${refundOrder.id}:refund-processed`);
+              await maybeSendWhatsappAdminRefundTerminalUpdate(refundOrder, `order:${refundOrder.id}:refund-${refundOrder.refund.status}`);
             }
           }
           saveOrders(ordersPathForMode(refundOrder.mode || "live"), getStoreState(refundOrder.mode || "live").orders);
@@ -9184,7 +9923,7 @@ function handleApi(requestUrl, request, response) {
           if (order.status === "paid") {
             clearPaidOrderCart(order);
             await maybeSendMetaPurchase(order);
-            await maybeSendWhatsappOrderStatus(order, previousStatus);
+            await maybeSendWhatsappPaymentConfirmed(order, `order:${order.id}:payment-confirmed`);
             await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
             await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
           } else if (order.status === "expired") {
@@ -9311,7 +10050,6 @@ const server = http.createServer((request, response) => {
 
 if (require.main === module) {
   server.listen(port, host, () => {
-    scheduleExistingPendingAdminActions();
     scheduleExistingPaymentReminderFlows();
     sweepBiteshipDeliveryStatuses().catch((error) => {
       console.warn(`Biteship delivery sweep failed: ${error.message}`);
@@ -9388,6 +10126,10 @@ module.exports = {
   correctDisputedDeliveryToSelfDelivery,
   replacementTrackingNotificationReady,
   assertDeliveryRecoveryRequest,
+  shipmentRequestSnapshot,
+  sameShipmentRequestSnapshot,
+  findStaffNotificationFromReply,
+  isContactCustomerCommand,
   isSupportedImageBuffer,
   metaAttributionFromRequest,
   metaUserDataFromOrder,

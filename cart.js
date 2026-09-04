@@ -1166,6 +1166,12 @@ function startPaymentStatusPolling(order) {
       }
       if (response.order.status !== "awaiting_payment") {
         stopPaymentStatusPolling();
+        if (["expired", "cancelled"].includes(response.order.status)) {
+          clearCompletedCheckoutState();
+          await refreshCart().catch(() => {});
+          setCheckoutMessage("This unpaid order was cancelled and its checkout state was cleared. Start a new checkout when you are ready.");
+          return;
+        }
         renderEmbeddedPayment(response.order);
         setCheckoutMessage("This payment is no longer active. Please choose another payment method.");
         return;
