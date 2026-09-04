@@ -201,7 +201,16 @@ function renderDocument(payload) {
     printButton.hidden = true;
     openInBrowserButton.hidden = false;
   }
-  printButton?.addEventListener("click", () => window.print());
+  printButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    window.focus();
+    if (typeof window.print !== "function") {
+      openInBrowserButton.hidden = false;
+      openInBrowserButton.focus();
+      return;
+    }
+    window.print();
+  });
 }
 
 const previewDocument = {

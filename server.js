@@ -1162,14 +1162,21 @@ async function sendWhatsappOrderUpdate(order) {
 function adminWhatsappParameters(order, eventLabel = "") {
   const documentUrl = adminOrderDocumentUrl(order);
   const shipmentStatus = order.fulfillment?.shipment?.status || "Not booked yet";
+  let customerWhatsapp = "Verify in secure Admin";
+  try {
+    customerWhatsapp = `+${verifiedCustomerWhatsappNumber(order)}`;
+  } catch (_error) {
+    // Never place an unverified number in the staff template. Legacy orders can
+    // still be reviewed through the protected Admin link.
+  }
   const staffAction = order.status === "paid"
-    ? `Reply APPROVE when packed, or CANCEL if stock is empty. If there is more than one waiting order, reply APPROVE ${order.id} or CANCEL ${order.id}.`
+    ? "Use Approve to open the secure pickup/drop-off review before requesting a driver. Use Contact customer in Admin if clarification is needed, or Cancel to open the controlled refund review."
     : "No staff action needed.";
   return [
     eventLabel || humanizeOrderStatus(order),
     order.id,
-    "Customer details available in Admin",
-    "Not included in alert",
+    order.customer?.name || "Customer",
+    customerWhatsapp,
     `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`,
     order.payment?.label || "",
     shipmentStatus,
@@ -1247,15 +1254,12 @@ function adminShippingWhatsappParameters(order) {
 
 async function sendWhatsappAdminAlert(order, eventLabel = "") {
   const adminNumbers = adminWhatsappNumbers();
-  const reviewTemplateName = String(process.env.WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME || "").trim();
-  const templateName = reviewTemplateName || String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim();
+  const templateName = String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim();
   if (!adminNumbers.length || !templateName) {
     throw new Error("Admin WhatsApp number or template name is missing");
   }
 
-  const parameters = reviewTemplateName
-    ? adminOrderReviewWhatsappParameters(order)
-    : adminWhatsappParameters(order, eventLabel);
+  const parameters = adminWhatsappParameters(order, eventLabel);
 
   const deliveries = await Promise.allSettled(adminNumbers.map((adminNumber) => sendWhatsappTemplateMessage(
     adminNumber,
@@ -1263,14 +1267,7 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
     parameters,
     {
       languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-      ...(reviewTemplateName ? {} : {
-        headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
-        headerDocumentFilename: `${order.id}-bakeaholic-receipt.pdf`
-      }),
-      urlButtonParameters: reviewTemplateName && order.status === "paid"
-        ? [{ index: "0", text: adminOrderReviewButtonQuery(order) }]
-        : [],
-      quickReplyButtons: !reviewTemplateName && order.status === "paid"
+      quickReplyButtons: order.status === "paid"
         ? [
             { payload: `APPROVE ${order.id}` },
             { payload: `CANCEL ${order.id}` }
@@ -2132,6 +2129,46 @@ function parseAdminUndoCommand(text = "") {
   return match ? { action: "UNDO", orderId: match[1] || "", token: match[2] || "" } : null;
 }
 
+function addressArea(value = "") {
+  const parts = String(value || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts
+    .slice(-4)
+    .map((part) => part.replace(/\b\d{4,}\b/g, "").replace(/\s{2,}/g, " ").trim())
+    .filter(Boolean)
+    .join(", ") || "Address unavailable";
+}
+
+function adminOrderReviewUrl(order) {
+  const baseUrl = String(process.env.PUBLIC_SITE_URL || "https://bakeaholicbali.com").replace(/\/+$/, "");
+  return `${baseUrl}/admin.html?section=orders&order=${encodeURIComponent(String(order?.id || "").trim())}`;
+}
+
+function adminOrderActionReviewMessage(order, action) {
+  const store = getStoreConfig();
+  const actionLabel = action === "cancel" ? "Cancel/refund" : "Approve";
+  const instruction = action === "cancel"
+    ? "No cancellation or refund has been started. Open secure Admin, review the paid order, then use Cancel order & refund only if confirmed."
+    : "No driver has been requested. Open secure Admin, verify this pickup and drop-off, then use Review & request delivery when the package is ready.";
+  return [
+    `${actionLabel} selected for ${order.id}.`,
+    instruction,
+    `Pickup: ${addressArea(store.kitchenAddress)}`,
+    `Drop-off: ${addressArea(order.fulfillment?.address || order.customer?.address)}`,
+    adminOrderReviewUrl(order)
+  ].join("\n");
+}
+
+async function sendAdminOrderActionReview(order, action, recipient) {
+  const target = normalizePhoneNumber(recipient);
+  if (!target) {
+    throw new Error("The requesting staff WhatsApp number is unavailable");
+  }
+  return sendWhatsappTextMessage(target, adminOrderActionReviewMessage(order, action));
+}
+
 function latestOrderTimestamp(order = {}) {
   return Date.parse(order.paidAt || order.createdAt || "") || 0;
 }
@@ -2485,8 +2522,9 @@ async function processWhatsappAdminCommand(message = {}) {
   if (cancelCommand) {
     cancelCommand.orderId = cancelCommand.orderId || orderIdFromWhatsappReplyContext(message);
     const cancelOrderId = resolveAdminCommandOrderId(cancelCommand, ["paid", "preparing"]);
-    const order = await executeAdminOrderAction("live", cancelOrderId, "cancel", message.from);
-    return { handled: true, action: "cancelled", orderId: order.id };
+    const order = findOrder("live", cancelOrderId);
+    await sendAdminOrderActionReview(order, "cancel", message.from);
+    return { handled: true, action: "cancel_review_required", orderId: order.id };
   }
   const approveCommand = parseAdminApproveCommand(text);
   if (!approveCommand) {
@@ -2494,8 +2532,9 @@ async function processWhatsappAdminCommand(message = {}) {
   }
   approveCommand.orderId = approveCommand.orderId || orderIdFromWhatsappReplyContext(message);
   const orderId = resolveAdminCommandOrderId(approveCommand, ["paid"]);
-  const order = await executeAdminOrderAction("live", orderId, "approve", message.from);
-  return { handled: true, action: "approved", orderId: order.id };
+  const order = findOrder("live", orderId);
+  await sendAdminOrderActionReview(order, "approve", message.from);
+  return { handled: true, action: "approve_review_required", orderId: order.id };
 }
 
 async function processWhatsappWebhook(payload) {
@@ -9101,6 +9140,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  addressArea,
+  adminOrderActionReviewMessage,
   adminCustomerWhatsappUrl,
   adminPermissions,
   adminOrderReviewButtonQuery,

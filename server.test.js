@@ -3,6 +3,8 @@ const test = require("node:test");
 const vm = require("node:vm");
 
 const {
+  addressArea,
+  adminOrderActionReviewMessage,
   adminCustomerWhatsappUrl,
   adminPermissions,
   adminOrderReviewButtonQuery,
@@ -432,7 +434,7 @@ test("admin alerts fan out to all three configured recipients", async () => {
     const result = await sendWhatsappAdminAlert({
       id: "BAK-0999",
       status: "paid",
-      customer: { name: "Customer", phone: "628999999999" },
+      customer: { name: "Customer", phone: "628999999999", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
       pricing: { total: 18700 },
       payment: { label: "QRIS" },
       fulfillment: { shipment: {} },
@@ -615,43 +617,49 @@ test("paid admin alert describes an unbooked delivery and required approval", ()
   const parameters = adminWhatsappParameters({
     id: "BAK-0105",
     status: "paid",
-    customer: { name: "Eduardo", phone: "+6281234567890" },
+    customer: { name: "Eduardo", phone: "+6281234567890", verifiedPhone: "6281234567890", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
     pricing: { total: 18700 },
     payment: { label: "QRIS" },
     fulfillment: { shipment: {} },
     receiptToken: "token"
   }, "Payment received");
   assert.equal(parameters[6], "Not booked yet");
-  assert.match(parameters[8], /Reply APPROVE/);
-  assert.doesNotMatch(JSON.stringify(parameters), /Eduardo|6281234567890/);
+  assert.equal(parameters[2], "Eduardo");
+  assert.equal(parameters[3], "+6281234567890");
+  assert.match(parameters[8], /secure pickup\/drop-off review/);
 });
 
-test("secure order-review alerts exclude customer details and carry only the order reference", async () => {
+test("approved detailed admin alert overrides the deprecated review template", async () => {
   const order = {
     id: "BAK-0106",
     status: "paid",
-    customer: { name: "Private Customer", phone: "+6281234567890" }
+    customer: {
+      name: "Verified Customer",
+      phone: "+6281234567890",
+      verifiedPhone: "6281234567890",
+      phoneVerifiedAt: "2026-09-01T00:00:00.000Z"
+    },
+    pricing: { total: 187000 },
+    payment: { label: "QRIS" },
+    fulfillment: { type: "delivery", address: "Customer road, Denpasar Selatan, Kota Denpasar, Bali", shipment: {} },
+    receiptToken: "receipt-token"
   };
-  assert.equal(adminOrderReviewButtonQuery(order), "BAK-0106");
-  assert.deepEqual(adminOrderReviewWhatsappParameters(order, "This input is deliberately ignored"), [
-    "BAK-0106",
-    "Approve delivery, contact customer, or cancel/refund in secure Admin"
-  ]);
-  assert.doesNotMatch(JSON.stringify(adminOrderReviewWhatsappParameters(order, "Private Customer +6281234567890")), /Private Customer|6281234567890/);
 
   const previousFetch = global.fetch;
   const previousEnv = {
     token: process.env.WHATSAPP_ACCESS_TOKEN,
     phoneId: process.env.WHATSAPP_PHONE_NUMBER_ID,
     adminNumbers: process.env.WHATSAPP_ADMIN_NUMBER,
-    reviewTemplate: process.env.WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME
+    reviewTemplate: process.env.WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME,
+    template: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME
   };
   let payload;
   Object.assign(process.env, {
     WHATSAPP_ACCESS_TOKEN: "test-token",
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111",
-    WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: "admin_order_review"
+    WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: "admin_order_review_v1",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2"
   });
   global.fetch = async (_url, options) => {
     payload = JSON.parse(options.body);
@@ -663,29 +671,59 @@ test("secure order-review alerts exclude customer details and carry only the ord
   };
 
   try {
-    const result = await sendWhatsappAdminAlert(order, "Stock review required");
-    assert.equal(result.templateName, "admin_order_review");
+    const result = await sendWhatsappAdminAlert(order, "Payment received - awaiting staff approval");
+    assert.equal(result.templateName, "admin_order_alert_v2");
   } finally {
     global.fetch = previousFetch;
     for (const [key, value] of Object.entries({
       WHATSAPP_ACCESS_TOKEN: previousEnv.token,
       WHATSAPP_PHONE_NUMBER_ID: previousEnv.phoneId,
       WHATSAPP_ADMIN_NUMBER: previousEnv.adminNumbers,
-      WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: previousEnv.reviewTemplate
+      WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: previousEnv.reviewTemplate,
+      WHATSAPP_ADMIN_TEMPLATE_NAME: previousEnv.template
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
   }
 
-  assert.equal(payload.template.name, "admin_order_review");
+  assert.equal(payload.template.name, "admin_order_alert_v2");
   const body = payload.template.components.find((component) => component.type === "body");
-  assert.deepEqual(body.parameters.map((parameter) => parameter.text), ["BAK-0106", "Approve delivery, contact customer, or cancel/refund in secure Admin"]);
+  assert.equal(body.parameters.length, 9);
+  assert.equal(body.parameters[1].text, "BAK-0106");
+  assert.equal(body.parameters[2].text, "Verified Customer");
+  assert.equal(body.parameters[3].text, "+6281234567890");
   assert.equal(payload.template.components.some((component) => component.type === "header"), false);
-  const reviewButton = payload.template.components.find((component) => component.type === "button");
-  assert.equal(reviewButton.sub_type, "url");
-  assert.equal(reviewButton.parameters[0].text, "BAK-0106");
-  assert.doesNotMatch(JSON.stringify(payload), /Private Customer|6281234567890/);
+  const buttons = payload.template.components.filter((component) => component.type === "button");
+  assert.deepEqual(buttons.map((button) => [button.index, button.sub_type, button.parameters[0].payload]), [
+    ["0", "quick_reply", "APPROVE BAK-0106"],
+    ["1", "quick_reply", "CANCEL BAK-0106"]
+  ]);
+});
+
+test("staff quick replies lead to a redacted secure route review without booking", () => {
+  const previousSiteUrl = process.env.PUBLIC_SITE_URL;
+  process.env.PUBLIC_SITE_URL = "https://bakeaholicbali.com";
+  try {
+    const order = {
+      id: "BAK-0147",
+      fulfillment: {
+        type: "delivery",
+        address: "12 Customer Street, Denpasar Selatan, Kota Denpasar, Bali 80227, Indonesia"
+      },
+      customer: { address: "12 Customer Street, Denpasar Selatan, Kota Denpasar, Bali 80227, Indonesia" }
+    };
+    const message = adminOrderActionReviewMessage(order, "approve");
+    assert.match(message, /No driver has been requested/);
+    assert.match(message, /Pickup:/);
+    assert.match(message, /Drop-off: Denpasar Selatan, Kota Denpasar, Bali, Indonesia/);
+    assert.match(message, /admin\.html\?section=orders&order=BAK-0147/);
+    assert.doesNotMatch(message, /12 Customer Street|80227/);
+    assert.equal(addressArea("12 Customer Street, Denpasar Selatan, Kota Denpasar, Bali 80227, Indonesia"), "Denpasar Selatan, Kota Denpasar, Bali, Indonesia");
+  } finally {
+    if (previousSiteUrl === undefined) delete process.env.PUBLIC_SITE_URL;
+    else process.env.PUBLIC_SITE_URL = previousSiteUrl;
+  }
 });
 
 function whatsappOrder(overrides = {}) {

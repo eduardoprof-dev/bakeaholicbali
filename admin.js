@@ -1174,7 +1174,7 @@ function renderAdminOrders() {
           ? "status-paid"
           : "";
     const deliveryActions = `${canApprove
-      ? `<button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}">${canRetryFailedBooking ? "Retry delivery booking" : "Approve delivery"}</button>`
+      ? `<button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}">${canRetryFailedBooking ? "Review & retry delivery" : "Review & request delivery"}</button>`
       : isDeliveryIssue
         ? `
           <button class="admin-button secondary" type="button" data-sync-delivery="${escapeHtml(order.id)}">Sync delivery status</button>
@@ -1282,6 +1282,13 @@ function renderAdminOrders() {
             <small>${escapeHtml(shipmentText)}</small>
           </div>
         </div>
+        ${canApprove ? `
+          <div class="admin-delivery-note">
+            <strong>Driver route to verify before requesting</strong><br>
+            Pickup: ${escapeHtml(state.catalog?.store?.kitchenAddress || "Bakeaholic Bali kitchen")}<br>
+            Drop-off: ${escapeHtml(order.fulfillment?.address || order.customer?.address || "-")}
+          </div>
+        ` : ""}
         <div class="admin-order-actions">
           <a class="admin-button secondary" href="${escapeHtml(order.documentUrl || "#")}" target="_blank" rel="noreferrer">Open &amp; print invoice</a>
           <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer" data-contact-customer="${escapeHtml(order.id)}">Contact customer</a>
@@ -2568,14 +2575,27 @@ async function loadOrders() {
 }
 
 async function approveDelivery(orderId) {
+  const order = state.orders.find((entry) => entry.id === orderId);
+  if (!order) {
+    setStatus(`Order ${orderId} is no longer available. Refresh orders and try again.`);
+    return;
+  }
+  const pickup = state.catalog?.store?.kitchenAddress || "Bakeaholic Bali kitchen";
+  const dropoff = order.fulfillment?.address || order.customer?.address || "Customer address unavailable";
+  if (!window.confirm(
+    `Request a Biteship driver for ${orderId}?\n\nPickup (driver starts here):\n${pickup}\n\nDrop-off (customer):\n${dropoff}\n\nContinue only after the package is ready and both locations are correct.`
+  )) {
+    setStatus(`No delivery was requested for ${orderId}.`);
+    return;
+  }
   try {
-    setStatus(`Approving delivery for ${orderId}...`);
+    setStatus(`Requesting delivery for ${orderId}...`);
     await request(`/api/admin/orders/${encodeURIComponent(orderId)}/approve-delivery`, {
       method: "POST",
       body: JSON.stringify({})
     });
     await loadOrders();
-    setStatus(`Delivery approved for ${orderId}.`);
+    setStatus(`Delivery requested for ${orderId}.`);
   } catch (error) {
     setStatus(error.message);
   }
