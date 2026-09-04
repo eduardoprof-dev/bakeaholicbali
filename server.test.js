@@ -20,6 +20,7 @@ const {
   buildXenditPaymentSessionPayload,
   adminWhatsappParameters,
   adminWhatsappNumbers,
+  approveV5PaidOrderFromWhatsapp,
   isProductionRuntime,
   isShipmentAllocatedForMessaging,
   availablePaymentMethods,
@@ -53,6 +54,7 @@ const {
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   normalizedShipmentStatus,
+  finalizePendingAdminOrderAction,
   normalizeWhatsappOrderTemplateName,
   shipmentHasObservedHandoff,
   providerStatusCanCompleteOrder,
@@ -61,6 +63,7 @@ const {
   replacementTrackingNotificationReady,
   assertDeliveryRecoveryRequest,
   shipmentRequestSnapshot,
+  replaceStoreOrdersForTest,
   xenditPaymentAmount,
   xenditOrderReferenceIds,
   xenditQrExternalIds,
@@ -80,6 +83,8 @@ const {
   verifiedCustomerWhatsappNumber,
   verifiedBiteshipDeliveryProofUrl,
   verifyMetaWebhookSignature,
+  scheduleV5CancelFromWhatsapp,
+  undoPendingAdminOrderAction,
   productionCookieDomain,
   serializeCookie,
   bundlePromotionIsActive,
@@ -732,6 +737,95 @@ test("Contact customer accepts only the current recipient-bound v5 quick reply",
   assert.equal(isCurrentStaffV5ContactReply({ ...current, notification: { ...current.notification, lastSentAt: "2026-09-04T10:00:01.000Z" } }, now), false);
 });
 
+test("v5 Approve orchestrates one snapshot-bound Biteship booking and allocation-gated shipping notices", async () => {
+  const envKeys = ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ADMIN_NUMBER", "WHATSAPP_ADMIN_TEMPLATE_NAME", "WHATSAPP_SHIPPING_TEMPLATE_NAME", "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME", "BITESHIP_API_KEY", "BITESHIP_COURIERS"];
+  const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const previousFetch = global.fetch;
+  const calls = [];
+  Object.assign(process.env, {
+    WHATSAPP_ACCESS_TOKEN: "test-token", WHATSAPP_PHONE_NUMBER_ID: "123", WHATSAPP_ADMIN_NUMBER: "628111111111",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5", WHATSAPP_SHIPPING_TEMPLATE_NAME: "shipping_update_v2",
+    WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update_v2", BITESHIP_API_KEY: "biteship-test", BITESHIP_COURIERS: "grab"
+  });
+  const order = {
+    id: "TEST-V5-APPROVE", mode: "test", status: "paid", paidAt: "2026-09-04T09:00:00.000Z",
+    items: [{ itemId: "bliss-peanutella", quantity: 1 }],
+    customer: { name: "Verified owner", phone: "628222222222", verifiedPhone: "628222222222", phoneVerifiedAt: "2026-09-04T09:00:00.000Z", address: "Verified customer drop-off" },
+    fulfillment: { type: "delivery", address: "Verified customer drop-off", location: { lat: -8.65, lng: 115.22 } },
+    pricing: { subtotal: 75000, deliveryFee: 10000, tax: 0, discount: { amount: 0 }, total: 85000, shipping: { courierCode: "grab", courierServiceCode: "instant", total: 10000 } },
+    payment: { status: "paid", label: "QRIS" }, receiptToken: "v5-approve-token"
+  };
+  order.adminWhatsappNotifications = {
+    templateName: "admin_order_alert_v5", lastSentAt: new Date().toISOString(),
+    v5ApprovalSnapshot: shipmentRequestSnapshot(order),
+    recipients: [{ recipientNumber: "628111111111", messageId: "wamid.v5.approve" }]
+  };
+  const restore = replaceStoreOrdersForTest("test", [order]);
+  global.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), body: options.body ? JSON.parse(options.body) : null });
+    if (String(url).includes("/rates/couriers")) return { ok: true, json: async () => ({ pricing: [{ courier_code: "grab", courier_service_code: "instant", price: 10000 }] }) };
+    if (String(url).includes("api.biteship.com/v1/orders")) return { ok: true, text: async () => JSON.stringify({ id: "ship-v5-1", status: "allocated", courier: { company: "Grab", link: "https://track.biteship.com/ship-v5-1" } }) };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ messages: [{ id: `wamid.${calls.length}` }] }) };
+  };
+  const message = { id: "inbound-v5-approve-1", from: "628111111111", context: { id: "wamid.v5.approve" }, button: { payload: "APPROVE TEST-V5-APPROVE" } };
+  try {
+    const first = await approveV5PaidOrderFromWhatsapp(message, "test");
+    const second = await approveV5PaidOrderFromWhatsapp(message, "test");
+    assert.equal(first.shipmentId, "ship-v5-1");
+    assert.equal(second.reason, "already_claimed");
+    assert.equal(order.fulfillment.shipment.orderId, "ship-v5-1");
+    assert.deepEqual(order.fulfillment.shipment.requestSnapshot, shipmentRequestSnapshot(order));
+    const booking = calls.find((call) => call.url.includes("api.biteship.com/v1/orders"));
+    assert.equal(calls.filter((call) => call.url.includes("api.biteship.com/v1/orders")).length, 1);
+    assert.equal(booking.body.origin_address, order.adminWhatsappNotifications.v5ApprovalSnapshot.pickup.address);
+    assert.equal(booking.body.destination_address, "Verified customer drop-off");
+    assert.deepEqual(calls.filter((call) => call.body?.template?.name).map((call) => call.body.template.name), ["shipping_update_v2", "admin_shipping_update_v2"]);
+    await assert.rejects(() => approveV5PaidOrderFromWhatsapp({ ...message, id: "inbound-v5-mismatch" }, "test", "TEST-OTHER"), /does not match/i);
+    order.status = "paid";
+    order.fulfillment.shipment = undefined;
+    order.fulfillment.address = "Changed drop-off";
+    order.customer.address = "Changed drop-off";
+    await assert.rejects(() => approveV5PaidOrderFromWhatsapp({ ...message, id: "inbound-v5-stale" }, "test"), /changed after this alert/i);
+  } finally {
+    restore(); global.fetch = previousFetch;
+    for (const key of envKeys) { if (previousEnv[key] === undefined) delete process.env[key]; else process.env[key] = previousEnv[key]; }
+  }
+});
+
+test("v5 Cancel keeps a 60-second undo window then commits cancellation/refund effects once", async () => {
+  const envKeys = ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ADMIN_NUMBER", "WHATSAPP_ADMIN_TEMPLATE_NAME", "WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME"];
+  const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const previousFetch = global.fetch;
+  Object.assign(process.env, { WHATSAPP_ACCESS_TOKEN: "test-token", WHATSAPP_PHONE_NUMBER_ID: "123", WHATSAPP_ADMIN_NUMBER: "628111111111", WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5", WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME: "order_cancelled" });
+  const order = {
+    id: "TEST-V5-CANCEL", mode: "test", status: "paid", paidAt: "2026-09-04T09:00:00.000Z", items: [{ itemId: "bliss-peanutella", quantity: 1 }],
+    customer: { name: "Verified owner", phone: "628222222222", verifiedPhone: "628222222222", phoneVerifiedAt: "2026-09-04T09:00:00.000Z", address: "Customer drop-off" },
+    fulfillment: { type: "delivery", address: "Customer drop-off", location: { lat: -8.65, lng: 115.22 } },
+    pricing: { subtotal: 75000, deliveryFee: 10000, tax: 0, discount: { amount: 0 }, total: 85000, shipping: { courierCode: "grab", courierServiceCode: "instant", total: 10000 } }, payment: { status: "paid", label: "QRIS" }, receiptToken: "v5-cancel-token"
+  };
+  order.adminWhatsappNotifications = { templateName: "admin_order_alert_v5", lastSentAt: new Date().toISOString(), v5ApprovalSnapshot: shipmentRequestSnapshot(order), recipients: [{ recipientNumber: "628111111111", messageId: "wamid.v5.cancel" }] };
+  const restore = replaceStoreOrdersForTest("test", [order]);
+  const templateNames = [];
+  global.fetch = async (_url, options = {}) => { const body = options.body ? JSON.parse(options.body) : {}; if (body.template?.name) templateNames.push(body.template.name); return { ok: true, status: 200, text: async () => JSON.stringify({ messages: [{ id: "wamid.cancel" }] }) }; };
+  const message = { id: "inbound-v5-cancel-1", from: "628111111111", context: { id: "wamid.v5.cancel" }, button: { payload: "CANCEL TEST-V5-CANCEL" } };
+  try {
+    const pending = await scheduleV5CancelFromWhatsapp(message, "test");
+    assert.ok(pending.undoToken); assert.equal(order.status, "paid"); assert.ok(order.adminPendingAction);
+    await undoPendingAdminOrderAction("test", { orderId: order.id, token: pending.undoToken });
+    assert.equal(order.status, "paid"); assert.equal(order.adminPendingAction, undefined);
+    await assert.rejects(() => scheduleV5CancelFromWhatsapp({ ...message, id: "inbound-v5-cancel-mismatch" }, "test", "TEST-OTHER"), /does not match/i);
+    const committed = await scheduleV5CancelFromWhatsapp({ ...message, id: "inbound-v5-cancel-2" }, "test");
+    order.adminPendingAction.executeAt = new Date(Date.now() - 1).toISOString();
+    await finalizePendingAdminOrderAction("test", order.id, committed.undoToken);
+    assert.equal(order.status, "cancelled");
+    assert.equal(templateNames.includes("order_cancelled"), true);
+    assert.notEqual(order.refund?.status, "processed");
+  } finally {
+    restore(); global.fetch = previousFetch;
+    for (const key of envKeys) { if (previousEnv[key] === undefined) delete process.env[key]; else process.env[key] = previousEnv[key]; }
+  }
+});
+
 test("paid admin alert describes an unbooked delivery and required approval", () => {
   const parameters = adminWhatsappParameters({
     id: "BAK-0105",
@@ -745,7 +839,8 @@ test("paid admin alert describes an unbooked delivery and required approval", ()
   assert.equal(parameters[6], "Not booked yet");
   assert.equal(parameters[2], "Eduardo");
   assert.equal(parameters[3], "+6281234567890");
-  assert.match(parameters[8], /secure pickup\/drop-off review/);
+  assert.match(parameters[8], /requests one governed Biteship driver/i);
+  assert.match(parameters[8], /60-second governed Undo window/i);
 });
 
 test("approved detailed admin alert overrides the deprecated review template", async () => {

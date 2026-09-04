@@ -76,7 +76,7 @@ The unpaid payment window is provider-aligned at +5 minutes, with reminders at +
 
 Admin delivery proof is never included in customer responses. Orders staff can open only an authenticated, no-store Admin proof redirect; it resolves solely a stored, verified HTTPS Biteship proof URL and otherwise shows the explicit unavailable state.
 
-Daily delivery approval can start from WhatsApp. The v5 Approve reply resolves the clicked alert and sends the requesting staff member to a redacted secure pickup/drop-off review; it does not create a driver. Cancel similarly opens the controlled refund review. Explicit `APPROVE BAK-0001` and `CANCEL BAK-0001` remain context-checked staff commands. Repeated actions are rejected by saved order state.
+Daily delivery approval can start from WhatsApp. The v5 Approve reply is bound to its clicked staff message and, after route/items/service/rate rechecks, creates exactly one governed Biteship delivery request. Cancel is bound to the same context and starts the persisted 60-second Undo window; only expiry of that window commits cancellation/refund. Explicit `APPROVE BAK-0001` and `CANCEL BAK-0001` must match that message context. Repeated, stale, or mismatched actions are rejected by saved order state.
 
 ## Lifecycle template migration order
 

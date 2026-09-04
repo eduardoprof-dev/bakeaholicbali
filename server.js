@@ -1248,7 +1248,7 @@ function adminWhatsappParameters(order, eventLabel = "", options = {}) {
   const staffAction = order.status === "paid_late_review"
     ? "Late payment was captured after the local checkout window. Do not approve, prepare, or request delivery. Review the payment and use the governed refund workflow if required."
     : order.status === "paid"
-    ? "Use Approve to open the secure pickup/drop-off review before requesting a driver. Contact customer sends this staff recipient the verified customer contact card, or Cancel opens the controlled refund review."
+    ? "Approve requests one governed Biteship driver after the saved route, items, service, and live rate are rechecked. Contact customer sends this staff recipient the verified customer contact card. Cancel starts a 60-second governed Undo window before cancellation/refund."
     : "No staff action needed.";
   return [
     eventLabel || humanizeOrderStatus(order),
@@ -1491,11 +1491,11 @@ function orderIdFromWhatsappReplyContext(message = {}, orders = stores.live.orde
   return order?.id || "";
 }
 
-function findStaffNotificationFromReply(message = {}, notificationRoot = "adminWhatsappNotifications") {
+function findStaffNotificationFromReply(message = {}, notificationRoot = "adminWhatsappNotifications", mode = "live") {
   const contextMessageId = String(message.context?.id || "").trim();
   const staffNumber = formatIndonesianPhone(message.from);
   if (!contextMessageId || !staffNumber || !isConfiguredAdminWhatsapp(staffNumber)) return null;
-  for (const order of stores.live.orders) {
+  for (const order of getStoreState(mode).orders) {
     const notifications = notificationRoot === "adminWhatsappNotifications"
       ? [order.adminWhatsappNotifications]
       : Object.values(order[notificationRoot] || {});
@@ -1573,12 +1573,15 @@ async function sendVerifiedCustomerContactToStaff(message = {}) {
   }
 }
 
-function currentV5PaidOrderAction(message = {}) {
-  const matched = findStaffNotificationFromReply(message, "adminWhatsappNotifications");
+function currentV5PaidOrderAction(message = {}, mode = "live", expectedOrderId = "") {
+  const matched = findStaffNotificationFromReply(message, "adminWhatsappNotifications", mode);
   if (!isCurrentStaffV5ContactReply(matched)) {
     throw new Error("This action must be tapped on the current requesting staff member's v5 paid-order alert.");
   }
   const { order, notification, staffNumber } = matched;
+  if (expectedOrderId && String(expectedOrderId).trim() !== order.id) {
+    throw new Error("The quick-reply order does not match its v5 message context.");
+  }
   if (order.status !== "paid" || order.payment?.status !== "paid" || order.fulfillment?.type !== "delivery") {
     throw new Error("This v5 paid-order action is no longer available for the current order.");
   }
@@ -1607,10 +1610,23 @@ function claimV5PaidOrderAction(order, message, action, staffNumber) {
   return { actionId, replay: false, record };
 }
 
-async function approveV5PaidOrderFromWhatsapp(message = {}) {
-  const initial = currentV5PaidOrderAction(message);
-  return withDeliveryRecoveryLock("live", initial.order.id, async () => {
-    const matched = currentV5PaidOrderAction(message);
+function existingV5PaidOrderAction(message = {}, mode = "live", action = "", expectedOrderId = "") {
+  const matched = findStaffNotificationFromReply(message, "adminWhatsappNotifications", mode);
+  if (!isCurrentStaffV5ContactReply(matched)) return null;
+  if (expectedOrderId && String(expectedOrderId).trim() !== matched.order?.id) {
+    throw new Error("The quick-reply order does not match its v5 message context.");
+  }
+  const actionId = whatsappInboundActionKey(message, `v5-${action}`);
+  const record = matched.order?.whatsappV5Actions?.[actionId];
+  return record ? { order: matched.order, actionId, record } : null;
+}
+
+async function approveV5PaidOrderFromWhatsapp(message = {}, mode = "live", expectedOrderId = "") {
+  const replay = existingV5PaidOrderAction(message, mode, "approve", expectedOrderId);
+  if (replay) return { sent: false, skipped: true, reason: "already_claimed", orderId: replay.order.id };
+  const initial = currentV5PaidOrderAction(message, mode, expectedOrderId);
+  return withDeliveryRecoveryLock(mode, initial.order.id, async () => {
+    const matched = currentV5PaidOrderAction(message, mode, expectedOrderId);
     const { order, notification, staffNumber } = matched;
     if (order.fulfillment?.shipment?.orderId) throw new Error("A Biteship delivery is already active for this order.");
     const claim = claimV5PaidOrderAction(order, message, "approve", staffNumber);
@@ -1619,7 +1635,7 @@ async function approveV5PaidOrderFromWhatsapp(message = {}) {
       // Reuse the exact route/items/service quoted for this alert. The live
       // rate must remain acceptable before a single provider booking is made.
       const liveRate = await fetchBiteshipRebookQuote(order, notification.v5ApprovalSnapshot);
-      const approved = await approveOrderForDelivery("live", order.id, {
+      const approved = await approveOrderForDelivery(mode, order.id, {
         role: "whatsapp_admin", name: `WhatsApp staff ${maskedWhatsappNumber(staffNumber)}`
       });
       const shipment = approved.fulfillment?.shipment || {};
@@ -1641,17 +1657,19 @@ async function approveV5PaidOrderFromWhatsapp(message = {}) {
   });
 }
 
-async function scheduleV5CancelFromWhatsapp(message = {}) {
-  const initial = currentV5PaidOrderAction(message);
-  return withDeliveryRecoveryLock("live", initial.order.id, async () => {
-    const { order, staffNumber } = currentV5PaidOrderAction(message);
+async function scheduleV5CancelFromWhatsapp(message = {}, mode = "live", expectedOrderId = "") {
+  const replay = existingV5PaidOrderAction(message, mode, "cancel", expectedOrderId);
+  if (replay) return { sent: false, skipped: true, reason: "already_claimed", orderId: replay.order.id };
+  const initial = currentV5PaidOrderAction(message, mode, expectedOrderId);
+  return withDeliveryRecoveryLock(mode, initial.order.id, async () => {
+    const { order, staffNumber } = currentV5PaidOrderAction(message, mode, expectedOrderId);
     if (order.fulfillment?.shipment?.orderId || order.adminPendingAction?.token) {
       throw new Error("This order already has a delivery or governed action in progress.");
     }
     const claim = claimV5PaidOrderAction(order, message, "cancel", staffNumber);
     if (claim.replay) return { sent: false, skipped: true, reason: "already_claimed", orderId: order.id };
     try {
-      await scheduleAdminOrderAction("live", order.id, "cancel", staffNumber);
+      await scheduleAdminOrderAction(mode, order.id, "cancel", staffNumber);
       order.whatsappV5Actions[claim.actionId] = {
         ...claim.record,
         status: "undo_window",
@@ -2998,6 +3016,8 @@ async function finalizePendingAdminOrderAction(mode, orderId, token) {
     return { handled: false, reason: "pending_action_not_due" };
   }
 
+  clearAdminActionTimer(mode, orderId, token);
+
   const action = pending.action;
   delete order.adminPendingAction;
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
@@ -3158,14 +3178,14 @@ async function processWhatsappAdminCommand(message = {}) {
   }
   const cancelCommand = parseAdminCancelCommand(text);
   if (cancelCommand) {
-    const result = await scheduleV5CancelFromWhatsapp(message);
+    const result = await scheduleV5CancelFromWhatsapp(message, "live", cancelCommand.orderId);
     return { handled: true, action: "cancel_undo_window", orderId: result.orderId || "", skipped: Boolean(result.skipped) };
   }
   const approveCommand = parseAdminApproveCommand(text);
   if (!approveCommand) {
     return { handled: false, reason: "not_approve_command" };
   }
-  const result = await approveV5PaidOrderFromWhatsapp(message);
+  const result = await approveV5PaidOrderFromWhatsapp(message, "live", approveCommand.orderId);
   return { handled: true, action: "approve_delivery_requested", orderId: result.orderId || "", shipmentId: result.shipmentId || "", skipped: Boolean(result.skipped) };
 }
 
@@ -4351,6 +4371,16 @@ function getAppMode(requestUrl, request) {
 
 function getStoreState(mode) {
   return stores[mode] || stores.live;
+}
+
+// Test-only module seam. It is deliberately not routed through HTTP and is
+// exported solely so lifecycle orchestration can be exercised against the
+// actual store, lock, idempotency, and provider-call path without real orders.
+function replaceStoreOrdersForTest(mode, orders = []) {
+  const state = getStoreState(mode);
+  const previous = state.orders;
+  state.orders = orders;
+  return () => { state.orders = previous; };
 }
 
 function clearPaidOrderCart(order) {
@@ -10301,6 +10331,7 @@ module.exports = {
   adminOrderReviewWhatsappParameters,
   adminWhatsappParameters,
   adminWhatsappNumbers,
+  approveV5PaidOrderFromWhatsapp,
   isProductionRuntime,
   isShipmentAllocatedForMessaging,
   applyXenditInvoiceStatusToOrder,
@@ -10344,6 +10375,7 @@ module.exports = {
   shipmentStatusToOrderStatus,
   normalizedShipmentStatus,
   normalizeWhatsappOrderTemplateName,
+  finalizePendingAdminOrderAction,
   isRecoverableFailedShipmentStatus,
   shipmentHasObservedHandoff,
   providerStatusCanCompleteOrder,
@@ -10353,10 +10385,13 @@ module.exports = {
   replacementTrackingNotificationReady,
   assertDeliveryRecoveryRequest,
   shipmentRequestSnapshot,
+  replaceStoreOrdersForTest,
   sameShipmentRequestSnapshot,
   findStaffNotificationFromReply,
   isCurrentStaffV5ContactReply,
   verifyMetaWebhookSignature,
+  scheduleV5CancelFromWhatsapp,
+  undoPendingAdminOrderAction,
   isContactCustomerCommand,
   isSupportedImageBuffer,
   metaAttributionFromRequest,
