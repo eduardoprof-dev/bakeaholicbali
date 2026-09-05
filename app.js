@@ -813,8 +813,8 @@ function renderLimitedBundles() {
   if (!limitedBundlesGrid) return;
   const now = Date.now();
   const offers = [
-    { id: "BLISS4", start: "2026-09-01T00:00:00+08:00", end: "2026-09-06T00:00:00+08:00", category: "bliss-balls", badge: "Any 4 packs", name: "Bliss Balls Mix & Match", description: "Choose any combination of Bliss Balls flavours.", price: 250000, image: "/assets/products/bliss-peanutella-lifestyle-20260422.png", action: "Choose Bliss flavours" },
-    { id: "COOKIES12", start: "2026-09-07T08:00:00+08:00", end: "2026-09-12T00:00:00+08:00", category: "oatmeal-cookies", badge: "Any 12 cookies", name: "Cookie Mix & Match", description: "Choose any combination from the oatmeal cookie range.", price: 200000, image: "/assets/products/oatmeal-cookies-assorted.jpg", action: "Choose cookie flavours" }
+    { id: "BLISS4", start: "2026-09-01T00:00:00+08:00", end: "2026-09-07T08:00:00+08:00", category: "bliss-balls", badge: "Any 4 packs", name: "Bliss Balls Mix & Match", description: "Choose any combination of Bliss Balls flavours.", price: 250000, image: "/assets/products/bliss-peanutella-lifestyle-20260422.png", action: "Choose Bliss flavours" },
+    { id: "COOKIES12", start: "2026-09-07T08:00:00+08:00", end: "2026-09-14T00:00:00+08:00", category: "oatmeal-cookies", badge: "Any 12 cookies", name: "Cookie Mix & Match", description: "Choose any combination from the oatmeal cookie range.", price: 200000, image: "/assets/products/oatmeal-cookies-assorted.jpg", action: "Choose cookie flavours" }
   ].filter((offer) => now >= Date.parse(offer.start) && now < Date.parse(offer.end));
   if (!offers.length) {
     promoCard.hidden = true;

@@ -6241,8 +6241,8 @@ function biteshipActualPrice(payload = {}, body = {}) {
 }
 
 const AUTOMATIC_BUNDLE_WINDOWS = Object.freeze({
-  BLISS4: Object.freeze({ start: Date.parse("2026-09-01T00:00:00+08:00"), end: Date.parse("2026-09-06T00:00:00+08:00") }),
-  COOKIES12: Object.freeze({ start: Date.parse("2026-09-07T08:00:00+08:00"), end: Date.parse("2026-09-12T00:00:00+08:00") })
+  BLISS4: Object.freeze({ start: Date.parse("2026-09-01T00:00:00+08:00"), end: Date.parse("2026-09-07T08:00:00+08:00") }),
+  COOKIES12: Object.freeze({ start: Date.parse("2026-09-07T08:00:00+08:00"), end: Date.parse("2026-09-14T00:00:00+08:00") })
 });
 const AUTOMATIC_BUNDLES = Object.freeze([
   { id: "BLISS4", category: "bliss-balls", quantity: 4, bundlePrice: 250000, label: "Any 4 Bliss Balls packs for Rp250K" },
