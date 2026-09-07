@@ -47,14 +47,15 @@ Optional but recommended for live messaging:
 - `WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME=order_cancelled`
 - `WHATSAPP_SHIPPING_TEMPLATE_NAME=...`
 - `WHATSAPP_ADMIN_NUMBER=...`
-- `WHATSAPP_ADMIN_TEMPLATE_NAME=...`
-- `WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME=...` (enable only after Meta approves it)
-- `WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME=...`
+- `WHATSAPP_ADMIN_TEMPLATE_NAME=admin_order_alert_v5`
+- `WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME=admin_shipping_update_v2`
+- `WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME=admin_driver_cancelled_v1`
+- `WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME=admin_delivery_complete_v1`
+- `WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME=refund_completed`
+- `WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME=admin_refund_update`
 - `WHATSAPP_TEMPLATE_LANGUAGE=en`
 
-For legacy admin alerts, use a Meta-approved template whose nine body variables match the values the app sends: event/status, order id, a safe Admin-screen customer-details notice, a safe alert-privacy notice, total, payment method, delivery status, invoice URL, and action text. Customer name and phone are deliberately not sent in alert variables.
-
-The privacy-safe replacement staff template uses two body variables only: order ID and review reason/status. Add one dynamic website button labelled `Review order` with URL `https://bakeaholicbali.com/admin.html?section=orders&order={{1}}`. The secure Admin page then provides Approve, Cancel and Contact customer to authorised Orders staff. Set `WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME` only after Meta reports the template as Approved; while it is blank, the existing approved alert remains active. The replacement alert contains no customer name, phone, address or other customer detail.
+`admin_order_alert_v5` replaces the legacy paid-order alert. It keeps the established nine body variables: event/status, order ID, safe customer-details notice, safe alert-privacy notice, total, payment method, delivery status, invoice URL, and action text. It has exactly three quick replies in this visible order: `Approve`, `Contact customer`, `Cancel`; map their payloads to `APPROVE BAK-0001`, `CONTACT_CUSTOMER`, and `CANCEL BAK-0001`. Do not configure a URL button and do not use the rejected `admin_order_alert_v3` contract. Approve accepts only the configured staff recipient's exact, fresh v5 reply context, rechecks the saved pickup/drop-off/items/service snapshot and live acceptable Biteship rate, atomically claims the action, then requests exactly one driver. Customer and staff shipping templates are sent only once the courier is allocated. Contact customer sends only that staff recipient a Cloud API contact card for the OTP-verified order owner (or a staff-only `wa.me` session link if contact cards are unsupported). Cancel uses the same exact context and a persisted 60-second Undo window; only committed cancellation sends `order_cancelled`, while `refund_completed` waits for the authenticated Xendit terminal event.
 
 Customer payment reminders should use the app's WhatsApp templates. The payment reminder template button should point to `https://bakeaholicbali.com/pay.html?ref={{1}}`; the app sends a secure order reference so customers land on the Bakeaholic waiting-payment page first. Receipt buttons should point to `https://bakeaholicbali.com/invoice.html?ref={{1}}`.
 
@@ -65,9 +66,26 @@ For the `payment_receipt` WhatsApp template, set the dynamic website button in M
 
 Do not use `https://checkout.xendit.co/{{1}}` for receipt templates. The app sends a short secure reference such as `BAK-0001.<receipt-token>`; Meta owns the fixed URL prefix, so the template prefix must be Bakeaholic for the button to open the Bakeaholic receipt.
 
-For shipping updates, use a Meta-approved template whose body variables match the values the app sends: order id, courier name, waybill/tracking number, tracking link, and Biteship document/link. Add a dynamic website button with base URL `https://bakeaholicbali.com/invoice.html?{{1}}`; the app sends the order document query into that button so customer/admin can open tracking, invoice, and print details.
+For `shipping_update_v2` and `admin_shipping_update_v2`, use their established four body variables: order ID, courier name, waybill/tracking number, and tracking/document link. Add dynamic website button 0 with base URL `https://bakeaholicbali.com/invoice.html?ref={{1}}`; the app sends the secure order reference only. Do not use `?{{1}}`.
 
-Daily delivery approval can happen from WhatsApp. The admin alert template should include quick-reply buttons named `Approve` and `Cancel`; the app resolves the order from the replied-to Meta message and also accepts explicit payloads such as `APPROVE BAK-0001` and `CANCEL BAK-0001`. Approve creates the Biteship delivery order once; cancel cancels the order and attempts a Xendit refund when a payment id is available, otherwise it marks the refund as manual-required for the Xendit dashboard. Repeated actions are rejected by the saved order state.
+`admin_driver_cancelled_v1` (Meta template ID `28967992756135901`) has exactly four body variables in order: order ID, courier, previous delivery/failed shipment reference, and reason. It has exactly one quick reply, `Request new driver`, with payload `REQUEST_NEW_DRIVER`; no Admin URL button and no self-delivery option. The app sends it only after a signed Biteship webhook or authenticated Biteship GET proves `cancelled`, `rejected`, or `courier_not_found` before pickup/handoff. Its click re-verifies the same failed shipment, paid/preparing state, stored route/items/service snapshot, no replacement, and an unchanged-or-lower live Biteship rate before making one replay-safe replacement booking. Any failed check sends a clear reply only to the requesting staff member.
+
+`refund_completed` is sent to the verified order owner only after the authenticated Xendit refund callback reaches `processed`; a pending/requested refund never sends it. `admin_refund_update` is sent to staff for the same processed terminal event or a terminal failure.
+
+The unpaid payment window is provider-aligned at +5 minutes, with reminders at +2 and +4 minutes. If Xendit reports a successful capture after local expiry/cancellation, the order is retained as `paid_late_review` for staff, with payment truth and audit preserved; it never reopens fulfillment, clears the already-expired cart again, or books delivery automatically. Use the governed refund workflow where appropriate.
+
+Admin delivery proof is never included in customer responses. Orders staff can open only an authenticated, no-store Admin proof redirect; it resolves solely a stored, verified HTTPS Biteship proof URL and otherwise shows the explicit unavailable state.
+
+Daily delivery approval can start from WhatsApp. The v5 Approve reply is bound to its clicked staff message and, after route/items/service/rate rechecks, creates exactly one governed Biteship delivery request. Cancel is bound to the same context and starts the persisted 60-second Undo window; only expiry of that window commits cancellation/refund. Explicit `APPROVE BAK-0001` and `CANCEL BAK-0001` must match that message context. Repeated, stale, or mismatched actions are rejected by saved order state.
+
+## Lifecycle template migration order
+
+1. In Meta, use submitted `admin_driver_cancelled_v1` (ID `28967992756135901`) and obtain approval for `admin_order_alert_v5`, `shipping_update_v2`, `admin_shipping_update_v2`, and `admin_delivery_complete_v1` with the contracts above. Keep `admin_order_alert_v3` unused.
+2. Set the listed environment values, including refund templates, on the release candidate. Do not enable a URL button on v5 or on `admin_driver_cancelled_v1`.
+3. Deploy the tested code once. Existing unpaid reminder records are versioned to the +2/+4/+5-minute schedule; old persisted 60-second staff-action records are not rescheduled at startup.
+4. Verify authenticated webhook health and the templates' Meta approval before any resend. Never use diagnostics/resends to create a shipment, customer contact, cancellation, refund, or payment change.
+
+In production, `WHATSAPP_APP_SECRET` is mandatory. The WhatsApp webhook rejects every POST when it is absent or the `X-Hub-Signature-256` does not validate. The Admin health result shows only `appSecretConfigured`, never the secret value.
 
 Text commands also work from the configured admin number: `APPROVE`, `READY`, `KIRIM`, `SEND`, `CANCEL`, or `REFUND`. If several orders are waiting, include the order number, for example `APPROVE BAK-0001`.
 
@@ -118,3 +136,6 @@ This app is launchable now, but for stronger long-term reliability the next upgr
 - live orders
 
 from JSON files into a real database.
+## Ops synchronization
+
+Set `OPS_SYNC_URL` and `STOREFRONT_SYNC_SECRET` only after the Ops marketplace migration and catalog ownership links are ready. Every order is written to the storefront first, then placed in `ops-sync-outbox.json`. Failed deliveries remain queued and are retried on the next order event; checkout is never lost because Ops is temporarily unavailable.

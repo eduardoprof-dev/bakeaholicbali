@@ -12,7 +12,7 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="styles.css?v=20260831-stockist-balance-v2" />
+    <link rel="stylesheet" href="/styles.css?v=20260903-product-details-layout-v2" />
   </head>
   <body>
     <div class="mobile-shell">
@@ -105,6 +105,20 @@
             <p id="orderBannerBody"></p>
           </div>
           <a class="secondary-link" id="orderBannerLink" href="#" hidden>Checkout</a>
+        </section>
+
+        <section class="limited-bundles" id="promoCard" aria-labelledby="limitedBundlesTitle">
+          <div class="limited-bundles-head">
+            <p class="feature-kicker">Limited Bundles</p>
+            <h2 id="limitedBundlesTitle">Pick your flavours. The bundle price applies automatically.</h2>
+            <p>Choose your flavours. Tax and delivery are added separately at checkout.</p>
+          </div>
+          <div class="limited-bundles-grid" id="limitedBundlesGrid" aria-label="Limited bundle offers"></div>
+          <div class="limited-bundle-carousel-controls" id="limitedBundleCarouselControls" aria-label="Limited bundle carousel controls">
+            <button id="limitedBundlePrev" type="button" aria-label="Previous bundle">‹</button>
+            <span id="limitedBundleCounter" aria-live="polite">1 / 2</span>
+            <button id="limitedBundleNext" type="button" aria-label="Next bundle">›</button>
+          </div>
         </section>
 
         <section class="brand-story-card" aria-label="Bakeaholic story carousel">
@@ -200,41 +214,24 @@
           </div>
         </section>
 
-        <section class="bestseller-strip" id="promoCard">
-          <div class="bestseller-strip-media">
-            <img
-              id="promoHeroImage"
-              src="/assets/products/bliss-peanutella-lifestyle-20260422.png"
-              alt="Bakeaholic bestseller"
-            />
-          </div>
-          <div class="bestseller-strip-copy">
-            <p class="feature-kicker" id="promoKicker">Best Seller</p>
-            <strong id="promoHeroTitle">Best seller ready to ship</strong>
-            <span id="promoHeroPrice">Rp 75.000</span>
-          </div>
-          <button class="primary-button" id="promoAddButton" type="button">Add Bestseller</button>
-        </section>
-
         <section class="catalog-list" id="catalog"></section>
-
         <section class="offline-stockists" aria-labelledby="offlineStockistsTitle">
           <p class="feature-kicker">Shop offline</p>
           <h2 id="offlineStockistsTitle">Find Bakeaholic around Bali</h2>
           <p>Prefer to pick up your treats today? Find Bakeaholic at selected Bali retail, active-life and healthy-market partners.</p>
           <div class="offline-stockist-grid">
-            <a href="https://www.google.com/maps/search/Circle+K+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo stockist-logo--circle-k" src="/assets/stockists/circle-k-bali-google.png" alt="Circle K Bali" /><span>Circle K · Selected Bali locations</span></a>
-            <a href="https://www.google.com/maps/search/MMart+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo is-square stockist-logo--m-mart" src="/assets/stockists/mmart-official.webp" alt="M Mart" /><span>M Mart · Selected Bali locations</span></a>
-            <a href="https://www.google.com/maps/search/Box+Mart+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo is-square stockist-logo--box-mart" src="/assets/stockists/box-mart-official.jpg" alt="Box Mart" /><span>Box Mart · Uluwatu, Bingin &amp; Padang Padang</span></a>
-            <a href="https://www.google.com/maps/search/WHSmith+Bali+Airport" target="_blank" rel="noreferrer"><img class="offline-stockist-logo offline-stockist-logo--tight stockist-logo--whsmith" src="/assets/stockists/whsmith-clean.png" alt="WHSmith" /><span>WHSmith · Ngurah Rai Airport</span></a>
-            <a href="https://www.google.com/maps/search/Island+Food+Uluwatu" target="_blank" rel="noreferrer"><img class="offline-stockist-logo stockist-logo--island-foods" src="/assets/stockists/island-food-official.jpg" alt="Island Foods" /><span>Island Foods · Uluwatu &amp; Pecatu</span></a>
-            <a href="https://www.google.com/maps/search/Pepito+Supermarket+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo stockist-logo--pepito" src="/assets/stockists/pepito-official.png" alt="Pepito Supermarket" /><span>Pepito · Across Bali</span></a>
-            <a href="https://www.google.com/maps/search/Frestive+Supermarket+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo stockist-logo--frestive" src="/assets/stockists/frestive-official.png" alt="Frestive Supermarket" /><span>Frestive · Canggu, Seminyak, Ubud &amp; more</span></a>
-            <a href="https://www.google.com/maps/search/Bintang+Supermarket+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo stockist-logo--bintang" src="/assets/stockists/bintang-tight-logo.png" alt="Bintang Supermarket" /><span>Bintang · Seminyak, Ubud &amp; Denpasar</span></a>
-            <a href="https://www.google.com/maps/search/Liga+Tennis+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo stockist-logo--liga-tennis" src="/assets/stockists/liga-tennis-official.svg" alt="Liga Tennis" /><span>Liga Tennis · Bali locations</span></a>
-            <a href="https://www.google.com/maps/search/Bali+Direct+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo stockist-logo--bali-direct" src="/assets/stockists/bali-direct-wordmark.jpg" alt="Bali Direct" /><span>Bali Direct · Bali locations</span></a>
-            <a href="https://www.google.com/maps/search/Alchemy+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo stockist-logo--alchemy" src="/assets/stockists/alchemy-google.png" alt="Alchemy Bali" /><span>Alchemy · Ubud, Canggu &amp; Uluwatu</span></a>
-            <a href="https://www.google.com/maps/search/Satvika+Bhoga+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo stockist-logo--satvika" src="/assets/stockists/satvika-bhoga-google.jpg?v=2" alt="Satvika Bhoga" /><span>Satvika Bhoga · Bali locations</span></a>
+            <a href="https://www.google.com/maps/search/Circle+K+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo" src="/assets/stockists/circle-k-bali-google.png" alt="Circle K Bali" /><span>Circle K · Selected Bali locations</span></a>
+            <a href="https://www.google.com/maps/search/MMart+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo is-square" src="/assets/stockists/mmart-official.webp" alt="M Mart" /><span>M Mart · Selected Bali locations</span></a>
+            <a href="https://www.google.com/maps/search/Box+Mart+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo is-square" src="/assets/stockists/box-mart-official.jpg" alt="Box Mart" /><span>Box Mart · Uluwatu, Bingin &amp; Padang Padang</span></a>
+            <a href="https://www.google.com/maps/search/WHSmith+Bali+Airport" target="_blank" rel="noreferrer"><img class="offline-stockist-logo offline-stockist-logo--wordmark" src="/assets/stockists/whsmith-optical.png" alt="WHSmith" /><span>WHSmith · Ngurah Rai Airport</span></a>
+            <a href="https://www.google.com/maps/search/Island+Food+Uluwatu" target="_blank" rel="noreferrer"><img class="offline-stockist-logo offline-stockist-logo--wordmark offline-stockist-logo--optical-island" src="/assets/stockists/island-food-official.jpg" alt="Island Foods" /><span>Island Foods · Uluwatu &amp; Pecatu</span></a>
+            <a href="https://www.google.com/maps/search/Pepito+Supermarket+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo" src="/assets/stockists/pepito-official.png" alt="Pepito Supermarket" /><span>Pepito · Across Bali</span></a>
+            <a href="https://www.google.com/maps/search/Frestive+Supermarket+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo" src="/assets/stockists/frestive-official.png" alt="Frestive Supermarket" /><span>Frestive · Canggu, Seminyak, Ubud &amp; more</span></a>
+            <a href="https://www.google.com/maps/search/Bintang+Supermarket+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo offline-stockist-logo--wordmark" src="/assets/stockists/bintang-tight-logo.png" alt="Bintang Supermarket" /><span>Bintang · Seminyak, Ubud &amp; Denpasar</span></a>
+            <a href="https://www.google.com/maps/search/Liga+Tennis+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo offline-stockist-logo--wordmark" src="/assets/stockists/liga-tennis-official.svg" alt="Liga Tennis" /><span>Liga Tennis · Bali locations</span></a>
+            <a href="https://www.google.com/maps/search/Bali+Direct+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo offline-stockist-logo--wordmark" src="/assets/stockists/bali-direct-optical.png" alt="Bali Direct" /><span>Bali Direct · Bali locations</span></a>
+            <a href="https://www.google.com/maps/search/Alchemy+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo offline-stockist-logo--optical-large" src="/assets/stockists/alchemy-google.png" alt="Alchemy Bali" /><span>Alchemy · Ubud, Canggu &amp; Uluwatu</span></a>
+            <a href="https://www.google.com/maps/search/Satvika+Bhoga+Bali" target="_blank" rel="noreferrer"><img class="offline-stockist-logo offline-stockist-logo--optical-large" src="/assets/stockists/satvika-bhoga-google.jpg?v=2" alt="Satvika Bhoga" /><span>Satvika Bhoga · Bali locations</span></a>
           </div>
           <small>Product availability varies by location. Tap a store to find the nearest branch.</small>
         </section>
@@ -304,12 +301,9 @@
       <label class="modal-field">
         <span>WhatsApp Number</span>
         <div class="phone-input-row">
-          <select id="whatsappCountryCode" aria-label="WhatsApp country code">
-            <option value="62" selected>🇮🇩 +62</option>
-          </select>
-          <input id="whatsappInput" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="e.g. 0812 3456 7890" />
+          <span class="phone-prefix">+62</span>
+          <input id="whatsappInput" type="tel" placeholder="Enter your WhatsApp number" />
         </div>
-        <small class="phone-input-help">Choose your country, then enter your phone number.</small>
       </label>
       <button class="primary-button full-width" id="saveWhatsappButton" type="button">
         Continue
@@ -332,7 +326,7 @@
       <p class="modal-message" id="otpMessage" hidden></p>
       <label class="modal-field">
         <span>OTP Code</span>
-        <input id="otpInput" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" placeholder="6 digit code" />
+        <input id="otpInput" type="text" inputmode="numeric" maxlength="6" placeholder="6 digit code" />
       </label>
       <button class="primary-button full-width" id="verifyOtpButton" type="button">
         Verify
@@ -453,9 +447,8 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="location-picker.js?v=20260823-bali-only-v1"></script>
-    <script src="meta-pixel.js?v=20260827-product-view-v1"></script>
-    <script src="country-picker.js?v=20260823-international-otp-v2"></script>
-    <script src="app.js?v=20260827-product-deep-links-v1"></script>
+    <script src="/location-picker.js?v=20260618-address-fallback"></script>
+    <script src="/meta-pixel.js?v=20260902-stable-view-content"></script>
+    <script src="/app.js?v=20260907-bliss-cookie-overlap-reconciled"></script>
   </body>
 </html>

@@ -30,15 +30,6 @@
     }).catch(() => {});
   }
 
-  function sendFunnelEvent(event) {
-    window.fetch("/api/funnel/events", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event }),
-      keepalive: true
-    }).catch(() => {});
-  }
-
   let lastProductViewKey = "";
 
   window.BakeaholicAnalytics = {
@@ -47,9 +38,6 @@
       window.fbq("track", name, parameters, { eventID: resolvedEventId });
       sendServerEvent(name, parameters, resolvedEventId);
       return resolvedEventId;
-    },
-    funnel(event) {
-      sendFunnelEvent(event);
     },
     viewProduct(item) {
       const itemId = String(item?.id || "").trim();
@@ -81,6 +69,5 @@
       }, `purchase_${order.id}`);
     }
   };
-  window.BakeaholicAnalytics.funnel("page_view");
   window.BakeaholicAnalytics.track("PageView");
 })(window, document);

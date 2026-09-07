@@ -21,15 +21,6 @@ let paymentSelectionInProgress = false;
 const pendingQuantities = new Map();
 const quantityUpdateTimers = new Map();
 const quantityUpdateVersions = new Map();
-const trackedCheckoutStages = new Set();
-
-function trackCheckoutStageOnce(event) {
-  if (trackedCheckoutStages.has(event)) return;
-  trackedCheckoutStages.add(event);
-  window.BakeaholicAnalytics?.funnel(event);
-}
-
-trackCheckoutStageOnce("checkout_viewed");
 
 const state = {
   store: null,
@@ -113,28 +104,6 @@ const closeWhatsappModal = document.getElementById("closeWhatsappModal");
 const whatsappPrompt = document.getElementById("whatsappPrompt");
 const whatsappMessage = document.getElementById("whatsappMessage");
 const whatsappInput = document.getElementById("whatsappInput");
-const whatsappCountryCode = document.getElementById("whatsappCountryCode");
-
-async function populateWhatsAppCountryCodes() {
-  const response = await fetch("/data/countries.json");
-  if (!response.ok) throw new Error("Country codes are unavailable");
-  const countries = await response.json();
-  const options = countries.map((country) => {
-    const option = document.createElement("option");
-    option.value = country.code;
-    option.textContent = `${country.flag} +${country.code}`;
-    option.dataset.countryName = country.name;
-    option.dataset.flag = country.flag;
-    option.selected = country.country === "ID";
-    return option;
-  });
-  const selectedCode = whatsappCountryCode.value || "62";
-  whatsappCountryCode.replaceChildren(...options);
-  if (options.some((option) => option.value === selectedCode)) whatsappCountryCode.value = selectedCode;
-  window.BakeaholicCountryPicker?.enhance(whatsappCountryCode, whatsappInput);
-}
-
-const whatsappCountryCodesReady = populateWhatsAppCountryCodes().catch(() => null);
 const saveWhatsappButton = document.getElementById("saveWhatsappButton");
 const otpModal = document.getElementById("otpModal");
 const closeOtpModal = document.getElementById("closeOtpModal");
@@ -169,6 +138,8 @@ let paymentStatusPollTimerId = 0;
 let paymentStatusPollOrderId = "";
 let submitAfterLogin = false;
 let volatileCartSessionId = "";
+let volatileCartSessionCreatedAt = 0;
+let volatileCartSessionLastMutatedAt = 0;
 
 const whatsappIcon = `
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -259,14 +230,51 @@ function createCartSessionId() {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function saveCartSessionId(sessionId) {
+function isCurrentCartSessionTimestamp(value, now = Date.now()) {
+  const timestamp = Number(value || 0);
+  return Number.isFinite(timestamp)
+    && timestamp > 0
+    && timestamp <= now
+    && now - timestamp < cartSessionMaxAgeMs;
+}
+
+function saveCartSessionId(sessionId, createdAt = 0, lastMutatedAt = 0) {
   const normalized = String(sessionId || "").toLowerCase();
   if (!/^[a-f0-9]{32}$/.test(normalized)) {
     return "";
   }
+  let sessionCreatedAt = Number(createdAt || 0);
+  let sessionLastMutatedAt = Number(lastMutatedAt || 0);
+  if (!(sessionCreatedAt > 0)) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(cartSessionKey) || "null");
+      if (String(stored?.id || "").toLowerCase() === normalized) {
+        sessionCreatedAt = Number(stored?.createdAt || 0);
+        sessionLastMutatedAt = sessionLastMutatedAt || Number(stored?.lastMutatedAt || stored?.createdAt || 0);
+      }
+    } catch (_error) {
+      // A fresh creation time below safely replaces malformed legacy storage.
+    }
+  }
+  const now = Date.now();
+  if (!Number.isFinite(sessionCreatedAt) || sessionCreatedAt <= 0 || sessionCreatedAt > now) {
+    sessionCreatedAt = now;
+  }
+  if (!isCurrentCartSessionTimestamp(sessionLastMutatedAt, now)) {
+    sessionLastMutatedAt = sessionCreatedAt;
+  }
+  if (!(sessionCreatedAt > 0)) {
+    sessionCreatedAt = Date.now();
+  }
   volatileCartSessionId = normalized;
+  volatileCartSessionCreatedAt = sessionCreatedAt;
+  volatileCartSessionLastMutatedAt = sessionLastMutatedAt;
   try {
-    localStorage.setItem(cartSessionKey, JSON.stringify({ id: normalized, updatedAt: Date.now() }));
+    localStorage.setItem(cartSessionKey, JSON.stringify({
+      id: normalized,
+      createdAt: sessionCreatedAt,
+      lastMutatedAt: sessionLastMutatedAt
+    }));
   } catch (_error) {
     // The in-memory session still prevents an old cookie cart from being reused this visit.
   }
@@ -277,9 +285,10 @@ function storedCartSessionId() {
   try {
     const stored = JSON.parse(localStorage.getItem(cartSessionKey) || "null");
     const sessionId = String(stored?.id || "").toLowerCase();
-    const updatedAt = Number(stored?.updatedAt || 0);
-    if (/^[a-f0-9]{32}$/.test(sessionId) && updatedAt > 0 && Date.now() - updatedAt <= cartSessionMaxAgeMs) {
-      return sessionId;
+    const createdAt = Number(stored?.createdAt || 0);
+    const lastMutatedAt = Number(stored?.lastMutatedAt || stored?.createdAt || 0);
+    if (/^[a-f0-9]{32}$/.test(sessionId) && isCurrentCartSessionTimestamp(lastMutatedAt)) {
+      return saveCartSessionId(sessionId, createdAt, lastMutatedAt);
     }
     localStorage.removeItem(cartSessionKey);
   } catch (_error) {
@@ -290,29 +299,78 @@ function storedCartSessionId() {
       // Ignore unavailable browser storage.
     }
   }
+  volatileCartSessionId = "";
+  volatileCartSessionCreatedAt = 0;
+  volatileCartSessionLastMutatedAt = 0;
   return "";
 }
 
 function getCartSessionId() {
+  const storedSessionId = storedCartSessionId();
   const urlSessionId = String(params.get("cart_session") || "");
-  if (/^[a-f0-9]{32}$/i.test(urlSessionId)) {
-    return saveCartSessionId(urlSessionId);
+  if (/^[a-f0-9]{32}$/i.test(urlSessionId) && storedSessionId === urlSessionId.toLowerCase()) {
+    return storedSessionId;
   }
-  return storedCartSessionId() || volatileCartSessionId || saveCartSessionId(createCartSessionId());
+  if (storedSessionId) {
+    return storedSessionId;
+  }
+  if (volatileCartSessionId && isCurrentCartSessionTimestamp(volatileCartSessionLastMutatedAt)) {
+    return volatileCartSessionId;
+  }
+  volatileCartSessionId = "";
+  volatileCartSessionCreatedAt = 0;
+  volatileCartSessionLastMutatedAt = 0;
+  return saveCartSessionId(createCartSessionId());
 }
 
-function rememberCartSession(payload) {
+function cartSessionMetadata(sessionId) {
+  const normalized = String(sessionId || "").toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(normalized)) return null;
+  if (volatileCartSessionId === normalized && isCurrentCartSessionTimestamp(volatileCartSessionLastMutatedAt)) {
+    return {
+      createdAt: volatileCartSessionCreatedAt,
+      lastMutatedAt: volatileCartSessionLastMutatedAt
+    };
+  }
+  return null;
+}
+
+function rememberCartSession(payload, { mutated = false } = {}) {
   const sessionId = String(payload?.cartSessionId || "");
   if (!/^[a-f0-9]{32}$/i.test(sessionId)) {
     return;
   }
-  saveCartSessionId(sessionId);
+  saveCartSessionId(sessionId, 0, mutated ? Date.now() : 0);
 }
+
+function syncCartSessionFromStorage(event) {
+  if (event.key !== cartSessionKey) return;
+  try {
+    const stored = JSON.parse(event.newValue || "null");
+    const sessionId = String(stored?.id || "").toLowerCase();
+    const createdAt = Number(stored?.createdAt || 0);
+    const lastMutatedAt = Number(stored?.lastMutatedAt || stored?.createdAt || 0);
+    if (/^[a-f0-9]{32}$/.test(sessionId) && isCurrentCartSessionTimestamp(lastMutatedAt)) {
+      saveCartSessionId(sessionId, createdAt, lastMutatedAt);
+      return;
+    }
+  } catch (_error) {
+    // A bad cross-tab value cannot revive an expired cart session.
+  }
+  volatileCartSessionId = "";
+  volatileCartSessionCreatedAt = 0;
+  volatileCartSessionLastMutatedAt = 0;
+}
+
+window.addEventListener("storage", syncCartSessionFromStorage);
 
 function request(path, options = {}) {
   const { timeoutMs = 15000, ...fetchOptions } = options;
   const cartSessionId = getCartSessionId();
+  const cartSession = cartSessionMetadata(cartSessionId);
   const requestUrl = new URL(path, window.location.origin);
+  const method = String(fetchOptions.method || "GET").toUpperCase();
+  const isCartMutation = requestUrl.pathname === "/api/cart" && ["POST", "PATCH"].includes(method);
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
   if (cartSessionId) {
@@ -325,7 +383,11 @@ function request(path, options = {}) {
     headers: {
       "Content-Type": "application/json",
       "X-App-Mode": appMode,
-      ...(cartSessionId ? { "X-Cart-Session": cartSessionId } : {}),
+      ...(cartSessionId ? {
+        "X-Cart-Session": cartSessionId,
+        "X-Cart-Session-Created-At": String(cartSession?.createdAt || ""),
+        "X-Cart-Session-Last-Mutated-At": String(cartSession?.lastMutatedAt || "")
+      } : {}),
       ...(fetchOptions.headers || {})
     }
   }).then(async (response) => {
@@ -335,7 +397,7 @@ function request(path, options = {}) {
       error.status = response.status;
       throw error;
     }
-    rememberCartSession(payload);
+    rememberCartSession(payload, { mutated: isCartMutation });
     return payload;
   }).catch((error) => {
     if (error?.name === "AbortError") {
@@ -362,32 +424,12 @@ function setMessage(element, text, tone = "error") {
   element.hidden = !text;
 }
 
-function normalizeWhatsAppPhone(input, countryCode = whatsappCountryCode?.value || "62") {
-  const raw = String(input || "").trim();
-  const digits = raw.replace(/[^\d]/g, "");
-  const selectedCode = String(countryCode || "").replace(/[^\d]/g, "");
-  if (!digits || !selectedCode) return "";
-  const explicitPhone = raw.startsWith("00") ? digits.replace(/^00/, "") : digits;
-  if (raw.startsWith("+") || raw.startsWith("00")) {
-    return explicitPhone.startsWith(selectedCode) ? explicitPhone : "";
+function normalizeWhatsAppPhone(input) {
+  const digits = String(input || "").replace(/[^\d]/g, "");
+  if (!digits) {
+    return "";
   }
-  if (selectedCode === "62") {
-    const nationalNumber = digits.replace(/^0+/, "");
-    return nationalNumber.startsWith("62") ? nationalNumber : `62${nationalNumber}`;
-  }
-  return `${selectedCode}${digits}`;
-}
-
-function editableWhatsAppPhone(input) {
-  const phone = String(input || "").replace(/[^\d]/g, "");
-  if (!phone) return "";
-  const countryCodes = Array.from(whatsappCountryCode?.options || [])
-    .map((option) => option.value)
-    .sort((a, b) => b.length - a.length);
-  const matchedCode = countryCodes.find((code) => phone.startsWith(code)) || "62";
-  whatsappCountryCode.value = matchedCode;
-  const nationalNumber = phone.slice(matchedCode.length);
-  return matchedCode === "62" ? `0${nationalNumber}` : nationalNumber;
+  return digits.startsWith("62") ? digits : `62${digits.replace(/^0+/, "")}`;
 }
 
 function withVerificationPrompt(prompt) {
@@ -1124,6 +1166,12 @@ function startPaymentStatusPolling(order) {
       }
       if (response.order.status !== "awaiting_payment") {
         stopPaymentStatusPolling();
+        if (["expired", "cancelled"].includes(response.order.status)) {
+          clearCompletedCheckoutState();
+          await refreshCart().catch(() => {});
+          setCheckoutMessage("This unpaid order was cancelled and its checkout state was cleared. Start a new checkout when you are ready.");
+          return;
+        }
         renderEmbeddedPayment(response.order);
         setCheckoutMessage("This payment is no longer active. Please choose another payment method.");
         return;
@@ -1299,9 +1347,8 @@ function applyCartPayload(cartPayload) {
   renderSummary();
   renderPaymentChoice();
   if (!state.pendingPaymentUrl) {
-    setSubmitButtonState(submitButtonLabel(), state.cart.itemCount === 0 || Boolean(state.cart.quoteError));
+    setSubmitButtonState(submitButtonLabel(), state.cart.itemCount === 0);
   }
-  if (state.cart?.quoteError) setCheckoutMessage(state.cart.quoteError);
   syncFulfillmentUi();
   syncCheckoutVisibility();
 }
@@ -1368,11 +1415,6 @@ function syncFulfillmentUi() {
 
   if (!hasDeliveryDestination()) {
     deliveryFeeLine.textContent = "Add your address to estimate delivery fee.";
-    return;
-  }
-
-  if (state.cart?.quoteError) {
-    deliveryFeeLine.textContent = state.cart.quoteError;
     return;
   }
 
@@ -1464,22 +1506,6 @@ function closeModal(modal) {
   }
 }
 
-function hasActiveFormModal() {
-  return !whatsappModal.hidden
-    || !otpModal.hidden
-    || !detailsModal.hidden
-    || !locationModal.hidden;
-}
-
-let preservedFormFocus = null;
-// Preserve input focus when iOS sends a delayed backdrop pointer event while
-// its keyboard is opening or resizing the viewport.
-modalScrim.addEventListener("pointerdown", (event) => {
-  if (!hasActiveFormModal()) return;
-  preservedFormFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  event.preventDefault();
-});
-
 function updateOtpTimer() {
   const remainingSeconds = Math.max(0, Math.ceil((otpResendAvailableAt - Date.now()) / 1000));
   resendOtpButton.disabled = remainingSeconds > 0;
@@ -1501,11 +1527,10 @@ function startOtpTimer(seconds) {
   otpTimerId = window.setInterval(updateOtpTimer, 1000);
 }
 
-async function openWhatsappModal() {
-  window.BakeaholicAnalytics?.funnel("login_opened");
-  await whatsappCountryCodesReady;
+function openWhatsappModal() {
   syncDraftFromForm();
-  whatsappInput.value = editableWhatsAppPhone(state.draft.customer.phone);
+  const phone = normalizeWhatsAppPhone(state.draft.customer.phone);
+  whatsappInput.value = phone ? phone.replace(/^62/, "") : "";
   setMessage(whatsappMessage, "");
   openModal(whatsappModal);
   whatsappInput.focus();
@@ -1525,11 +1550,9 @@ function showOtpModal(registration) {
 }
 
 async function requestOtp() {
-  const countryCode = whatsappCountryCode.value;
-  const rawPhone = whatsappInput.value.trim();
-  const phone = normalizeWhatsAppPhone(rawPhone, countryCode);
-  if (!/^[1-9]\d{7,14}$/.test(phone)) {
-    setMessage(whatsappMessage, "Choose your country and enter a valid WhatsApp number");
+  const phone = normalizeWhatsAppPhone(whatsappInput.value);
+  if (!phone) {
+    setMessage(whatsappMessage, "Please enter your WhatsApp number");
     return;
   }
 
@@ -1539,7 +1562,7 @@ async function requestOtp() {
   try {
     const payload = await request("/api/register/start", {
       method: "POST",
-      body: JSON.stringify({ phone: rawPhone, countryCode })
+      body: JSON.stringify({ phone })
     });
     showOtpModal(payload.registration);
   } catch (error) {
@@ -1687,10 +1710,11 @@ function renderCartItems() {
           <div class="cart-line-copy">
             <strong>${escapeHtml(entry.item.name)}</strong>
             <span>${formatRupiah.format(entry.item.price)}</span>
+            ${Array.isArray(entry.components) && entry.components.length ? `<small class="bundle-components">${entry.components.map((component) => `${escapeHtml(component.name)} ×${component.quantity}`).join(" · ")}</small>` : ""}
             <div class="quantity-row">
               <button class="qty-box" type="button" data-item-id="${escapeHtml(entry.itemId)}" data-action="decrease">−</button>
               <strong>${entry.quantity}</strong>
-              <button class="qty-box" type="button" data-item-id="${escapeHtml(entry.itemId)}" data-action="increase" ${entry.quantity >= entry.item.stock ? "disabled" : ""}>+</button>
+              <button class="qty-box" type="button" data-item-id="${escapeHtml(entry.itemId)}" data-action="increase">+</button>
             </div>
           </div>
           <button class="text-action align-self-end" type="button">Edit</button>
@@ -1705,9 +1729,7 @@ function renderCartItems() {
       const current = pendingQuantities.has(itemId)
         ? pendingQuantities.get(itemId)
         : state.cart.items.find((entry) => entry.itemId === itemId)?.quantity || 0;
-      const stock = state.cart.lineItems.find((entry) => entry.itemId === itemId)?.item?.stock || 0;
       const nextQuantity = button.dataset.action === "increase" ? current + 1 : current - 1;
-      if (nextQuantity > stock) return;
 
       pendingQuantities.set(itemId, nextQuantity);
       const row = button.closest(".quantity-row");
@@ -1716,7 +1738,7 @@ function renderCartItems() {
       const decreaseButton = row?.querySelector('[data-action="decrease"]');
       const increaseButton = row?.querySelector('[data-action="increase"]');
       if (decreaseButton) decreaseButton.disabled = nextQuantity <= 0;
-      if (increaseButton) increaseButton.disabled = nextQuantity >= stock;
+      if (increaseButton) increaseButton.disabled = false;
 
       window.clearTimeout(quantityUpdateTimers.get(itemId));
       const version = (quantityUpdateVersions.get(itemId) || 0) + 1;
@@ -1797,13 +1819,6 @@ function bindPaymentMethodButtons(container) {
       renderPaymentChoice();
       setCheckoutMessage("");
       closeModal(paymentModal);
-      window.BakeaholicAnalytics?.track("AddPaymentInfo", {
-        currency: "IDR",
-        value: Number(state.cart?.pricing?.total || state.cart?.total || 0),
-        content_ids: (state.cart?.items || []).map((item) => item.itemId || item.id).filter(Boolean),
-        content_type: "product",
-        num_items: Number(state.cart?.itemCount || 0)
-      });
       try {
         if (state.currentOrder && ["paid", "preparing", "shipped", "delivered"].includes(state.currentOrder.status)) {
           const completedOrder = state.currentOrder;
@@ -1872,13 +1887,6 @@ function renderPaymentModal() {
 async function refreshCart() {
   syncDraftFromForm();
   const cartPayload = await request(`/api/cart?${buildCartQuery()}`);
-  if (hasDeliveryDestination()) {
-    if (cartPayload.quoteSource === "biteship") {
-      trackCheckoutStageOnce("delivery_quote_succeeded");
-    } else if (cartPayload.quoteError) {
-      trackCheckoutStageOnce("delivery_quote_failed");
-    }
-  }
   applyCartPayload(cartPayload);
 }
 
@@ -2046,7 +2054,6 @@ async function bootstrap() {
     googleMapsApiKey: state.store.integrations?.googleMapsApiKey,
     initialValue: state.draft.destination,
     onSave: async (destination) => {
-      trackCheckoutStageOnce("address_selected");
       state.draft.destination = destination;
       state.draft.customer.address = destination.formattedAddress;
       try {
@@ -2073,7 +2080,7 @@ async function bootstrap() {
   renderPaymentChoice();
   await refreshCart();
   syncAfterHoursMessage();
-  setSubmitButtonState(submitButtonLabel(), (state.cart?.itemCount || 0) === 0 || Boolean(state.cart?.quoteError));
+  setSubmitButtonState(submitButtonLabel(), (state.cart?.itemCount || 0) === 0);
 }
 
 [
@@ -2135,12 +2142,12 @@ otpInput.addEventListener("keydown", (event) => {
   }
 });
 resendOtpButton.addEventListener("click", async () => {
-  whatsappInput.value = editableWhatsAppPhone(pendingOtpPhone);
+  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
   await requestOtp();
 });
 changePhoneButton.addEventListener("click", () => {
   closeModal(otpModal);
-  whatsappInput.value = editableWhatsAppPhone(pendingOtpPhone);
+  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
   openModal(whatsappModal);
 });
 copyOtpButton.addEventListener("click", async () => {
@@ -2156,17 +2163,14 @@ copyOtpButton.addEventListener("click", async () => {
   }
 });
 addressButton.addEventListener("click", () => {
-  trackCheckoutStageOnce("address_opened");
   openModal(locationModal);
   locationPicker?.open();
 });
 footerAddressButton?.addEventListener("click", () => {
-  trackCheckoutStageOnce("address_opened");
   openModal(locationModal);
   locationPicker?.open();
 });
 changeAddressInlineButton.addEventListener("click", () => {
-  trackCheckoutStageOnce("address_opened");
   openModal(locationModal);
   locationPicker?.open();
 });
@@ -2184,15 +2188,12 @@ saveDetailsButton.addEventListener("click", async () => {
   closeModal(detailsModal);
   await refreshCart();
 });
-modalScrim.addEventListener("click", (event) => {
-  if (hasActiveFormModal()) {
-    event.preventDefault();
-    preservedFormFocus?.focus({ preventScroll: true });
-    return;
-  }
+modalScrim.addEventListener("click", () => {
   closeModal(paymentModal);
-  // Form dialogs close only from their visible controls. This prevents mobile
-  // keyboard tap-through from discarding checkout information.
+  closeModal(whatsappModal);
+  closeModal(otpModal);
+  closeModal(detailsModal);
+  closeModal(locationModal);
 });
 submitOrderButton.addEventListener("click", submitOrder);
 

@@ -56,6 +56,13 @@ function paymentLabel(order) {
   return payment.label || "-";
 }
 
+function fixedReceiptPdfUrl() {
+  const search = new URLSearchParams({ id: orderId });
+  if (token) search.set("token", token);
+  if (appMode === "test") search.set("mode", "test");
+  return `/api/order/receipt.pdf?${search.toString()}`;
+}
+
 async function requestDocument() {
   const search = new URLSearchParams({ id: orderId });
   if (token) search.set("token", token);
@@ -74,7 +81,7 @@ async function requestDocument() {
 function lineItemRows(order) {
   return (order.lineItems || []).map((entry) => `
     <tr>
-      <td>${escapeHtml(entry.item?.name || entry.itemId)}</td>
+      <td>${escapeHtml(entry.item?.name || entry.itemId)}${Array.isArray(entry.components) && entry.components.length ? `<br><small>${entry.components.map((component) => `${escapeHtml(component.name)} ×${Number(component.quantity || 0)}`).join(" · ")}</small>` : ""}</td>
       <td>${entry.quantity}</td>
       <td>${formatRupiah.format(entry.item?.price || 0)}</td>
       <td>${formatRupiah.format(entry.lineTotal || 0)}</td>
@@ -128,7 +135,7 @@ function renderDocument(payload) {
           </div>
         </div>
         <div class="invoice-header-actions print-hide">
-          <button class="admin-button" type="button" id="printInvoiceButton">Print</button>
+          <button class="admin-button" type="button" id="printInvoiceButton">Open fixed A5 PDF</button>
           <a class="admin-button secondary" id="openInvoiceBrowserButton" href="${escapeHtml(window.location.href)}" target="_blank" rel="noreferrer" hidden>Open in browser</a>
         </div>
       </header>
@@ -201,7 +208,14 @@ function renderDocument(payload) {
     printButton.hidden = true;
     openInBrowserButton.hidden = false;
   }
-  printButton?.addEventListener("click", () => window.print());
+  printButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    const pdfWindow = window.open(fixedReceiptPdfUrl(), "_blank");
+    if (!pdfWindow) {
+      openInBrowserButton.hidden = false;
+      openInBrowserButton.focus();
+    }
+  });
 }
 
 const previewDocument = {

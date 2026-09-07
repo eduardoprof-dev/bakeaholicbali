@@ -14,11 +14,6 @@ const draftKey = `bakeaholic-checkout-draft-${shopperStateVersion}-${appMode}`;
 const latestOrderKey = `bakeaholic-latest-order-${cartStateVersion}-${appMode}`;
 const cartSessionKey = `bakeaholic-cart-session-${cartStateVersion}-${appMode}`;
 const cartSessionMaxAgeMs = 24 * 60 * 60 * 1000;
-const deepLinkedProductId = (() => {
-  const match = window.location.pathname.match(/^\/products\/([a-z0-9][a-z0-9-]{1,79})\/?$/i);
-  return match ? match[1].toLowerCase() : "";
-})();
-const deepLinkedProductAvailability = document.querySelector('meta[property="product:availability"]')?.content || "";
 
 const state = {
   appMode,
@@ -48,11 +43,11 @@ const momentGuideKicker = document.getElementById("momentGuideKicker");
 const momentGuideTitle = document.getElementById("momentGuideTitle");
 const categoryChips = document.getElementById("categoryChips");
 const catalog = document.getElementById("catalog");
-const promoKicker = document.getElementById("promoKicker");
-const promoAddButton = document.getElementById("promoAddButton");
-const promoHeroImage = document.getElementById("promoHeroImage");
-const promoHeroTitle = document.getElementById("promoHeroTitle");
-const promoHeroPrice = document.getElementById("promoHeroPrice");
+const limitedBundlesGrid = document.getElementById("limitedBundlesGrid");
+const limitedBundleCarouselControls = document.getElementById("limitedBundleCarouselControls");
+const limitedBundlePrev = document.getElementById("limitedBundlePrev");
+const limitedBundleNext = document.getElementById("limitedBundleNext");
+const limitedBundleCounter = document.getElementById("limitedBundleCounter");
 const brandStoryKicker = document.getElementById("brandStoryKicker");
 const brandStoryTitle = document.getElementById("brandStoryTitle");
 const brandStoryBody = document.getElementById("brandStoryBody");
@@ -113,28 +108,6 @@ const saveDetailsButton = document.getElementById("saveDetailsButton");
 const whatsappPrompt = document.getElementById("whatsappPrompt");
 const whatsappMessage = document.getElementById("whatsappMessage");
 const whatsappInput = document.getElementById("whatsappInput");
-const whatsappCountryCode = document.getElementById("whatsappCountryCode");
-
-async function populateWhatsAppCountryCodes() {
-  const response = await fetch("/data/countries.json");
-  if (!response.ok) throw new Error("Country codes are unavailable");
-  const countries = await response.json();
-  const options = countries.map((country) => {
-    const option = document.createElement("option");
-    option.value = country.code;
-    option.textContent = `${country.flag} +${country.code}`;
-    option.dataset.countryName = country.name;
-    option.dataset.flag = country.flag;
-    option.selected = country.country === "ID";
-    return option;
-  });
-  const selectedCode = whatsappCountryCode.value || "62";
-  whatsappCountryCode.replaceChildren(...options);
-  if (options.some((option) => option.value === selectedCode)) whatsappCountryCode.value = selectedCode;
-  window.BakeaholicCountryPicker?.enhance(whatsappCountryCode, whatsappInput);
-}
-
-const whatsappCountryCodesReady = populateWhatsAppCountryCodes().catch(() => null);
 const otpPrompt = document.getElementById("otpPrompt");
 const otpInput = document.getElementById("otpInput");
 const otpMessage = document.getElementById("otpMessage");
@@ -173,6 +146,8 @@ let pendingOtpPhone = "";
 let otpResendAvailableAt = 0;
 let otpTimerId = 0;
 let volatileCartSessionId = "";
+let volatileCartSessionCreatedAt = 0;
+let volatileCartSessionLastMutatedAt = 0;
 const pendingCartAdds = new Set();
 const cartQuantitySyncs = new Map();
 const isAdminPreview = params.has("admin-preview");
@@ -250,36 +225,16 @@ function setMessage(element, text, tone = "error") {
   element.hidden = !text;
 }
 
-function normalizeWhatsAppPhone(input, countryCode = whatsappCountryCode?.value || "62") {
-  const raw = String(input || "").trim();
-  const digits = raw.replace(/[^\d]/g, "");
-  const selectedCode = String(countryCode || "").replace(/[^\d]/g, "");
-  if (!digits || !selectedCode) return "";
-  const explicitPhone = raw.startsWith("00") ? digits.replace(/^00/, "") : digits;
-  if (raw.startsWith("+") || raw.startsWith("00")) {
-    return explicitPhone.startsWith(selectedCode) ? explicitPhone : "";
+function normalizeWhatsAppPhone(input) {
+  const digits = String(input || "").replace(/[^\d]/g, "");
+  if (!digits) {
+    return "";
   }
-  if (selectedCode === "62") {
-    const nationalNumber = digits.replace(/^0+/, "");
-    return nationalNumber.startsWith("62") ? nationalNumber : `62${nationalNumber}`;
-  }
-  return `${selectedCode}${digits}`;
-}
-
-function editableWhatsAppPhone(input) {
-  const phone = String(input || "").replace(/[^\d]/g, "");
-  if (!phone) return "";
-  const countryCodes = Array.from(whatsappCountryCode?.options || [])
-    .map((option) => option.value)
-    .sort((a, b) => b.length - a.length);
-  const matchedCode = countryCodes.find((code) => phone.startsWith(code)) || "62";
-  whatsappCountryCode.value = matchedCode;
-  const nationalNumber = phone.slice(matchedCode.length);
-  return matchedCode === "62" ? `0${nationalNumber}` : nationalNumber;
+  return digits.startsWith("62") ? digits : `62${digits.replace(/^0+/, "")}`;
 }
 
 function formatWhatsAppPhone(input) {
-  const phone = String(input || "").replace(/[^\d]/g, "");
+  const phone = normalizeWhatsAppPhone(input);
   return phone ? `+${phone}` : "";
 }
 
@@ -326,14 +281,51 @@ function createCartSessionId() {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function saveCartSessionId(sessionId) {
+function isCurrentCartSessionTimestamp(value, now = Date.now()) {
+  const timestamp = Number(value || 0);
+  return Number.isFinite(timestamp)
+    && timestamp > 0
+    && timestamp <= now
+    && now - timestamp < cartSessionMaxAgeMs;
+}
+
+function saveCartSessionId(sessionId, createdAt = 0, lastMutatedAt = 0) {
   const normalized = String(sessionId || "").toLowerCase();
   if (!/^[a-f0-9]{32}$/.test(normalized)) {
     return "";
   }
+  let sessionCreatedAt = Number(createdAt || 0);
+  let sessionLastMutatedAt = Number(lastMutatedAt || 0);
+  if (!(sessionCreatedAt > 0)) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(cartSessionKey) || "null");
+      if (String(stored?.id || "").toLowerCase() === normalized) {
+        sessionCreatedAt = Number(stored?.createdAt || 0);
+        sessionLastMutatedAt = sessionLastMutatedAt || Number(stored?.lastMutatedAt || stored?.createdAt || 0);
+      }
+    } catch (_error) {
+      // A fresh creation time below safely replaces malformed legacy storage.
+    }
+  }
+  const now = Date.now();
+  if (!Number.isFinite(sessionCreatedAt) || sessionCreatedAt <= 0 || sessionCreatedAt > now) {
+    sessionCreatedAt = now;
+  }
+  if (!isCurrentCartSessionTimestamp(sessionLastMutatedAt, now)) {
+    sessionLastMutatedAt = sessionCreatedAt;
+  }
+  if (!(sessionCreatedAt > 0)) {
+    sessionCreatedAt = Date.now();
+  }
   volatileCartSessionId = normalized;
+  volatileCartSessionCreatedAt = sessionCreatedAt;
+  volatileCartSessionLastMutatedAt = sessionLastMutatedAt;
   try {
-    localStorage.setItem(cartSessionKey, JSON.stringify({ id: normalized, updatedAt: Date.now() }));
+    localStorage.setItem(cartSessionKey, JSON.stringify({
+      id: normalized,
+      createdAt: sessionCreatedAt,
+      lastMutatedAt: sessionLastMutatedAt
+    }));
   } catch (_error) {
     // The in-memory session still prevents an old cookie cart from being reused this visit.
   }
@@ -344,9 +336,10 @@ function storedCartSessionId() {
   try {
     const stored = JSON.parse(localStorage.getItem(cartSessionKey) || "null");
     const sessionId = String(stored?.id || "").toLowerCase();
-    const updatedAt = Number(stored?.updatedAt || 0);
-    if (/^[a-f0-9]{32}$/.test(sessionId) && updatedAt > 0 && Date.now() - updatedAt <= cartSessionMaxAgeMs) {
-      return sessionId;
+    const createdAt = Number(stored?.createdAt || 0);
+    const lastMutatedAt = Number(stored?.lastMutatedAt || stored?.createdAt || 0);
+    if (/^[a-f0-9]{32}$/.test(sessionId) && isCurrentCartSessionTimestamp(lastMutatedAt)) {
+      return saveCartSessionId(sessionId, createdAt, lastMutatedAt);
     }
     localStorage.removeItem(cartSessionKey);
   } catch (_error) {
@@ -357,24 +350,70 @@ function storedCartSessionId() {
       // Ignore unavailable browser storage.
     }
   }
+  volatileCartSessionId = "";
+  volatileCartSessionCreatedAt = 0;
+  volatileCartSessionLastMutatedAt = 0;
   return "";
 }
 
 function getCartSessionId() {
+  const storedSessionId = storedCartSessionId();
   const urlSessionId = String(params.get("cart_session") || "");
-  if (/^[a-f0-9]{32}$/i.test(urlSessionId)) {
-    return saveCartSessionId(urlSessionId);
+  if (/^[a-f0-9]{32}$/i.test(urlSessionId) && storedSessionId === urlSessionId.toLowerCase()) {
+    return storedSessionId;
   }
-  return storedCartSessionId() || volatileCartSessionId || saveCartSessionId(createCartSessionId());
+  if (storedSessionId) {
+    return storedSessionId;
+  }
+  if (volatileCartSessionId && isCurrentCartSessionTimestamp(volatileCartSessionLastMutatedAt)) {
+    return volatileCartSessionId;
+  }
+  volatileCartSessionId = "";
+  volatileCartSessionCreatedAt = 0;
+  volatileCartSessionLastMutatedAt = 0;
+  return saveCartSessionId(createCartSessionId());
 }
 
-function rememberCartSession(payload) {
+function cartSessionMetadata(sessionId) {
+  const normalized = String(sessionId || "").toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(normalized)) return null;
+  if (volatileCartSessionId === normalized && isCurrentCartSessionTimestamp(volatileCartSessionLastMutatedAt)) {
+    return {
+      createdAt: volatileCartSessionCreatedAt,
+      lastMutatedAt: volatileCartSessionLastMutatedAt
+    };
+  }
+  return null;
+}
+
+function rememberCartSession(payload, { mutated = false } = {}) {
   const sessionId = String(payload?.cartSessionId || "");
   if (!/^[a-f0-9]{32}$/i.test(sessionId)) {
     return;
   }
-  saveCartSessionId(sessionId);
+  saveCartSessionId(sessionId, 0, mutated ? Date.now() : 0);
 }
+
+function syncCartSessionFromStorage(event) {
+  if (event.key !== cartSessionKey) return;
+  try {
+    const stored = JSON.parse(event.newValue || "null");
+    const sessionId = String(stored?.id || "").toLowerCase();
+    const createdAt = Number(stored?.createdAt || 0);
+    const lastMutatedAt = Number(stored?.lastMutatedAt || stored?.createdAt || 0);
+    if (/^[a-f0-9]{32}$/.test(sessionId) && isCurrentCartSessionTimestamp(lastMutatedAt)) {
+      saveCartSessionId(sessionId, createdAt, lastMutatedAt);
+      return;
+    }
+  } catch (_error) {
+    // A bad cross-tab value cannot revive an expired cart session.
+  }
+  volatileCartSessionId = "";
+  volatileCartSessionCreatedAt = 0;
+  volatileCartSessionLastMutatedAt = 0;
+}
+
+window.addEventListener("storage", syncCartSessionFromStorage);
 
 function cartPageUrl() {
   const search = new URLSearchParams();
@@ -391,7 +430,10 @@ function cartPageUrl() {
 
 function request(path, options = {}) {
   const cartSessionId = getCartSessionId();
+  const cartSession = cartSessionMetadata(cartSessionId);
   const requestUrl = new URL(path, window.location.origin);
+  const method = String(options.method || "GET").toUpperCase();
+  const isCartMutation = requestUrl.pathname === "/api/cart" && ["POST", "PATCH"].includes(method);
   if (cartSessionId) {
     requestUrl.searchParams.set("cart_session", cartSessionId);
   }
@@ -401,7 +443,11 @@ function request(path, options = {}) {
     headers: {
       "Content-Type": "application/json",
       "X-App-Mode": appMode,
-      ...(cartSessionId ? { "X-Cart-Session": cartSessionId } : {}),
+      ...(cartSessionId ? {
+        "X-Cart-Session": cartSessionId,
+        "X-Cart-Session-Created-At": String(cartSession?.createdAt || ""),
+        "X-Cart-Session-Last-Mutated-At": String(cartSession?.lastMutatedAt || "")
+      } : {}),
       ...(options.headers || {})
     }
   }).then(async (response) => {
@@ -411,7 +457,7 @@ function request(path, options = {}) {
       error.status = response.status;
       throw error;
     }
-    rememberCartSession(payload);
+    rememberCartSession(payload, { mutated: isCartMutation });
     return payload;
   });
 }
@@ -477,11 +523,6 @@ function syncFulfillmentUi() {
 
   if (!hasDeliveryDestination()) {
     deliveryFeeLine.textContent = "Add your address to estimate delivery fee.";
-    return;
-  }
-
-  if (state.cart?.quoteError) {
-    deliveryFeeLine.textContent = state.cart.quoteError;
     return;
   }
 
@@ -697,10 +738,10 @@ function renderCatalog() {
                 (item) => {
                   const quantity = cartQuantityForItem(item.id);
                   return `
-                  <article class="product-card" role="button" tabindex="0" data-product-id="${escapeHtml(item.id)}" aria-label="View ${escapeHtml(item.name)} details">
-                    <div class="product-thumb-wrap" ${mediaFrameStyle(item)}>
+                  <article class="product-card" data-product-id="${escapeHtml(item.id)}">
+                    <button class="product-details-trigger product-thumb-wrap" type="button" data-product-details="${escapeHtml(item.id)}" aria-label="View ${escapeHtml(item.name)} details" ${mediaFrameStyle(item)}>
                       <img class="product-thumb" src="${escapeHtml(versionedAsset(item.imagePath))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" ${productImageStyle(item)} />
-                    </div>
+                    </button>
                     <div class="product-copy">
                       <div class="product-topline">
                         <h3>${escapeHtml(item.name)}</h3>
@@ -714,8 +755,8 @@ function renderCatalog() {
                       </div>
                       <div class="product-bottom">
                         <strong>${formatRupiah.format(item.price)}</strong>
-                        <button class="mini-add-button" type="button" data-item-id="${escapeHtml(item.id)}" aria-label="Add ${escapeHtml(item.name)} to cart" ${item.stock <= 0 ? "disabled" : ""}>
-                          ${item.stock <= 0 ? "Sold out" : "+"}
+                        <button class="mini-add-button" type="button" data-item-id="${escapeHtml(item.id)}" aria-label="Add ${escapeHtml(item.name)} to cart">
+                          +
                           ${quantity > 0 ? `<span class="add-quantity-badge">${quantity > 99 ? "99+" : quantity}</span>` : ""}
                         </button>
                       </div>
@@ -747,14 +788,8 @@ function renderCatalog() {
     });
   });
 
-  catalog.querySelectorAll("[data-product-id]").forEach((card) => {
-    card.addEventListener("click", () => openProductModal(card.dataset.productId));
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        openProductModal(card.dataset.productId);
-      }
-    });
+  catalog.querySelectorAll("[data-product-details]").forEach((button) => {
+    button.addEventListener("click", () => openProductModal(button.dataset.productDetails));
   });
 }
 
@@ -766,26 +801,89 @@ function currentPromoItem() {
   return state.items.find((item) => item.id === state.promo?.itemId) || null;
 }
 
-function productPageUrl(itemId) {
-  const suffix = appMode === "test" ? "?mode=test" : "";
-  return `/products/${encodeURIComponent(itemId)}${suffix}`;
+function bundleComponentText(item) {
+  if (!item?.isBundle || !Array.isArray(item.bundleComponents)) return "";
+  return item.bundleComponents.map((component) => {
+    const product = state.items.find((entry) => entry.id === component.itemId);
+    return `${component.quantity} × ${product?.name || component.itemId}`;
+  }).join(" · ");
 }
 
-function openProductModal(itemId, options = {}) {
-  const catalogItem = state.items.find((candidate) => candidate.id === itemId);
-  if (!catalogItem) return;
-  const item = itemId === deepLinkedProductId && deepLinkedProductAvailability === "out of stock"
-    ? { ...catalogItem, stock: 0 }
-    : catalogItem;
-
-  if (options.updateHistory !== false && window.location.pathname !== `/products/${item.id}`) {
-    window.history.pushState({ productId: item.id }, "", productPageUrl(item.id));
+function renderLimitedBundles() {
+  if (!limitedBundlesGrid) return;
+  const now = Date.now();
+  const offers = [
+    { id: "BLISS4", start: "2026-09-01T00:00:00+08:00", end: "2026-09-12T00:00:00+08:00", category: "bliss-balls", badge: "Any 4 packs", name: "Bliss Balls Mix & Match", description: "Choose any combination of Bliss Balls flavours.", price: 250000, image: "/assets/products/bliss-peanutella-lifestyle-20260422.png", action: "Choose Bliss flavours" },
+    { id: "COOKIES12", start: "2026-09-07T08:00:00+08:00", end: "2026-09-14T00:00:00+08:00", category: "oatmeal-cookies", badge: "Any 12 cookies", name: "Cookie Mix & Match", description: "Choose any combination from the oatmeal cookie range.", price: 200000, image: "/assets/products/oatmeal-cookies-assorted.jpg", action: "Choose cookie flavours" }
+  ].filter((offer) => now >= Date.parse(offer.start) && now < Date.parse(offer.end));
+  if (!offers.length) {
+    promoCard.hidden = true;
+    return;
   }
-  document.title = `${item.name} | Bakeaholic Bali`;
+  promoCard.hidden = false;
+  limitedBundlesGrid.innerHTML = offers.map((offer) => `
+    <article class="limited-bundle-card">
+      <img src="${escapeHtml(versionedAsset(offer.image))}" alt="${escapeHtml(offer.name)}" loading="eager" decoding="async" />
+      <div class="limited-bundle-copy">
+        <span>${escapeHtml(offer.badge)}</span>
+        <h3>${escapeHtml(offer.name)}</h3>
+        <p>${escapeHtml(offer.description)}</p>
+        <strong>${formatRupiah.format(offer.price)}</strong>
+        <div class="limited-bundle-actions">
+          <button class="primary-button" type="button" data-bundle-category="${escapeHtml(offer.category)}">${escapeHtml(offer.action)}</button>
+        </div>
+      </div>
+    </article>
+  `).join("");
+  const cards = Array.from(limitedBundlesGrid.querySelectorAll(".limited-bundle-card"));
+  let activeCardIndex = 0;
+  const updateCarouselControls = () => {
+    if (!limitedBundleCounter || !cards.length) return;
+    limitedBundleCounter.textContent = `${activeCardIndex + 1} / ${cards.length}`;
+    if (limitedBundlePrev) limitedBundlePrev.disabled = activeCardIndex === 0;
+    if (limitedBundleNext) limitedBundleNext.disabled = activeCardIndex === cards.length - 1;
+  };
+  const moveToCard = (index) => {
+    activeCardIndex = Math.max(0, Math.min(cards.length - 1, index));
+    limitedBundlesGrid.scrollTo({ left: cards[activeCardIndex].offsetLeft - limitedBundlesGrid.offsetLeft, behavior: "smooth" });
+    updateCarouselControls();
+  };
+  if (limitedBundleCarouselControls) limitedBundleCarouselControls.hidden = cards.length < 2;
+  limitedBundlePrev?.addEventListener("click", () => moveToCard(activeCardIndex - 1));
+  limitedBundleNext?.addEventListener("click", () => moveToCard(activeCardIndex + 1));
+  limitedBundlesGrid.addEventListener("scroll", () => {
+    window.requestAnimationFrame(() => {
+      const nextIndex = cards.reduce((bestIndex, card, index) => (
+        Math.abs(card.offsetLeft - limitedBundlesGrid.offsetLeft - limitedBundlesGrid.scrollLeft)
+          < Math.abs(cards[bestIndex].offsetLeft - limitedBundlesGrid.offsetLeft - limitedBundlesGrid.scrollLeft)
+          ? index
+          : bestIndex
+      ), 0);
+      if (nextIndex !== activeCardIndex) {
+        activeCardIndex = nextIndex;
+        updateCarouselControls();
+      }
+    });
+  }, { passive: true });
+  updateCarouselControls();
+  limitedBundlesGrid.querySelectorAll("[data-bundle-category]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.bundleCategory);
+      if (target) {
+        const headerHeight = document.querySelector(".app-header")?.offsetHeight || 0;
+        const targetTop = target.getBoundingClientRect().top + window.scrollY - headerHeight - 12;
+        window.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+      }
+    });
+  });
+}
 
-  window.BakeaholicAnalytics?.viewProduct(item);
+function openProductModal(itemId, updateUrl = false) {
+  const item = state.items.find((candidate) => candidate.id === itemId);
+  if (!item) return;
 
   selectedProductId = item.id;
+  window.BakeaholicAnalytics?.viewProduct(item);
   productModalImage.src = versionedAsset(item.imagePath);
   productModalImage.alt = item.name;
   productModalImage.className = "product-modal-image";
@@ -799,27 +897,22 @@ function openProductModal(itemId, options = {}) {
   productModalBadge.hidden = !item.badge;
   productModalDescription.textContent = item.description;
   productModalPrice.textContent = formatRupiah.format(item.price);
-  productModalAddButton.disabled = item.stock <= 0;
-  productModalAddButton.textContent = item.stock <= 0 ? "Sold out" : `Add to Cart ${formatRupiah.format(item.price)}`;
+  productModalAddButton.disabled = false;
+  productModalAddButton.textContent = `Add to Cart ${formatRupiah.format(item.price)}`;
   productModalFacts.innerHTML = [
-    `★ ${item.rating}`,
-    `${item.reviews} reviews`,
+    item.rating > 0 ? `★ ${item.rating}` : "",
+    item.reviews > 0 ? `${item.reviews} reviews` : "",
     item.shelfLife,
-    item.minOrder ? `Min. ${item.minOrder}` : ""
+    item.minOrder ? `Min. ${item.minOrder}` : "",
+    bundleComponentText(item)
   ]
     .filter(Boolean)
     .map((fact) => `<span>${escapeHtml(fact)}</span>`)
     .join("");
 
   openModal(productModal);
-}
-
-function closeProductDetails(options = {}) {
-  closeModal(productModal);
-  selectedProductId = "";
-  document.title = "Bakeaholic Online Shop";
-  if (options.updateHistory !== false && window.location.pathname.startsWith("/products/")) {
-    window.history.replaceState({}, "", `/index.html${modeQuery}`);
+  if (updateUrl && !isAdminPreview) {
+    window.history.pushState({ productId: item.id }, "", `/products/${encodeURIComponent(item.id)}${modeQuery}`);
   }
 }
 
@@ -891,23 +984,6 @@ function closeModal(modal) {
   }
 }
 
-function hasActiveFormModal() {
-  return !whatsappModal.hidden
-    || !otpModal.hidden
-    || !profileModal.hidden
-    || !detailsModal.hidden
-    || !locationModal.hidden;
-}
-
-let preservedFormFocus = null;
-// iOS can dispatch a delayed pointer event to the backdrop after opening or
-// resizing its keyboard. Cancel it before it blurs the field being edited.
-modalScrim.addEventListener("pointerdown", (event) => {
-  if (!hasActiveFormModal()) return;
-  preservedFormFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  event.preventDefault();
-});
-
 function updateOtpTimer() {
   const remainingSeconds = Math.max(0, Math.ceil((otpResendAvailableAt - Date.now()) / 1000));
   resendOtpButton.disabled = remainingSeconds > 0;
@@ -943,11 +1019,9 @@ function showOtpModal(registration) {
 }
 
 async function requestOtp() {
-  const countryCode = whatsappCountryCode.value;
-  const rawPhone = whatsappInput.value.trim();
-  const phone = normalizeWhatsAppPhone(rawPhone, countryCode);
-  if (!/^[1-9]\d{7,14}$/.test(phone)) {
-    setMessage(whatsappMessage, "Choose your country and enter a valid WhatsApp number");
+  const phone = normalizeWhatsAppPhone(whatsappInput.value);
+  if (!phone) {
+    setMessage(whatsappMessage, "Please enter your WhatsApp number");
     return;
   }
 
@@ -957,7 +1031,7 @@ async function requestOtp() {
   try {
     const payload = await request("/api/register/start", {
       method: "POST",
-      body: JSON.stringify({ phone: rawPhone, countryCode })
+      body: JSON.stringify({ phone })
     });
     showOtpModal(payload.registration);
   } catch (error) {
@@ -1043,10 +1117,11 @@ function openAccountMenu() {
   accountMenu.hidden = false;
 }
 
-async function openAccount() {
+function openAccount() {
   if (!state.draft.customer.phoneVerifiedAt) {
-    await whatsappCountryCodesReady;
-    whatsappInput.value = editableWhatsAppPhone(state.draft.customer.phone);
+    whatsappInput.value = state.draft.customer.phone
+      ? state.draft.customer.phone.replace(/^\+?62/, "")
+      : "";
     setMessage(whatsappMessage, "");
     openModal(whatsappModal);
     return;
@@ -1423,6 +1498,7 @@ function changeBrandStorySlide(direction, options = {}) {
   if (!options.auto) {
     restartBrandStoryAutoplay();
   }
+  document.activeElement?.blur?.();
   if (!options.auto && window.matchMedia("(max-width: 620px)").matches) {
     const card = brandStoryTrack.closest(".brand-story-card");
     const headerHeight = document.querySelector(".app-header")?.offsetHeight || 0;
@@ -1436,10 +1512,7 @@ function startBrandStoryAutoplay() {
   const slides = brandStoryTrack.querySelectorAll(".brand-story-slide");
   if (slides.length <= 1 || brandStoryTimer) return;
   brandStoryTimer = window.setInterval(() => {
-    // Never let decorative background motion interfere with checkout forms.
-    // In particular, advancing the carousel used to blur the active input,
-    // which interrupted OTP and profile entry every 5.2 seconds.
-    if (brandStoryPaused || hasActiveFormModal()) return;
+    if (brandStoryPaused) return;
     changeBrandStorySlide(1, { auto: true });
   }, 5200);
 }
@@ -1622,23 +1695,7 @@ function applyCatalogPayload(payload) {
   if (storeEyebrow) {
     storeEyebrow.textContent = state.store.eyebrow;
   }
-  promoKicker.textContent = state.promo.kicker;
-  promoAddButton.textContent = state.promo.buttonLabel;
-  const promoItem = currentPromoItem();
-  if (promoHeroImage && promoItem?.imagePath) {
-    promoHeroImage.src = versionedAsset(promoItem.imagePath);
-    promoHeroImage.alt = promoItem.name;
-    promoHeroImage.style.objectFit = imageFit(promoItem);
-    promoHeroImage.style.objectPosition = "center";
-    promoHeroImage.style.transform = mediaTransform(promoItem);
-    promoHeroImage.style.transformOrigin = "center";
-  }
-  if (promoHeroTitle) {
-    promoHeroTitle.textContent = promoItem?.name || "Best seller ready to ship";
-  }
-  if (promoHeroPrice) {
-    promoHeroPrice.textContent = promoItem?.price ? formatRupiah.format(promoItem.price) : "Rp 0";
-  }
+  renderLimitedBundles();
   renderBrandStory();
   whatsappPrompt.textContent = withVerificationPrompt(state.store.whatsappPrompt);
   modeBanner.hidden = appMode !== "test";
@@ -1655,11 +1712,8 @@ function applyCatalogPayload(payload) {
 async function bootstrap() {
   const payload = await request("/api/menu");
   applyCatalogPayload(payload);
-  document.title = "Bakeaholic Online Shop";
 
-  if (deepLinkedProductId) {
-    openProductModal(deepLinkedProductId, { updateHistory: false });
-  }
+  document.title = "Bakeaholic Online Shop";
   locationPicker = window.BakeaholicLocationPicker?.createLocationPicker({
     rootId: "locationModal",
     kitchen: {
@@ -1681,6 +1735,11 @@ async function bootstrap() {
   hydrateDetailsForm();
   renderOrderBanner();
   await refreshCart();
+
+  const productPathMatch = window.location.pathname.match(/^\/products\/([^/]+)\/?$/);
+  if (productPathMatch) {
+    openProductModal(decodeURIComponent(productPathMatch[1]));
+  }
 
   await syncSessionProfile();
   renderAccountMenu();
@@ -1843,19 +1902,13 @@ document.addEventListener("click", (event) => {
   if (accountMenu.contains(event.target) || loginButton?.contains(event.target)) return;
   closeAccountMenu();
 });
-promoAddButton.addEventListener("click", () => addToCart(state.promo.itemId));
 cartLink?.addEventListener("click", (event) => {
   if ((state.cart?.itemCount || 0) <= 0) return;
   event.preventDefault();
-  window.BakeaholicAnalytics?.funnel("cart_opened");
   openCartDrawer();
 });
-storefrontCartBar?.addEventListener("click", () => {
-  window.BakeaholicAnalytics?.funnel("cart_opened");
-  openCartDrawer();
-});
+storefrontCartBar?.addEventListener("click", openCartDrawer);
 cartDrawerCheckoutButton?.addEventListener("click", () => {
-  window.BakeaholicAnalytics?.funnel("checkout_clicked");
   window.location.href = cartPageUrl();
 });
 cartDrawerAddressButton?.addEventListener("click", () => {
@@ -1867,7 +1920,6 @@ brandStoryNext?.addEventListener("click", () => changeBrandStorySlide(1));
 enableBrandStorySwipe();
 enableBrandStoryAutoplayPause();
 loginButton?.addEventListener("click", () => {
-  window.BakeaholicAnalytics?.funnel("login_opened");
   openAccount();
 });
 accountSummaryButton?.addEventListener("click", () => {
@@ -1888,19 +1940,16 @@ closeWhatsappModal.addEventListener("click", () => closeModal(whatsappModal));
 closeOtpModal.addEventListener("click", () => closeModal(otpModal));
 closeProfileModal.addEventListener("click", () => closeModal(profileModal));
 closeDetailsModal.addEventListener("click", () => closeModal(detailsModal));
-closeProductModal.addEventListener("click", () => closeProductDetails());
+closeProductModal.addEventListener("click", () => closeModal(productModal));
 closeCartDrawer?.addEventListener("click", () => closeModal(cartDrawer));
 document.getElementById("closeLocationModal")?.addEventListener("click", () => closeModal(locationModal));
-modalScrim.addEventListener("click", (event) => {
+modalScrim.addEventListener("click", () => {
   closeAccountMenu();
-  // Never dismiss form dialogs from the scrim. Mobile keyboards can dispatch
-  // a delayed background tap and discard data while the customer is typing.
-  // Each form keeps its explicit close button.
-  if (hasActiveFormModal()) {
-    event.preventDefault();
-    preservedFormFocus?.focus({ preventScroll: true });
-    return;
-  }
+  closeModal(whatsappModal);
+  closeModal(otpModal);
+  closeModal(profileModal);
+  closeModal(detailsModal);
+  closeModal(locationModal);
   closeModal(productModal);
   closeModal(cartDrawer);
 });
@@ -1920,12 +1969,12 @@ otpInput.addEventListener("keydown", (event) => {
   }
 });
 resendOtpButton.addEventListener("click", async () => {
-  whatsappInput.value = editableWhatsAppPhone(pendingOtpPhone);
+  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
   await requestOtp();
 });
 changePhoneButton.addEventListener("click", () => {
   closeModal(otpModal);
-  whatsappInput.value = editableWhatsAppPhone(pendingOtpPhone);
+  whatsappInput.value = pendingOtpPhone.replace(/^62/, "");
   openModal(whatsappModal);
 });
 copyOtpButton.addEventListener("click", async () => {
@@ -1949,9 +1998,6 @@ saveDetailsButton.addEventListener("click", () => {
   closeModal(detailsModal);
 });
 saveProfileButton.addEventListener("click", saveProfile);
-[profileFirstNameInput, profileLastNameInput, profileEmailInput].forEach((field) => {
-  field.addEventListener("input", () => setMessage(profileMessage, ""));
-});
 profileEmailInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     saveProfile();
@@ -1960,17 +2006,7 @@ profileEmailInput.addEventListener("keydown", (event) => {
 productModalAddButton.addEventListener("click", async () => {
   if (!selectedProductId) return;
   await addToCart(selectedProductId, productModalAddButton);
-  closeProductDetails();
-});
-
-window.addEventListener("popstate", () => {
-  const match = window.location.pathname.match(/^\/products\/([a-z0-9][a-z0-9-]{1,79})\/?$/i);
-  const productId = match ? match[1].toLowerCase() : "";
-  if (productId) {
-    openProductModal(productId, { updateHistory: false });
-  } else if (!productModal.hidden) {
-    closeProductDetails({ updateHistory: false });
-  }
+  closeModal(productModal);
 });
 
 bootstrap().catch((error) => {

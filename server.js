@@ -3,6 +3,12 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { URL } = require("url");
+const {
+  buildFulfillmentGroups,
+  normalizeMarketplaceCatalog,
+  productMarketplaceFields
+} = require("./marketplace");
+const { enqueueStorefrontOrderSync } = require("./ops-sync");
 
 function loadEnvFiles(paths) {
   paths.forEach((targetPath) => {
@@ -119,9 +125,6 @@ const ordersLivePath = path.join(dataDir, "orders-live.json");
 const ordersTestPath = path.join(dataDir, "orders-test.json");
 const cartsLivePath = path.join(dataDir, "carts-live.json");
 const cartsTestPath = path.join(dataDir, "carts-test.json");
-const registrationsLivePath = path.join(dataDir, "registrations-live.json");
-const registrationsTestPath = path.join(dataDir, "registrations-test.json");
-const funnelEventsPath = path.join(dataDir, "funnel-events.json");
 const biteshipWebhookLogPath = path.join(dataDir, "biteship-webhook-log.json");
 const vouchersPath = path.join(dataDir, "vouchers.json");
 const PAYMENT_METHODS = [
@@ -163,17 +166,6 @@ function availablePaymentMethods(mode = "live") {
   return PAYMENT_METHODS.filter((method) => mode === "test" || method.liveEnabled !== false);
 }
 const MAX_DELIVERY_DISTANCE_KM = 100;
-const BALI_ONLY_MESSAGE = "Delivery is available only for addresses in Bali.";
-
-// A conservative geofence for Bali's main island plus the Nusa islands. The
-// server is authoritative; client-side checks only improve the message timing.
-const BALI_MAIN_ISLAND_POLYGON = [
-  [114.41, -8.16], [114.50, -8.06], [114.76, -8.08], [115.15, -8.08],
-  [115.45, -8.18], [115.72, -8.34], [115.72, -8.52], [115.54, -8.67],
-  [115.30, -8.82], [115.04, -8.86], [114.78, -8.75], [114.57, -8.55],
-  [114.42, -8.31]
-];
-const BALI_NUSA_BOUNDS = Object.freeze({ minLat: -8.91, maxLat: -8.57, minLng: 115.34, maxLng: 115.73 });
 
 const DEFAULT_VOUCHERS = [
   { code: "SWEET10", label: "10% off products", type: "percent", value: 10, maxDiscount: 15000, active: true, expiresAt: "", usageLimit: 0 },
@@ -194,9 +186,34 @@ function loadCatalog() {
   const bundledItems = new Map((bundledCatalog.items || []).map((item) => [item.id, item]));
   let changed = false;
 
+  for (const bundledItem of bundledCatalog.items || []) {
+    if (bundledItem.isBundle !== true) continue;
+    const existingIndex = (savedCatalog.items || []).findIndex((item) => item.id === bundledItem.id);
+    if (existingIndex < 0) {
+      savedCatalog.items = [...(savedCatalog.items || []), bundledItem];
+      changed = true;
+      continue;
+    }
+    const existing = savedCatalog.items[existingIndex];
+    const exactBundle = {
+      ...existing,
+      ...bundledItem,
+      bundleComponents: bundledItem.bundleComponents
+    };
+    if (JSON.stringify(existing) !== JSON.stringify(exactBundle)) {
+      savedCatalog.items[existingIndex] = exactBundle;
+      changed = true;
+    }
+  }
+
   for (const item of savedCatalog.items || []) {
     const bundledItem = bundledItems.get(item.id);
     if (!bundledItem) continue;
+    if (["cookie-choc-chip", "cookie-raisin", "cookie-smores", "cookie-lamington"].includes(item.id)
+      && Number(item.price) !== Number(bundledItem.price)) {
+      item.price = Number(bundledItem.price);
+      changed = true;
+    }
     for (const key of ["lengthCm", "widthCm", "heightCm"]) {
       if (!Number.isFinite(Number(item[key])) && Number.isFinite(Number(bundledItem[key]))) {
         item[key] = Number(bundledItem[key]);
@@ -283,10 +300,15 @@ function writeEnvMap(targetPath, envMap) {
     "WHATSAPP_RECEIPT_TEMPLATE_NAME",
     "WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME",
     "WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME",
+    "WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME",
     "WHATSAPP_SHIPPING_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_NUMBER",
     "WHATSAPP_ADMIN_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME",
+    "WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME",
     "WHATSAPP_TEMPLATE_LANGUAGE"
   ];
   const writtenKeys = new Set();
@@ -348,10 +370,15 @@ function getEnvironmentIntegrationConfig() {
     whatsappReceiptTemplateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME || "",
     whatsappPaymentReminderTemplateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME || "",
     whatsappPaymentExpiredTemplateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME || "",
+    whatsappOrderCancelledTemplateName: process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME || "",
     whatsappShippingTemplateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || "",
     whatsappAdminNumber: process.env.WHATSAPP_ADMIN_NUMBER || "",
     whatsappAdminTemplateName: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "",
     whatsappAdminShippingTemplateName: process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || "",
+    whatsappRefundCompletedTemplateName: process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "",
+    whatsappAdminRefundTemplateName: process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME || "",
+    whatsappAdminDeliveryRecoveryTemplateName: process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME || "",
+    whatsappAdminDeliveryCompleteTemplateName: process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME || "",
     whatsappTemplateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en"
   };
 }
@@ -409,12 +436,25 @@ async function checkWhatsappCloudConfig() {
     orderTemplateName: process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "",
     otpTemplateName: process.env.WHATSAPP_OTP_TEMPLATE_NAME || "",
     receiptTemplateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME || "",
+    paymentReminderTemplateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME || "",
+    paymentExpiredTemplateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME || "",
+    orderCancelledTemplateName: process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME || "",
     shippingTemplateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || "",
     adminTemplateName: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "",
     adminShippingTemplateName: process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || "",
+    refundCompletedTemplateName: process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "",
+    adminRefundTemplateName: process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME || "",
+    adminDeliveryRecoveryTemplateName: process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME || "",
+    adminDeliveryCompleteTemplateName: process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME || "",
     adminNumberConfigured: Boolean(process.env.WHATSAPP_ADMIN_NUMBER),
+    appSecretConfigured: Boolean(String(process.env.WHATSAPP_APP_SECRET || "").trim()),
     ok: false
   };
+
+  if (isProductionRuntime() && !result.appSecretConfigured) {
+    result.error = "WhatsApp app secret is required for production webhook signature verification";
+    return result;
+  }
 
   if (!token || !phoneNumberId) {
     result.error = "WhatsApp access token or phone number ID is missing";
@@ -488,7 +528,10 @@ function whatsappTemplateTestOrder(recipient) {
     receiptToken: crypto.randomBytes(18).toString("hex"),
     customer: {
       name: "WhatsApp Template Test",
-      phone: recipient
+      // Diagnostics are a synthetic, admin-only test path. Customer production
+      // notifications never use this fixture or this recipient.
+      phone: recipient,
+      phoneVerifiedAt: new Date(0).toISOString()
     },
     pricing: { total: 6600 },
     payment: {
@@ -527,6 +570,25 @@ function adminWhatsappNumbers() {
     .filter(Boolean))].slice(0, 3);
 }
 
+function verifiedCustomerWhatsappNumber(order) {
+  const verifiedAt = String(order?.customer?.phoneVerifiedAt || "").trim();
+  const recipient = formatIndonesianPhone(order?.customer?.phone);
+  if (!verifiedAt || !recipient || recipient.length < 10) {
+    throw new Error("A verified customer WhatsApp number is required");
+  }
+
+  // Customer-purpose templates go only to the verified order owner. An owner
+  // may legitimately also be a configured staff member, so role membership is
+  // not a reason to redirect or suppress their customer message. New orders
+  // snapshot the authenticated session phone as `verifiedPhone`; legacy orders
+  // use their already-verified recipient snapshot without inferring a new one.
+  const verifiedOwner = formatIndonesianPhone(order?.customer?.verifiedPhone || order?.customer?.phone);
+  if (!verifiedOwner || recipient !== verifiedOwner) {
+    throw new Error("Customer WhatsApp recipient must match the verified order owner");
+  }
+  return recipient;
+}
+
 async function runWhatsappTemplateDiagnostics() {
   const recipient = adminWhatsappNumbers()[0] || "";
   if (!recipient) {
@@ -544,29 +606,9 @@ async function runWhatsappTemplateDiagnostics() {
       send: () => sendWhatsappOtpCode(recipient, "123456")
     },
     {
-      key: "payment_pending",
-      templateName: "payment_pending",
-      send: () => sendWhatsappTemplateMessage(recipient, "payment_pending", [], orderUpdateWhatsappOptions(order, "payment_pending"))
-    },
-    {
-      key: "order_received",
-      templateName: "order_received",
-      send: () => sendWhatsappTemplateMessage(recipient, "order_received", [], orderUpdateWhatsappOptions(order, "order_received"))
-    },
-    {
-      key: "order_preparing",
-      templateName: "order_preparing",
-      send: () => sendWhatsappTemplateMessage(recipient, "order_preparing", [], orderUpdateWhatsappOptions(order, "order_preparing"))
-    },
-    {
       key: "payment_confirmed",
       templateName: "payment_confirmed",
       send: () => sendWhatsappTemplateMessage(recipient, "payment_confirmed", [], { languageCode: "en" })
-    },
-    {
-      key: "order_shipped",
-      templateName: "order_shipped",
-      send: () => sendWhatsappTemplateMessage(recipient, "order_shipped", [], orderUpdateWhatsappOptions(order, "order_shipped"))
     },
     {
       key: "order_delivered",
@@ -576,17 +618,28 @@ async function runWhatsappTemplateDiagnostics() {
     {
       key: "payment_receipt",
       templateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME,
-      send: () => sendWhatsappPaymentReceipt(order)
+      send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME, receiptWhatsappParameters(order), {
+        languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+        headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
+        headerDocumentFilename: `${order.id}-payment-receipt.pdf`,
+        urlButtonParameters: [{ index: "0", text: order.receiptToken }]
+      })
     },
     {
       key: "payment_reminder",
       templateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME,
-      send: () => sendWhatsappPaymentReminder(order)
+      send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME, paymentReminderWhatsappParameters(order), {
+        languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+        urlButtonParameters: [{ index: "0", text: order.receiptToken }]
+      })
     },
     {
       key: "payment_expired",
       templateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME,
-      send: () => sendWhatsappPaymentExpired(order)
+      send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME, paymentExpiredWhatsappParameters(order), {
+        languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+        urlButtonParameters: [{ index: "0", text: order.receiptToken }]
+      })
     },
     {
       key: "order_cancelled",
@@ -596,12 +649,35 @@ async function runWhatsappTemplateDiagnostics() {
     {
       key: "customer_shipping",
       templateName: process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME,
-      send: () => sendWhatsappShippingUpdate(order)
+      send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME, customerShippingWhatsappParameters(order), {
+        languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+        urlButtonParameters: [{ index: "0", text: order.receiptToken }]
+      })
     },
     {
       key: "admin_alert",
       templateName: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME,
       send: () => sendWhatsappAdminAlert(order, "WhatsApp template diagnostic - no live order")
+    },
+    {
+      key: "admin_driver_cancelled",
+      templateName: process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME,
+      send: () => sendWhatsappTemplateMessage(
+        recipient,
+        process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME,
+        adminDriverCancelledWhatsappParameters(order, "courier_not_found"),
+        { languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en", quickReplyButtons: [{ payload: "REQUEST_NEW_DRIVER" }] }
+      )
+    },
+    {
+      key: "admin_delivery_complete",
+      templateName: process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME,
+      send: () => sendWhatsappTemplateMessage(
+        recipient,
+        process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME,
+        adminDeliveryCompleteWhatsappParameters(order),
+        { languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en", urlButtonParameters: [{ index: "0", text: adminOrderReviewButtonQuery(order) }] }
+      )
     },
     {
       key: "admin_shipping",
@@ -611,7 +687,10 @@ async function runWhatsappTemplateDiagnostics() {
     {
       key: "refund_completed",
       templateName: process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "refund_completed",
-      send: () => sendWhatsappRefundCompleted(order)
+      send: () => sendWhatsappTemplateMessage(recipient, process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "refund_completed", refundWhatsappParameters(order), {
+        languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+        urlButtonParameters: [{ index: "0", text: order.receiptToken }]
+      })
     },
     {
       key: "admin_refund_update",
@@ -900,6 +979,36 @@ async function sendWhatsappTextMessage(to, bodyText = "") {
   return parsed;
 }
 
+// Cloud API contact cards are deliberately addressed to the requesting staff
+// member, never to the customer. A contact card gives that staff member the
+// native WhatsApp Message action without misusing Call on WhatsApp.
+async function sendWhatsappContactCard(to, customerPhone, customerName, orderId) {
+  if (!isWhatsappCloudReady()) throw new Error("WhatsApp Cloud API is not configured");
+  const recipient = formatIndonesianPhone(to);
+  const contactPhone = formatIndonesianPhone(customerPhone);
+  if (!recipient || !contactPhone) throw new Error("A verified staff recipient and customer WhatsApp number are required");
+  const response = await fetch(whatsappMessagesUrl(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: recipient,
+      type: "contacts",
+      contacts: [{
+        name: {
+          formatted_name: `${String(customerName || "Customer").trim()} — ${String(orderId || "order").trim()}`,
+          first_name: String(customerName || "Customer").trim().split(/\s+/)[0] || "Customer"
+        },
+        phones: [{ phone: contactPhone, type: "CELL", wa_id: contactPhone }]
+      }]
+    })
+  });
+  const responseText = await response.text();
+  const parsed = parseJsonSafely(responseText, {});
+  if (!response.ok) throw new Error(parsed?.error?.message || `WhatsApp contact card failed with status ${response.status}`);
+  return parsed;
+}
+
 async function sendWhatsappOtpCode(phone, code) {
   const templateName = String(process.env.WHATSAPP_OTP_TEMPLATE_NAME || "").trim();
   if (!templateName) {
@@ -919,6 +1028,8 @@ function humanizeOrderStatus(order) {
       return "Awaiting payment";
     case "paid":
       return "Payment received - awaiting staff approval";
+    case "paid_late_review":
+      return "Late payment captured - staff review required";
     case "preparing":
       return "Preparing order";
     case "on_delivery":
@@ -1041,51 +1152,28 @@ function whatsappDocumentAttachmentUrl(url = "") {
 
 function defaultWhatsappOrderTemplateName(order) {
   const statusTemplates = {
-    awaiting_payment: "payment_pending",
     paid: "payment_confirmed",
-    preparing: "order_preparing",
-    on_delivery: "order_shipped",
-    shipped: "order_shipped",
     delivered: "order_delivered",
     complete: "order_delivered"
   };
   if (order.status === "cancelled") {
     return String(process.env.WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME || "order_cancelled").trim();
   }
-  return statusTemplates[order.status] || "order_received";
+  return statusTemplates[order.status] || "";
 }
 
 function configuredWhatsappOrderTemplateName(order) {
   const templateName = String(process.env.WHATSAPP_ORDER_TEMPLATE_NAME || "").trim();
-  // Status-specific templates are the source of truth. Older installs may still
-  // carry the original generic `order_received` setting, which is not suitable
-  // for the paid confirmation.
-  if (
-    order.status !== "paid"
-    || !templateName
-    || templateName === "order_status_update"
-    || templateName === "order_received"
-  ) {
-    return defaultWhatsappOrderTemplateName(order);
+  if (order.status === "paid") {
+    // The owner has made payment_confirmed authoritative. Never let a legacy
+    // order-received/preparing template stand in for a verified payment event.
+    return templateName === "payment_confirmed" ? templateName : "payment_confirmed";
   }
-  return templateName;
+  return defaultWhatsappOrderTemplateName(order);
 }
 
 function orderUpdateWhatsappOptions(order, templateName) {
-  const dynamicButtonTemplates = new Set([
-    "payment_pending",
-    "order_received",
-    "order_shipped"
-  ]);
   const options = { languageCode: "en" };
-  if (dynamicButtonTemplates.has(templateName)) {
-    options.urlButtonParameters = [{
-      index: "0",
-      text: templateName === "payment_pending"
-        ? publicOrderButtonQuery(order)
-        : publicDocumentButtonQuery(order)
-    }];
-  }
   return options;
 }
 
@@ -1100,20 +1188,83 @@ async function sendWhatsappOrderUpdate(order) {
   }
 
   const parameters = orderUpdateWhatsappParameters(order, templateName);
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, parameters, orderUpdateWhatsappOptions(order, templateName));
+  return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, parameters, orderUpdateWhatsappOptions(order, templateName));
 }
 
-function adminWhatsappParameters(order, eventLabel = "") {
+async function maybeSendWhatsappPaymentConfirmed(order, eventKey = "") {
+  const key = String(eventKey || `order:${order?.id || "unknown"}:payment-confirmed`).trim();
+  const templateName = configuredWhatsappOrderTemplateName(order || {});
+  const previous = order?.whatsappPaymentConfirmedNotification;
+  const skipReason = (() => {
+    if (order?.status !== "paid") return "order_not_paid";
+    if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
+    if (templateName !== "payment_confirmed") return "payment_confirmed_template_not_configured";
+    if (previous?.claimedAt || previous?.lastSentAt) return "already_claimed";
+    return "";
+  })();
+  if (skipReason) return { sent: false, skipped: true, reason: skipReason };
+
+  const claimedAt = new Date().toISOString();
+  order.whatsappPaymentConfirmedNotification = {
+    lastNotificationKey: key,
+    templateName,
+    claimedAt
+  };
+  persistWhatsappNotificationClaim(order);
+  try {
+    const recipient = verifiedCustomerWhatsappNumber(order);
+    const response = await sendWhatsappOrderUpdate(order);
+    const messageId = response?.messages?.[0]?.id || "";
+    order.whatsappPaymentConfirmedNotification = {
+      ...order.whatsappPaymentConfirmedNotification,
+      lastSentAt: new Date().toISOString(),
+      messageId
+    };
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: key,
+      templateName,
+      audience: "customer",
+      recipient,
+      messageId
+    });
+    persistWhatsappNotificationClaim(order);
+    return { sent: true, messageId };
+  } catch (error) {
+    order.whatsappPaymentConfirmedNotification = {
+      ...order.whatsappPaymentConfirmedNotification,
+      failedAt: new Date().toISOString(),
+      error: error.message
+    };
+    persistWhatsappNotificationClaim(order);
+    return { sent: false, skipped: false, error: error.message };
+  }
+}
+
+function adminWhatsappParameters(order, eventLabel = "", options = {}) {
   const documentUrl = adminOrderDocumentUrl(order);
   const shipmentStatus = order.fulfillment?.shipment?.status || "Not booked yet";
-  const staffAction = order.status === "paid"
-    ? `Reply APPROVE when packed, or CANCEL if stock is empty. If there is more than one waiting order, reply APPROVE ${order.id} or CANCEL ${order.id}.`
+  let customerName = order.customer?.name || "Customer";
+  let customerWhatsapp = "Verify in secure Admin";
+  if (options.privacySafe) {
+    customerName = "Customer details available by quick reply";
+    customerWhatsapp = "Verified order owner only";
+  } else {
+    try {
+      customerWhatsapp = `+${verifiedCustomerWhatsappNumber(order)}`;
+    } catch (_error) {
+      // Never place an unverified number in a legacy staff template.
+    }
+  }
+  const staffAction = order.status === "paid_late_review"
+    ? "Late payment was captured after the local checkout window. Do not approve, prepare, or request delivery. Review the payment and use the governed refund workflow if required."
+    : order.status === "paid"
+    ? "Approve requests one governed Biteship driver after the saved route, items, service, and live rate are rechecked. Contact customer sends this staff recipient the verified customer contact card. Cancel starts a 60-second governed Undo window before cancellation/refund."
     : "No staff action needed.";
   return [
     eventLabel || humanizeOrderStatus(order),
     order.id,
-    "Customer details available in Admin",
-    "Not included in alert",
+    customerName,
+    customerWhatsapp,
     `Rp ${Number(order.pricing?.total || 0).toLocaleString("id-ID")}`,
     order.payment?.label || "",
     shipmentStatus,
@@ -1126,7 +1277,7 @@ function adminOrderReviewWhatsappParameters(order) {
   return [
     order.id,
     order.status === "paid"
-      ? "Stock and fulfilment review required"
+      ? "Approve delivery, contact customer, or cancel/refund in secure Admin"
       : "Order status review required"
   ];
 }
@@ -1189,39 +1340,50 @@ function adminShippingWhatsappParameters(order) {
   ];
 }
 
+function adminDriverCancelledWhatsappParameters(order, shipmentStatus = "") {
+  const shipment = order?.fulfillment?.shipment || {};
+  const courier = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || "-";
+  const failedReference = shipment.orderId || shipment.waybillId || biteshipTrackingIdFromUrl(shipment.trackingLink) || "-";
+  return [
+    String(order?.id || "-").trim() || "-",
+    String(courier || "-").trim() || "-",
+    String(failedReference || "-").trim() || "-",
+    `Biteship ${normalizedShipmentStatus(shipmentStatus) || "failed"} before pickup/handoff`
+  ];
+}
+
 async function sendWhatsappAdminAlert(order, eventLabel = "") {
   const adminNumbers = adminWhatsappNumbers();
-  const reviewTemplateName = String(process.env.WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME || "").trim();
-  const templateName = reviewTemplateName || String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim();
+  const templateName = String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim();
   if (!adminNumbers.length || !templateName) {
     throw new Error("Admin WhatsApp number or template name is missing");
   }
 
+  // Staff alert templates must never make privacy depend on a version string.
+  // The current v5 and any successor use this same non-PII contract.
+  const parameters = adminWhatsappParameters(order, eventLabel, { privacySafe: true });
+
   const deliveries = await Promise.allSettled(adminNumbers.map((adminNumber) => sendWhatsappTemplateMessage(
     adminNumber,
     templateName,
-    reviewTemplateName
-      ? adminOrderReviewWhatsappParameters(order)
-      : adminWhatsappParameters(order, eventLabel),
+    parameters,
     {
       languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
-      ...(reviewTemplateName ? {} : {
-        headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
-        headerDocumentFilename: `${order.id}-bakeaholic-receipt.pdf`
-      }),
-      urlButtonParameters: reviewTemplateName && order.status === "paid"
-        ? [{ index: "0", text: adminOrderReviewButtonQuery(order) }]
-        : [],
-      quickReplyButtons: !reviewTemplateName && order.status === "paid"
+      quickReplyButtons: order.status === "paid"
         ? [
             { payload: `APPROVE ${order.id}` },
+            { payload: "CONTACT_CUSTOMER" },
             { payload: `CANCEL ${order.id}` }
           ]
-        : []
+        : [],
+      // v5 replaces the rejected v3 website-button contract. Its three quick
+      // replies are configured in Meta in this exact visible order.
+      urlButtonParameters: []
     }
   )));
   const results = deliveries.map((delivery, index) => ({
     recipient: maskedWhatsappNumber(adminNumbers[index]),
+    recipientNumber: formatIndonesianPhone(adminNumbers[index]),
     sent: delivery.status === "fulfilled",
     messageId: delivery.status === "fulfilled"
       ? delivery.value?.messages?.[0]?.id || ""
@@ -1234,6 +1396,8 @@ async function sendWhatsappAdminAlert(order, eventLabel = "") {
     throw new Error(results.map((result) => result.error).filter(Boolean).join("; ") || "Admin WhatsApp delivery failed");
   }
   return {
+    templateName,
+    parameters,
     messages: deliveries.flatMap((delivery) => (
       delivery.status === "fulfilled" ? delivery.value?.messages || [] : []
     )),
@@ -1266,6 +1430,67 @@ function updateAdminWhatsappDeliveryStatus(order, status = {}) {
   return true;
 }
 
+function recordWhatsappLifecycleDelivery(order, {
+  eventKey = "",
+  templateName = "",
+  audience = "customer",
+  recipient = "",
+  messageId = "",
+  results = []
+} = {}) {
+  const key = String(eventKey || "").trim();
+  if (!order || !key) return;
+  const deliveries = Array.isArray(results) && results.length
+    ? results.map((result) => ({
+        recipient: result.recipient || "",
+        messageId: result.messageId || "",
+        accepted: result.sent !== false,
+        acceptedAt: result.sent === false ? "" : new Date().toISOString(),
+        error: result.error || ""
+      }))
+    : [{
+        recipient: maskedWhatsappNumber(recipient),
+        messageId: String(messageId || "").trim(),
+        accepted: true,
+        acceptedAt: new Date().toISOString(),
+        error: ""
+      }];
+  order.whatsappLifecycleNotifications = {
+    ...(order.whatsappLifecycleNotifications || {}),
+    [key]: {
+      eventKey: key,
+      templateName: String(templateName || "").trim(),
+      audience,
+      acceptedAt: new Date().toISOString(),
+      deliveries
+    }
+  };
+}
+
+function updateWhatsappLifecycleDeliveryStatus(order, status = {}) {
+  const messageId = String(status.id || "").trim();
+  if (!messageId || !order?.whatsappLifecycleNotifications) return false;
+  let updated = false;
+  Object.values(order.whatsappLifecycleNotifications).forEach((notification) => {
+    const delivery = notification?.deliveries?.find((entry) => entry.messageId === messageId);
+    if (!delivery) return;
+    delivery.deliveryStatus = String(status.status || "").trim();
+    delivery.deliveryUpdatedAt = status.timestamp
+      ? new Date(Number(status.timestamp) * 1000).toISOString()
+      : new Date().toISOString();
+    const error = status.errors?.[0];
+    if (error) {
+      delivery.deliveryError = error.message || error.title || error.code || "WhatsApp delivery failed";
+      delivery.deliveryErrorCode = error.code || "";
+    } else {
+      delete delivery.deliveryError;
+      delete delivery.deliveryErrorCode;
+    }
+    updated = true;
+  });
+  return updated;
+}
+
 function orderIdFromWhatsappReplyContext(message = {}, orders = stores.live.orders) {
   const contextMessageId = String(message.context?.id || "").trim();
   if (!contextMessageId) return "";
@@ -1274,6 +1499,226 @@ function orderIdFromWhatsappReplyContext(message = {}, orders = stores.live.orde
     || entry.adminWhatsappNotifications?.recipients?.some((recipient) => recipient.messageId === contextMessageId)
   ));
   return order?.id || "";
+}
+
+function findStaffNotificationFromReply(message = {}, notificationRoot = "adminWhatsappNotifications", mode = "live") {
+  const contextMessageId = String(message.context?.id || "").trim();
+  const staffNumber = formatIndonesianPhone(message.from);
+  if (!contextMessageId || !staffNumber || !isConfiguredAdminWhatsapp(staffNumber)) return null;
+  for (const order of getStoreState(mode).orders) {
+    const notifications = notificationRoot === "adminWhatsappNotifications"
+      ? [order.adminWhatsappNotifications]
+      : Object.values(order[notificationRoot] || {});
+    for (const notification of notifications) {
+      const recipient = notification?.recipients?.find((entry) => (
+        entry.messageId === contextMessageId && formatIndonesianPhone(entry.recipientNumber || entry.recipient) === staffNumber
+      )) || notification?.results?.find((entry) => (
+        entry.messageId === contextMessageId && formatIndonesianPhone(entry.recipientNumber || entry.recipient) === staffNumber
+      ));
+      if (recipient) return { order, notification, recipient, contextMessageId, staffNumber };
+    }
+  }
+  return null;
+}
+
+function whatsappInboundActionKey(message = {}, prefix = "action") {
+  const source = String(message.id || "").trim() || [message.context?.id || "", message.from || "", prefix].join(":");
+  return crypto.createHash("sha256").update(`${prefix}:${source}`).digest("hex");
+}
+
+function isCurrentStaffV5ContactReply(matched, now = Date.now()) {
+  const sentAt = Date.parse(matched?.notification?.lastSentAt || matched?.notification?.queuedAt || "");
+  return Boolean(
+    matched?.order
+    && matched?.recipient
+    && matched?.staffNumber
+    && matched.notification?.templateName === "admin_order_alert_v5"
+    && Number.isFinite(sentAt)
+    && sentAt <= now
+    && sentAt + 10 * 60 * 1000 >= now
+  );
+}
+
+async function sendVerifiedCustomerContactToStaff(message = {}) {
+  const matched = findStaffNotificationFromReply(message, "adminWhatsappNotifications");
+  if (!matched) throw new Error("Contact customer must be tapped on this staff member's paid-order alert.");
+  if (!isCurrentStaffV5ContactReply(matched)) {
+    throw new Error("Contact customer must be tapped on the current staff recipient's v5 alert.");
+  }
+  const { order, staffNumber } = matched;
+  if (order.status !== "paid") throw new Error("This paid-order customer contact action is no longer available.");
+  const customerPhone = verifiedCustomerWhatsappNumber(order);
+  const actionId = whatsappInboundActionKey(message, "contact-customer");
+  const actions = order.whatsappContactCustomerActions || {};
+  if (actions[actionId]?.claimedAt || actions[actionId]?.sentAt) return { sent: false, skipped: true, reason: "already_claimed" };
+  order.whatsappContactCustomerActions = {
+    ...actions,
+    [actionId]: { orderId: order.id, staffRecipient: maskedWhatsappNumber(staffNumber), claimedAt: new Date().toISOString() }
+  };
+  persistWhatsappNotificationClaim(order);
+  try {
+    let response;
+    let channel = "contact_card";
+    try {
+      response = await sendWhatsappContactCard(staffNumber, customerPhone, order.customer?.name || "Customer", order.id);
+    } catch (contactError) {
+      channel = "wa_me_link";
+      response = await sendWhatsappTextMessage(
+        staffNumber,
+        `Customer contact for ${order.id}: https://wa.me/${customerPhone}?text=${encodeURIComponent(`Hi, this is Bakeaholic Bali about order ${order.id}.`)}`
+      );
+      order.whatsappContactCustomerActions[actionId].contactCardError = contactError.message;
+    }
+    const messageId = response?.messages?.[0]?.id || "";
+    order.whatsappContactCustomerActions[actionId] = {
+      ...order.whatsappContactCustomerActions[actionId], channel, sentAt: new Date().toISOString(), messageId
+    };
+    recordWhatsappLifecycleDelivery(order, { eventKey: `order:${order.id}:contact-customer:${actionId}`, templateName: channel, audience: "staff", recipient: staffNumber, messageId });
+    persistWhatsappNotificationClaim(order);
+    return { sent: true, orderId: order.id, messageId, channel };
+  } catch (error) {
+    order.whatsappContactCustomerActions[actionId] = { ...order.whatsappContactCustomerActions[actionId], failedAt: new Date().toISOString(), error: error.message };
+    persistWhatsappNotificationClaim(order);
+    throw error;
+  }
+}
+
+function currentV5PaidOrderAction(message = {}, mode = "live", expectedOrderId = "") {
+  const matched = findStaffNotificationFromReply(message, "adminWhatsappNotifications", mode);
+  if (!isCurrentStaffV5ContactReply(matched)) {
+    throw new Error("This action must be tapped on the current requesting staff member's v5 paid-order alert.");
+  }
+  const { order, notification, staffNumber } = matched;
+  if (expectedOrderId && String(expectedOrderId).trim() !== order.id) {
+    throw new Error("The quick-reply order does not match its v5 message context.");
+  }
+  if (order.status !== "paid" || order.payment?.status !== "paid" || order.fulfillment?.type !== "delivery") {
+    throw new Error("This v5 paid-order action is no longer available for the current order.");
+  }
+  if (!notification?.v5ApprovalSnapshot || !sameShipmentRequestSnapshot(notification.v5ApprovalSnapshot, shipmentRequestSnapshot(order))) {
+    throw new Error("The pickup, drop-off, items, or courier service changed after this alert. Review the order before acting.");
+  }
+  return { ...matched, order, notification, staffNumber };
+}
+
+function claimV5PaidOrderAction(order, message, action, staffNumber) {
+  const actionId = whatsappInboundActionKey(message, `v5-${action}`);
+  const actions = order.whatsappV5Actions || {};
+  if (actions[actionId]) {
+    return { actionId, replay: true, record: actions[actionId] };
+  }
+  const record = {
+    action,
+    orderId: order.id,
+    staffRecipient: maskedWhatsappNumber(staffNumber),
+    contextMessageId: String(message.context?.id || "").trim(),
+    claimedAt: new Date().toISOString(),
+    status: "processing"
+  };
+  order.whatsappV5Actions = { ...actions, [actionId]: record };
+  persistWhatsappNotificationClaim(order);
+  return { actionId, replay: false, record };
+}
+
+function existingV5PaidOrderAction(message = {}, mode = "live", action = "", expectedOrderId = "") {
+  const matched = findStaffNotificationFromReply(message, "adminWhatsappNotifications", mode);
+  if (!isCurrentStaffV5ContactReply(matched)) return null;
+  if (expectedOrderId && String(expectedOrderId).trim() !== matched.order?.id) {
+    throw new Error("The quick-reply order does not match its v5 message context.");
+  }
+  const actionId = whatsappInboundActionKey(message, `v5-${action}`);
+  const record = matched.order?.whatsappV5Actions?.[actionId];
+  return record ? { order: matched.order, actionId, record } : null;
+}
+
+async function approveV5PaidOrderFromWhatsapp(message = {}, mode = "live", expectedOrderId = "") {
+  const replay = existingV5PaidOrderAction(message, mode, "approve", expectedOrderId);
+  if (replay) return { sent: false, skipped: true, reason: "already_claimed", orderId: replay.order.id };
+  const initial = currentV5PaidOrderAction(message, mode, expectedOrderId);
+  return withDeliveryRecoveryLock(mode, initial.order.id, async () => {
+    const matched = currentV5PaidOrderAction(message, mode, expectedOrderId);
+    const { order, notification, staffNumber } = matched;
+    if (order.fulfillment?.shipment?.orderId) throw new Error("A Biteship delivery is already active for this order.");
+    const claim = claimV5PaidOrderAction(order, message, "approve", staffNumber);
+    if (claim.replay) return { sent: false, skipped: true, reason: "already_claimed", orderId: order.id };
+    try {
+      // Reuse the exact route/items/service quoted for this alert. The live
+      // rate must remain acceptable before a single provider booking is made.
+      const liveRate = await fetchBiteshipRebookQuote(order, notification.v5ApprovalSnapshot);
+      const approved = await approveOrderForDelivery(mode, order.id, {
+        role: "whatsapp_admin", name: `WhatsApp staff ${maskedWhatsappNumber(staffNumber)}`
+      });
+      const shipment = approved.fulfillment?.shipment || {};
+      if (!shipment.orderId) throw new Error("Biteship did not create a delivery booking.");
+      order.whatsappV5Actions[claim.actionId] = {
+        ...claim.record,
+        status: "completed",
+        completedAt: new Date().toISOString(),
+        shipmentId: shipment.orderId,
+        verifiedRate: liveRate
+      };
+      persistWhatsappNotificationClaim(order);
+      return { sent: true, orderId: order.id, shipmentId: shipment.orderId, shipmentStatus: shipment.status || "" };
+    } catch (error) {
+      order.whatsappV5Actions[claim.actionId] = { ...claim.record, status: "failed", failedAt: new Date().toISOString(), error: error.message };
+      persistWhatsappNotificationClaim(order);
+      throw error;
+    }
+  });
+}
+
+async function scheduleV5CancelFromWhatsapp(message = {}, mode = "live", expectedOrderId = "") {
+  const replay = existingV5PaidOrderAction(message, mode, "cancel", expectedOrderId);
+  if (replay) return { sent: false, skipped: true, reason: "already_claimed", orderId: replay.order.id };
+  const initial = currentV5PaidOrderAction(message, mode, expectedOrderId);
+  return withDeliveryRecoveryLock(mode, initial.order.id, async () => {
+    const { order, staffNumber } = currentV5PaidOrderAction(message, mode, expectedOrderId);
+    if (order.fulfillment?.shipment?.orderId || order.adminPendingAction?.token) {
+      throw new Error("This order already has a delivery or governed action in progress.");
+    }
+    const claim = claimV5PaidOrderAction(order, message, "cancel", staffNumber);
+    if (claim.replay) return { sent: false, skipped: true, reason: "already_claimed", orderId: order.id };
+    try {
+      await scheduleAdminOrderAction(mode, order.id, "cancel", staffNumber);
+      order.whatsappV5Actions[claim.actionId] = {
+        ...claim.record,
+        status: "undo_window",
+        undoToken: order.adminPendingAction?.token || "",
+        executeAt: order.adminPendingAction?.executeAt || ""
+      };
+      persistWhatsappNotificationClaim(order);
+      return { sent: true, orderId: order.id, undoToken: order.adminPendingAction?.token || "" };
+    } catch (error) {
+      order.whatsappV5Actions[claim.actionId] = { ...claim.record, status: "failed", failedAt: new Date().toISOString(), error: error.message };
+      persistWhatsappNotificationClaim(order);
+      throw error;
+    }
+  });
+}
+
+async function requestReplacementDriverFromWhatsapp(message = {}) {
+  const matched = findStaffNotificationFromReply(message, "adminDeliveryRecoveryNotifications");
+  if (!matched) throw new Error("Request new driver must be tapped on this staff member's verified recovery alert.");
+  const { order, notification, staffNumber } = matched;
+  const shipmentId = String(order.fulfillment?.shipment?.orderId || "").trim();
+  if (
+    notification?.templateName !== "admin_driver_cancelled_v1"
+    || notification?.shipmentId !== shipmentId
+    || !isRecoverableFailedShipmentStatus(notification?.providerStatus)
+  ) {
+    throw new Error("This recovery alert no longer matches the active failed shipment. Please review the order.");
+  }
+  const actionId = whatsappInboundActionKey(message, "request-new-driver");
+  try {
+    const updated = await rebookBiteshipDelivery("live", order.id, {
+      role: "whatsapp_admin", name: `WhatsApp staff ${maskedWhatsappNumber(staffNumber)}`
+    }, { shipmentId, actionId });
+    return { sent: true, orderId: updated.id, replacementShipmentId: updated.fulfillment?.shipment?.orderId || "" };
+  } catch (error) {
+    // The webhook caller sends this clear failure only to message.from; no
+    // customer, payment, refund, cancellation, or self-delivery path runs.
+    throw new Error(`Replacement driver was not requested: ${error.message}`);
+  }
 }
 
 function refundWhatsappParameters(order) {
@@ -1300,7 +1745,7 @@ function adminRefundWhatsappParameters(order) {
 
 async function sendWhatsappRefundCompleted(order) {
   const templateName = String(process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME || "refund_completed").trim();
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, refundWhatsappParameters(order), {
+  return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, refundWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     urlButtonParameters: [
       {
@@ -1324,6 +1769,7 @@ async function sendWhatsappAdminRefundUpdate(order) {
   )));
   const results = deliveries.map((delivery, index) => ({
     recipient: maskedWhatsappNumber(adminNumbers[index]),
+    recipientNumber: formatIndonesianPhone(adminNumbers[index]),
     sent: delivery.status === "fulfilled",
     messageId: delivery.status === "fulfilled" ? delivery.value?.messages?.[0]?.id || "" : "",
     error: delivery.status === "rejected" ? delivery.reason?.message || "WhatsApp delivery failed" : ""
@@ -1334,13 +1780,57 @@ async function sendWhatsappAdminRefundUpdate(order) {
   return { results };
 }
 
+async function maybeSendWhatsappRefundCompleted(order, eventKey = "") {
+  const key = String(eventKey || `order:${order?.id || "unknown"}:refund-processed`).trim();
+  const notifications = order?.refund?.notifications || {};
+  if (order?.refund?.status !== "processed") return { sent: false, skipped: true, reason: "refund_not_processed_by_xendit" };
+  if (order?.mode === "test" || !isWhatsappCloudReady() || !process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME) return { sent: false, skipped: true, reason: "template_or_whatsapp_not_configured" };
+  if (notifications.customerProcessedClaimedAt || notifications.customerProcessedSentAt) return { sent: false, skipped: true, reason: "already_claimed" };
+  order.refund.notifications = { ...notifications, customerProcessedClaimedAt: new Date().toISOString() };
+  persistWhatsappNotificationClaim(order);
+  try {
+    const recipient = verifiedCustomerWhatsappNumber(order);
+    const response = await sendWhatsappRefundCompleted(order);
+    const messageId = response?.messages?.[0]?.id || "";
+    order.refund.notifications = { ...order.refund.notifications, customerProcessedSentAt: new Date().toISOString(), customerProcessedMessageId: messageId };
+    recordWhatsappLifecycleDelivery(order, { eventKey: key, templateName: process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME, audience: "customer", recipient, messageId });
+    persistWhatsappNotificationClaim(order);
+    return { sent: true, messageId };
+  } catch (error) {
+    order.refund.notifications = { ...order.refund.notifications, customerProcessedFailedAt: new Date().toISOString(), customerProcessedError: error.message };
+    persistWhatsappNotificationClaim(order);
+    return { sent: false, error: error.message };
+  }
+}
+
+async function maybeSendWhatsappAdminRefundTerminalUpdate(order, eventKey = "") {
+  const key = String(eventKey || `order:${order?.id || "unknown"}:refund-${order?.refund?.status || "unknown"}`).trim();
+  const notifications = order?.refund?.notifications || {};
+  if (!["processed", "failed"].includes(order?.refund?.status)) return { sent: false, skipped: true, reason: "refund_not_terminal" };
+  if (order?.mode === "test" || !isWhatsappCloudReady() || !process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME) return { sent: false, skipped: true, reason: "template_or_whatsapp_not_configured" };
+  if (notifications.adminTerminalClaimedAt || notifications.adminTerminalSentAt) return { sent: false, skipped: true, reason: "already_claimed" };
+  order.refund.notifications = { ...notifications, adminTerminalClaimedAt: new Date().toISOString() };
+  persistWhatsappNotificationClaim(order);
+  try {
+    const response = await sendWhatsappAdminRefundUpdate(order);
+    order.refund.notifications = { ...order.refund.notifications, adminTerminalSentAt: new Date().toISOString(), adminTerminalResults: response.results };
+    recordWhatsappLifecycleDelivery(order, { eventKey: key, templateName: process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME, audience: "staff", results: response.results });
+    persistWhatsappNotificationClaim(order);
+    return { sent: true };
+  } catch (error) {
+    order.refund.notifications = { ...order.refund.notifications, adminTerminalFailedAt: new Date().toISOString(), adminTerminalError: error.message };
+    persistWhatsappNotificationClaim(order);
+    return { sent: false, error: error.message };
+  }
+}
+
 async function sendWhatsappPaymentReceipt(order) {
   const templateName = String(process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME || "").trim();
   if (!templateName) {
     throw new Error("WHATSAPP_RECEIPT_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, receiptWhatsappParameters(order), {
+  return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, receiptWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     headerDocumentUrl: whatsappDocumentAttachmentUrl(getPublicDocumentUrl(order)),
     headerDocumentFilename: `${order.id}-payment-receipt.pdf`,
@@ -1359,7 +1849,7 @@ async function sendWhatsappPaymentReminder(order) {
     throw new Error("WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, paymentReminderWhatsappParameters(order), {
+  return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, paymentReminderWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     urlButtonParameters: [
       {
@@ -1370,13 +1860,59 @@ async function sendWhatsappPaymentReminder(order) {
   });
 }
 
+async function maybeSendWhatsappPaymentReminder(order, step = "") {
+  if (order?.status !== "awaiting_payment") {
+    return { sent: false, skipped: true, reason: "not_awaiting_payment" };
+  }
+  if (!isWhatsappCloudReady() || !process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME) {
+    return { sent: false, skipped: true, reason: "template_or_whatsapp_not_configured" };
+  }
+
+  const reminderFlow = ensurePaymentReminderFlow(order);
+  const sentKey = `${step}SentAt`;
+  const claimedKey = `${step}ClaimedAt`;
+  if (step && (reminderFlow[sentKey] || reminderFlow[claimedKey])) {
+    return { sent: false, skipped: true, reason: reminderFlow[sentKey] ? "already_sent" : "already_claimed" };
+  }
+
+  if (step) {
+    reminderFlow[claimedKey] = new Date().toISOString();
+    persistWhatsappNotificationClaim(order);
+  }
+  try {
+    const recipient = verifiedCustomerWhatsappNumber(order);
+    const response = await sendWhatsappPaymentReminder(order);
+    if (step) {
+      reminderFlow[sentKey] = new Date().toISOString();
+      reminderFlow[`${step}MessageId`] = response?.messages?.[0]?.id || "";
+      delete reminderFlow[`${step}Error`];
+      recordWhatsappLifecycleDelivery(order, {
+        eventKey: `order:${order.id}:payment-reminder:${step}`,
+        templateName: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME,
+        audience: "customer",
+        recipient,
+        messageId: response?.messages?.[0]?.id || ""
+      });
+      persistWhatsappNotificationClaim(order);
+    }
+    return { sent: true, messageId: response?.messages?.[0]?.id || "" };
+  } catch (error) {
+    if (step) {
+      reminderFlow[`${step}Error`] = error.message;
+      reminderFlow[`${step}FailedAt`] = new Date().toISOString();
+      persistWhatsappNotificationClaim(order);
+    }
+    return { sent: false, skipped: false, error: error.message };
+  }
+}
+
 async function sendWhatsappPaymentExpired(order) {
   const templateName = String(process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME || "").trim();
   if (!templateName) {
     throw new Error("WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME is not configured");
   }
 
-  return sendWhatsappTemplateMessage(order.customer.phone, templateName, paymentExpiredWhatsappParameters(order), {
+  return sendWhatsappTemplateMessage(verifiedCustomerWhatsappNumber(order), templateName, paymentExpiredWhatsappParameters(order), {
     languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
     urlButtonParameters: [
       {
@@ -1389,8 +1925,8 @@ async function sendWhatsappPaymentExpired(order) {
 
 async function maybeSendWhatsappPaymentExpired(order) {
   const reminderFlow = ensurePaymentReminderFlow(order);
-  if (reminderFlow.expiredMessageSentAt || reminderFlow.expiredMessageQueuedAt) {
-    return { sent: false, skipped: true, reason: "already_sent" };
+  if (reminderFlow.expiredMessageSentAt || reminderFlow.expiredMessageClaimedAt) {
+    return { sent: false, skipped: true, reason: reminderFlow.expiredMessageSentAt ? "already_sent" : "already_claimed" };
   }
   if (order.mode === "test") {
     reminderFlow.expiredSkipped = "test_order";
@@ -1401,16 +1937,27 @@ async function maybeSendWhatsappPaymentExpired(order) {
     return { sent: false, skipped: true, reason: reminderFlow.expiredSkipped };
   }
 
-  reminderFlow.expiredMessageQueuedAt = new Date().toISOString();
+  reminderFlow.expiredMessageClaimedAt = new Date().toISOString();
+  persistWhatsappNotificationClaim(order);
   try {
+    const recipient = verifiedCustomerWhatsappNumber(order);
     const response = await sendWhatsappPaymentExpired(order);
     reminderFlow.expiredMessageSentAt = new Date().toISOString();
     reminderFlow.expiredMessageId = response?.messages?.[0]?.id || "";
     delete reminderFlow.expiredError;
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: `order:${order.id}:payment-expired`,
+      templateName: process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME,
+      audience: "customer",
+      recipient,
+      messageId: reminderFlow.expiredMessageId
+    });
+    persistWhatsappNotificationClaim(order);
     return { sent: true, messageId: reminderFlow.expiredMessageId };
   } catch (error) {
-    delete reminderFlow.expiredMessageQueuedAt;
     reminderFlow.expiredError = error.message;
+    reminderFlow.expiredMessageFailedAt = new Date().toISOString();
+    persistWhatsappNotificationClaim(order);
     return { sent: false, skipped: false, error: error.message };
   }
 }
@@ -1419,7 +1966,7 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   const skipReason = (() => {
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (!process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME) return "receipt_template_not_configured";
-    if (eventKey && order.whatsappReceiptNotification?.lastNotificationKey === eventKey) return "already_sent";
+    if (order.whatsappReceiptNotification?.queuedAt || order.whatsappReceiptNotification?.lastSentAt) return "already_claimed";
     return "";
   })();
   if (skipReason) {
@@ -1429,11 +1976,11 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
   // Claim the event before the network request. Xendit can deliver a webhook at
   // the same time that checkout is polling payment status; recording only after
   // Meta responds allowed both requests to send the same receipt.
-  const previousNotification = order.whatsappReceiptNotification;
   order.whatsappReceiptNotification = {
-    ...previousNotification,
     lastNotificationKey: eventKey,
-    queuedAt: new Date().toISOString()
+    templateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME,
+    queuedAt: new Date().toISOString(),
+    claimedAt: new Date().toISOString()
   };
   persistWhatsappNotificationClaim(order);
   try {
@@ -1444,11 +1991,22 @@ async function maybeSendWhatsappPaymentReceipt(order, eventKey = "") {
       lastSentAt: new Date().toISOString(),
       messageId: messageResponse?.messages?.[0]?.id || ""
     };
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: eventKey || `order:${order.id}:receipt`,
+      templateName: process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME,
+      audience: "customer",
+      recipient: verifiedCustomerWhatsappNumber(order),
+      messageId: messageResponse?.messages?.[0]?.id || ""
+    });
     delete order.whatsappReceiptNotificationError;
     persistWhatsappNotificationClaim(order);
     return { sent: true, messageId: messageResponse?.messages?.[0]?.id || "" };
   } catch (error) {
-    order.whatsappReceiptNotification = previousNotification;
+    order.whatsappReceiptNotification = {
+      ...order.whatsappReceiptNotification,
+      failedAt: new Date().toISOString(),
+      error: error.message
+    };
     order.whatsappReceiptNotificationError = error.message;
     persistWhatsappNotificationClaim(order);
     return { sent: false, skipped: false, error: error.message };
@@ -1563,17 +2121,29 @@ function clearPaymentReminderTimers(mode, orderId) {
 function paymentReminderFlowTimes(createdAt = new Date().toISOString()) {
   const created = Date.parse(createdAt) || Date.now();
   return {
-    firstReminderAt: new Date(created + 5 * 60 * 1000).toISOString(),
-    secondReminderAt: new Date(created + 10 * 60 * 1000).toISOString(),
-    expireAt: new Date(created + 15 * 60 * 1000).toISOString()
+    version: 2,
+    firstReminderAt: new Date(created + 2 * 60 * 1000).toISOString(),
+    secondReminderAt: new Date(created + 4 * 60 * 1000).toISOString(),
+    expireAt: new Date(created + 5 * 60 * 1000).toISOString()
   };
 }
 
 function ensurePaymentReminderFlow(order) {
-  order.paymentReminderFlow = {
-    ...paymentReminderFlowTimes(order.createdAt),
-    ...(order.paymentReminderFlow || {})
-  };
+  const defaults = paymentReminderFlowTimes(order.createdAt);
+  if (!order.paymentReminderFlow || typeof order.paymentReminderFlow !== "object") {
+    order.paymentReminderFlow = { ...defaults };
+    return order.paymentReminderFlow;
+  }
+  if (order.paymentReminderFlow.version !== defaults.version) {
+    order.paymentReminderFlow = {
+      ...order.paymentReminderFlow,
+      ...defaults
+    };
+    return order.paymentReminderFlow;
+  }
+  Object.entries(defaults).forEach(([key, value]) => {
+    if (!order.paymentReminderFlow[key]) order.paymentReminderFlow[key] = value;
+  });
   return order.paymentReminderFlow;
 }
 
@@ -1611,8 +2181,12 @@ async function refreshUnpaidOrderFromXendit(order) {
     clearPaymentReminderTimers(order.mode || "live", order.id);
     clearPaidOrderCart(order);
     await maybeSendMetaPurchase(order);
+    await maybeSendWhatsappPaymentConfirmed(order, `order:${order.id}:payment-confirmed`);
     await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
+  } else if (previousStatus !== order.status && order.status === "paid_late_review") {
+    clearPaymentReminderTimers(order.mode || "live", order.id);
+    await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid-late-review`, humanizeOrderStatus(order));
   }
   return order;
 }
@@ -1638,21 +2212,13 @@ async function processPaymentReminderStep(mode, orderId, step) {
 
   if (step === "first" || step === "second") {
     const eventKey = `order:${order.id}:payment-reminder:${step}`;
-    if (step === "second" && reminderFlow.firstSentAt) {
-      return { handled: false, reason: "reminder_already_sent" };
-    }
-    if (reminderFlow[`${step}SentAt`]) {
-      return { handled: false, reason: "already_sent" };
+    if (reminderFlow[`${step}SentAt`] || reminderFlow[`${step}ClaimedAt`]) {
+      return { handled: false, reason: reminderFlow[`${step}SentAt`] ? "already_sent" : "already_claimed" };
     }
     if (order.mode !== "test" && isWhatsappCloudReady() && process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME) {
-      try {
-        const response = await sendWhatsappPaymentReminder(order);
-        reminderFlow[`${step}SentAt`] = new Date().toISOString();
-        reminderFlow[`${step}MessageId`] = response?.messages?.[0]?.id || "";
-        delete reminderFlow[`${step}Error`];
-      } catch (error) {
-        reminderFlow[`${step}Error`] = error.message;
-        console.warn(`WhatsApp payment reminder failed for ${order.id} (${step}): ${error.message}`);
+      const reminder = await maybeSendWhatsappPaymentReminder(order, step);
+      if (!reminder.sent && !reminder.skipped) {
+        console.warn(`WhatsApp payment reminder failed for ${order.id} (${step}): ${reminder.error}`);
       }
     } else {
       reminderFlow[`${step}Skipped`] = order.mode === "test" ? "test_order" : "template_or_whatsapp_not_configured";
@@ -1671,6 +2237,7 @@ async function processPaymentReminderStep(mode, orderId, step) {
   order.expiredAt = new Date().toISOString();
   order.whatsappUrl = buildWhatsappUrl(order);
   reminderFlow.expiredAt = order.expiredAt;
+  clearPaidOrderCart(order);
 
   await maybeSendWhatsappPaymentExpired(order);
 
@@ -1706,13 +2273,11 @@ function schedulePaymentReminderFlow(mode, order) {
     schedulePaymentReminderTimer(mode, order.id, "expire", reminderFlow.expireAt || order.expiresAt);
     return;
   }
-  if (!reminderFlow.firstSentAt) {
+  if (!reminderFlow.firstSentAt && !reminderFlow.firstClaimedAt) {
     schedulePaymentReminderTimer(mode, order.id, "first", reminderFlow.firstReminderAt);
-    return;
   }
-  if (!reminderFlow.secondSentAt) {
+  if (!reminderFlow.secondSentAt && !reminderFlow.secondClaimedAt) {
     schedulePaymentReminderTimer(mode, order.id, "second", reminderFlow.secondReminderAt);
-    return;
   }
   if (!reminderFlow.expiredAt) {
     schedulePaymentReminderTimer(mode, order.id, "expire", reminderFlow.expireAt || order.expiresAt);
@@ -1740,11 +2305,10 @@ async function sweepPaymentReminderFlows() {
           await processPaymentReminderStep(mode, order.id, "expire");
           continue;
         }
-        if (firstDue && !reminderFlow.firstSentAt) {
+        if (firstDue && !reminderFlow.firstSentAt && !reminderFlow.firstClaimedAt) {
           await processPaymentReminderStep(mode, order.id, "first");
-          continue;
         }
-        if (secondDue && !reminderFlow.secondSentAt) {
+        if (secondDue && !reminderFlow.secondSentAt && !reminderFlow.secondClaimedAt) {
           await processPaymentReminderStep(mode, order.id, "second");
         }
       }
@@ -1759,15 +2323,15 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
     throw new Error("Biteship shipment is not available yet; shipping WhatsApp was not sent");
   }
   const templateName = String(admin
-    ? process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || ""
+    ? process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || ""
     : process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME || ""
   ).trim();
   if (!templateName) {
     throw new Error(admin ? "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME is not configured" : "WHATSAPP_SHIPPING_TEMPLATE_NAME is not configured");
   }
-  const recipients = admin ? adminWhatsappNumbers() : [order.customer.phone];
+  const recipients = admin ? adminWhatsappNumbers() : [verifiedCustomerWhatsappNumber(order)];
   const parameters = admin ? adminShippingWhatsappParameters(order) : customerShippingWhatsappParameters(order);
-  const responses = await Promise.all(recipients.map((recipient) => sendWhatsappTemplateMessage(recipient, templateName, parameters, {
+  const deliveries = await Promise.allSettled(recipients.map((recipient) => sendWhatsappTemplateMessage(recipient, templateName, parameters, {
       languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
       urlButtonParameters: [
         {
@@ -1776,7 +2340,20 @@ async function sendWhatsappShippingUpdate(order, { admin = false } = {}) {
         }
       ]
     })));
-  return { messages: responses.flatMap((response) => response?.messages || []) };
+  const results = deliveries.map((delivery, index) => ({
+    recipient: maskedWhatsappNumber(recipients[index]),
+    sent: delivery.status === "fulfilled",
+    messageId: delivery.status === "fulfilled" ? delivery.value?.messages?.[0]?.id || "" : "",
+    error: delivery.status === "rejected" ? delivery.reason?.message || "WhatsApp delivery failed" : ""
+  }));
+  if (!results.some((result) => result.sent)) {
+    throw new Error(results.map((result) => result.error).filter(Boolean).join("; ") || "Shipping WhatsApp delivery failed");
+  }
+  return {
+    templateName,
+    results,
+    messages: deliveries.flatMap((delivery) => delivery.status === "fulfilled" ? delivery.value?.messages || [] : [])
+  };
 }
 
 async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = false } = {}) {
@@ -1788,7 +2365,7 @@ async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = f
   const skipReason = (() => {
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
     if (admin && !process.env.WHATSAPP_ADMIN_NUMBER) return "admin_number_not_configured";
-    if (admin && !(process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME || process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME)) return "admin_shipping_template_not_configured";
+    if (admin && !process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME) return "admin_shipping_template_not_configured";
     if (!admin && !process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME) return "shipping_template_not_configured";
     if (!hasBiteshipShipmentForMessaging(order)) return "biteship_shipment_not_available";
     if (shipmentNotification.lastSentAt) return "already_sent_for_shipment";
@@ -1819,6 +2396,14 @@ async function maybeSendWhatsappShippingUpdate(order, eventKey = "", { admin = f
       lastSentAt: new Date().toISOString(),
       messageId: messageResponse?.messages?.[0]?.id || ""
     };
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: eventKey || `${admin ? "staff" : "customer"}:shipping:${shipmentId}`,
+      templateName: messageResponse?.templateName || (admin
+        ? process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME
+        : process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME),
+      audience: admin ? "staff" : "customer",
+      results: messageResponse?.results || []
+    });
     const nextBucket = {
       ...notificationBucket,
       // Keep the legacy top-level summary for the Admin UI while deduping by
@@ -1871,7 +2456,10 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
   order.adminWhatsappNotifications = {
     ...previousNotification,
     lastNotificationKey: eventKey,
-    queuedAt: new Date().toISOString()
+    queuedAt: new Date().toISOString(),
+    ...(String(process.env.WHATSAPP_ADMIN_TEMPLATE_NAME || "").trim() === "admin_order_alert_v5"
+      ? { v5ApprovalSnapshot: shipmentRequestSnapshot(order) }
+      : {})
   };
   persistWhatsappNotificationClaim(order);
   try {
@@ -1880,9 +2468,16 @@ async function maybeSendWhatsappAdminAlert(order, eventKey = "", eventLabel = ""
       ...order.adminWhatsappNotifications,
       lastNotificationKey: eventKey,
       lastSentAt: new Date().toISOString(),
+      templateName: messageResponse?.templateName || "",
       messageId: messageResponse?.messages?.[0]?.id || order.adminWhatsappNotifications?.messageId || "",
       recipients: messageResponse?.results || []
     };
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: eventKey || `order:${order.id}:admin-alert`,
+      templateName: messageResponse?.templateName || process.env.WHATSAPP_ADMIN_TEMPLATE_NAME,
+      audience: "staff",
+      results: messageResponse?.results || []
+    });
     delete order.adminWhatsappNotificationError;
     persistWhatsappNotificationClaim(order);
     return { sent: true, messageId: messageResponse?.messages?.[0]?.id || "" };
@@ -1902,6 +2497,12 @@ async function notifyShipmentUpdate(order, eventKey = "") {
     };
   }
   const shipment = order.fulfillment?.shipment || {};
+  if (!isShipmentAllocatedForMessaging(shipment)) {
+    return {
+      customer: { sent: false, skipped: true, reason: "courier_not_allocated" },
+      admin: { sent: false, skipped: true, reason: "courier_not_allocated" }
+    };
+  }
   if (!replacementTrackingNotificationReady(shipment)) {
     return {
       customer: { sent: false, skipped: true, reason: "replacement_courier_not_allocated" },
@@ -1921,56 +2522,213 @@ async function notifyShipmentUpdate(order, eventKey = "") {
   return { customer, admin };
 }
 
+function isShipmentAllocatedForMessaging(shipment = {}) {
+  return ["allocated", "accepted", "picking_up", "pickingup", "picked", "picked_up", "in_transit", "on_delivery", "delivered"]
+    .includes(normalizedShipmentStatus(shipment.status));
+}
+
 function shouldAlertAdminForBiteshipWebhook({ shipmentStatus = "", priceChanged = false } = {}) {
   const normalizedStatus = String(shipmentStatus || "").toLowerCase();
   return priceChanged || [
+    "on_hold", "on hold", "return_in_transit", "return in transit", "returned", "disposed"
+  ].includes(normalizedStatus);
+}
+
+function isDeliveryRecoveryStatus(shipmentStatus = "") {
+  const normalizedStatus = String(shipmentStatus || "").toLowerCase();
+  return [
     "cancelled",
     "canceled",
-    "on_hold",
-    "on hold",
     "courier_not_found",
     "courier not found",
-    "rejected",
-    "return_in_transit",
-    "return in transit",
-    "returned",
-    "disposed"
+    "rejected"
   ].includes(normalizedStatus);
+}
+
+async function maybeSendWhatsappAdminDeliveryRecoveryAlert(order, shipmentStatus, eventKey = "") {
+  const shipment = order?.fulfillment?.shipment || {};
+  const normalizedStatus = normalizedShipmentStatus(shipmentStatus);
+  if (!isDeliveryRecoveryStatus(normalizedStatus)) return { sent: false, skipped: true, reason: "not_recovery_status" };
+  if (order?.payment?.status !== "paid" || !["paid", "preparing"].includes(order?.status)) return { sent: false, skipped: true, reason: "order_not_paid_preparing" };
+  if (!shipment.orderId || normalizedShipmentStatus(shipment.status) !== normalizedStatus) return { sent: false, skipped: true, reason: "failed_shipment_mismatch" };
+  if (shipmentHasObservedHandoff(shipment) || shipment.replacement === true) return { sent: false, skipped: true, reason: "pickup_or_replacement_present" };
+  if (!shipment.requestSnapshot || !sameShipmentRequestSnapshot(shipment.requestSnapshot, shipmentRequestSnapshot(order))) return { sent: false, skipped: true, reason: "stored_route_items_or_service_changed" };
+  const templateName = String(process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME || "").trim();
+  const recipients = adminWhatsappNumbers();
+  const key = String(eventKey || `delivery-recovery:${order.id}:${shipmentStatus}`).trim();
+  if (!isWhatsappCloudReady() || !templateName || !recipients.length) return { sent: false, skipped: true, reason: "recovery_template_or_admin_not_configured" };
+  const claims = order.adminDeliveryRecoveryNotifications || {};
+  if (claims[key]?.claimedAt || claims[key]?.lastSentAt) return { sent: false, skipped: true, reason: "already_claimed" };
+  order.adminDeliveryRecoveryNotifications = {
+    ...claims,
+    [key]: { templateName, claimedAt: new Date().toISOString() }
+  };
+  persistWhatsappNotificationClaim(order);
+  if (templateName !== "admin_driver_cancelled_v1") return { sent: false, skipped: true, reason: "recovery_template_not_configured" };
+  const parameters = adminDriverCancelledWhatsappParameters(order, normalizedStatus);
+  const deliveries = await Promise.allSettled(recipients.map((recipient) => sendWhatsappTemplateMessage(recipient, templateName, parameters, {
+    languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+    quickReplyButtons: [{ payload: "REQUEST_NEW_DRIVER" }]
+  })));
+  const results = deliveries.map((entry, index) => ({
+    recipient: maskedWhatsappNumber(recipients[index]),
+    recipientNumber: formatIndonesianPhone(recipients[index]),
+    sent: entry.status === "fulfilled",
+    messageId: entry.status === "fulfilled" ? entry.value?.messages?.[0]?.id || "" : "",
+    error: entry.status === "rejected" ? entry.reason?.message || "WhatsApp delivery failed" : ""
+  }));
+  order.adminDeliveryRecoveryNotifications[key] = {
+    ...order.adminDeliveryRecoveryNotifications[key],
+    shipmentId: shipment.orderId,
+    providerStatus: normalizedStatus,
+    providerVerifiedAt: new Date().toISOString(),
+    lastSentAt: results.some((result) => result.sent) ? new Date().toISOString() : "",
+    failedAt: results.some((result) => result.sent) ? "" : new Date().toISOString(),
+    results
+  };
+  order.adminDeliveryRecoveryNotification = {
+    lastNotificationKey: key,
+    ...order.adminDeliveryRecoveryNotifications[key]
+  };
+  recordWhatsappLifecycleDelivery(order, {
+    eventKey: key,
+    templateName,
+    audience: "staff",
+    results
+  });
+  persistWhatsappNotificationClaim(order);
+  if (!results.some((result) => result.sent)) {
+    return { sent: false, skipped: false, error: results.map((result) => result.error).filter(Boolean).join("; ") || "Recovery WhatsApp delivery failed" };
+  }
+  return { sent: true, recipients: results };
+}
+
+function adminDeliveryCompleteWhatsappParameters(order) {
+  const shipment = order?.fulfillment?.shipment || {};
+  const proof = shipment.deliveryProof || {};
+  return [
+    order.id,
+    normalizedShipmentStatus(shipment.status || order.status || "delivered"),
+    proof.available ? "Official Biteship proof available" : "No provider proof available"
+  ];
+}
+
+async function maybeSendWhatsappAdminDeliveryComplete(order, eventKey = "") {
+  const templateName = String(process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME || "").trim();
+  const recipients = adminWhatsappNumbers();
+  const shipmentId = String(order?.fulfillment?.shipment?.orderId || "").trim();
+  const key = String(eventKey || `biteship:${shipmentId}:delivery-complete`).trim();
+  const claims = order.adminDeliveryCompleteNotifications || {};
+  const skipReason = (() => {
+    if (order?.status !== "delivered") return "order_not_delivered";
+    if (!shipmentId) return "shipment_missing";
+    if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
+    if (templateName !== "admin_delivery_complete_v1") return "delivery_complete_template_not_configured";
+    if (!recipients.length) return "admin_number_not_configured";
+    if (claims[key]?.claimedAt || claims[key]?.lastSentAt) return "already_claimed";
+    return "";
+  })();
+  if (skipReason) return { sent: false, skipped: true, reason: skipReason };
+
+  order.adminDeliveryCompleteNotifications = {
+    ...claims,
+    [key]: { templateName, claimedAt: new Date().toISOString() }
+  };
+  persistWhatsappNotificationClaim(order);
+  const deliveries = await Promise.allSettled(recipients.map((recipient) => (
+    sendWhatsappTemplateMessage(recipient, templateName, adminDeliveryCompleteWhatsappParameters(order), {
+      languageCode: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "en",
+      urlButtonParameters: [{ index: "0", text: adminOrderReviewButtonQuery(order) }]
+    })
+  )));
+  const results = deliveries.map((entry, index) => ({
+    recipient: maskedWhatsappNumber(recipients[index]),
+    sent: entry.status === "fulfilled",
+    messageId: entry.status === "fulfilled" ? entry.value?.messages?.[0]?.id || "" : "",
+    error: entry.status === "rejected" ? entry.reason?.message || "WhatsApp delivery failed" : ""
+  }));
+  order.adminDeliveryCompleteNotifications[key] = {
+    ...order.adminDeliveryCompleteNotifications[key],
+    lastSentAt: results.some((result) => result.sent) ? new Date().toISOString() : "",
+    failedAt: results.some((result) => result.sent) ? "" : new Date().toISOString(),
+    results
+  };
+  recordWhatsappLifecycleDelivery(order, { eventKey: key, templateName, audience: "staff", results });
+  persistWhatsappNotificationClaim(order);
+  if (!results.some((result) => result.sent)) {
+    return { sent: false, skipped: false, error: results.map((result) => result.error).filter(Boolean).join("; ") || "Delivery completion WhatsApp failed" };
+  }
+  return { sent: true, recipients: results };
 }
 
 async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options = {}) {
   const notificationKey = String(options.notificationKey || "").trim();
+  const canonicalStatus = order.status === "complete" ? "delivered" : order.status;
+  const expectedTemplate = canonicalStatus === "delivered"
+    ? "order_delivered"
+    : canonicalStatus === "cancelled"
+      ? "order_cancelled"
+      : "";
+  const templateName = configuredWhatsappOrderTemplateName(order);
+  const claimKey = notificationKey || `order:${order.id}:${canonicalStatus}`;
+  const statusClaims = order.whatsappStatusNotifications || {};
   const skipReason = (() => {
     if (!isWhatsappCloudReady()) return "whatsapp_not_configured";
-    if (["awaiting_payment", "payment_failed", "expired"].includes(order.status)) return "payment_status_has_dedicated_flow";
-    if (order.status === "paid") return "payment_receipt_is_confirmation";
-    if (order.status === "preparing") return "shipping_update_is_next_customer_message";
-    if (!configuredWhatsappOrderTemplateName(order)) return "template_not_configured";
+    if (!expectedTemplate) return "status_has_no_customer_template";
+    if (templateName !== expectedTemplate) return "canonical_template_not_configured";
     if (previousStatus === order.status && !notificationKey) return "same_order_status";
-    if (notificationKey && order.whatsappNotifications?.lastNotificationKey === notificationKey) return "same_biteship_status";
-    if (!notificationKey && order.whatsappNotifications?.lastStatusSent === order.status) return "already_sent_status";
+    if (statusClaims[claimKey]?.claimedAt || statusClaims[claimKey]?.lastSentAt) return "already_claimed";
     return "";
   })();
   if (skipReason) {
     return { sent: false, skipped: true, reason: skipReason };
   }
 
+  order.whatsappStatusNotifications = {
+    ...statusClaims,
+    [claimKey]: {
+      templateName,
+      claimedAt: new Date().toISOString()
+    }
+  };
+  persistWhatsappNotificationClaim(order);
   try {
+    const recipient = verifiedCustomerWhatsappNumber(order);
     const messageResponse = await sendWhatsappOrderUpdate(order);
+    const messageId = messageResponse?.messages?.[0]?.id || "";
+    order.whatsappStatusNotifications[claimKey] = {
+      ...order.whatsappStatusNotifications[claimKey],
+      lastSentAt: new Date().toISOString(),
+      messageId
+    };
     order.whatsappNotifications = {
       ...order.whatsappNotifications,
       lastStatusSent: order.status,
       ...(notificationKey ? { lastNotificationKey: notificationKey } : {}),
       lastSentAt: new Date().toISOString(),
-      messageId: messageResponse?.messages?.[0]?.id || order.whatsappNotifications?.messageId || ""
+      messageId: messageId || order.whatsappNotifications?.messageId || ""
     };
+    recordWhatsappLifecycleDelivery(order, {
+      eventKey: claimKey,
+      templateName,
+      audience: "customer",
+      recipient,
+      messageId
+    });
     delete order.whatsappNotificationError;
+    persistWhatsappNotificationClaim(order);
     return {
       sent: true,
-      messageId: messageResponse?.messages?.[0]?.id || ""
+      messageId
     };
   } catch (error) {
+    order.whatsappStatusNotifications[claimKey] = {
+      ...order.whatsappStatusNotifications[claimKey],
+      failedAt: new Date().toISOString(),
+      error: error.message
+    };
     order.whatsappNotificationError = error.message;
+    persistWhatsappNotificationClaim(order);
     return { sent: false, skipped: false, error: error.message };
   }
 }
@@ -1978,7 +2736,7 @@ async function maybeSendWhatsappOrderStatus(order, previousStatus = "", options 
 function verifyMetaWebhookSignature(request, rawBody) {
   const appSecret = String(process.env.WHATSAPP_APP_SECRET || "").trim();
   if (!appSecret) {
-    return true;
+    return !isProductionRuntime();
   }
 
   const signatureHeader = String(request.headers["x-hub-signature-256"] || "");
@@ -1988,6 +2746,11 @@ function verifyMetaWebhookSignature(request, rawBody) {
     .digest("hex")}`;
 
   return timingSafeEqualString(signatureHeader, expectedSignature);
+}
+
+function isProductionRuntime() {
+  return String(process.env.NODE_ENV || "").toLowerCase() === "production"
+    || String(process.env.RAILWAY_ENVIRONMENT || "").toLowerCase() === "production";
 }
 
 function incomingWhatsappMessages(payload) {
@@ -2014,10 +2777,54 @@ function parseAdminCancelCommand(text = "") {
   return match ? { action: match[1], orderId: match[2] || "" } : null;
 }
 
+function isContactCustomerCommand(text = "") {
+  return /^(CONTACT_CUSTOMER|CONTACT CUSTOMER)$/i.test(String(text || "").trim());
+}
+
 function parseAdminUndoCommand(text = "") {
   const normalized = String(text || "").trim().toUpperCase();
   const match = normalized.match(/^UNDO(?:\s+([A-Z]+-\d+))?(?:\s+([A-F0-9]+))?$/);
   return match ? { action: "UNDO", orderId: match[1] || "", token: match[2] || "" } : null;
+}
+
+function addressArea(value = "") {
+  const parts = String(value || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts
+    .slice(-4)
+    .map((part) => part.replace(/\b\d{4,}\b/g, "").replace(/\s{2,}/g, " ").trim())
+    .filter(Boolean)
+    .join(", ") || "Address unavailable";
+}
+
+function adminOrderReviewUrl(order) {
+  const baseUrl = String(process.env.PUBLIC_SITE_URL || "https://bakeaholicbali.com").replace(/\/+$/, "");
+  return `${baseUrl}/admin.html?section=orders&order=${encodeURIComponent(String(order?.id || "").trim())}`;
+}
+
+function adminOrderActionReviewMessage(order, action) {
+  const store = getStoreConfig();
+  const actionLabel = action === "cancel" ? "Cancel/refund" : "Approve";
+  const instruction = action === "cancel"
+    ? "No cancellation or refund has been started. Open secure Admin, review the paid order, then use Cancel order & refund only if confirmed."
+    : "No driver has been requested. Open secure Admin, verify this pickup and drop-off, then use Review & request delivery when the package is ready.";
+  return [
+    `${actionLabel} selected for ${order.id}.`,
+    instruction,
+    `Pickup: ${addressArea(store.kitchenAddress)}`,
+    `Drop-off: ${addressArea(order.fulfillment?.address || order.customer?.address)}`,
+    adminOrderReviewUrl(order)
+  ].join("\n");
+}
+
+async function sendAdminOrderActionReview(order, action, recipient) {
+  const target = normalizePhoneNumber(recipient);
+  if (!target) {
+    throw new Error("The requesting staff WhatsApp number is unavailable");
+  }
+  return sendWhatsappTextMessage(target, adminOrderActionReviewMessage(order, action));
 }
 
 function latestOrderTimestamp(order = {}) {
@@ -2219,6 +3026,8 @@ async function finalizePendingAdminOrderAction(mode, orderId, token) {
     return { handled: false, reason: "pending_action_not_due" };
   }
 
+  clearAdminActionTimer(mode, orderId, token);
+
   const action = pending.action;
   delete order.adminPendingAction;
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
@@ -2369,21 +3178,25 @@ async function processWhatsappAdminCommand(message = {}) {
     const order = await undoPendingAdminOrderAction("live", undoCommand);
     return { handled: true, action: "undo", orderId: order.id };
   }
+  if (isContactCustomerCommand(text)) {
+    const result = await sendVerifiedCustomerContactToStaff(message);
+    return { handled: true, action: "contact_customer", orderId: result.orderId || "", skipped: Boolean(result.skipped) };
+  }
+  if (/^(REQUEST_NEW_DRIVER|REQUEST NEW DRIVER)$/i.test(String(text || "").trim())) {
+    const result = await requestReplacementDriverFromWhatsapp(message);
+    return { handled: true, action: "request_new_driver", orderId: result.orderId, replacementShipmentId: result.replacementShipmentId };
+  }
   const cancelCommand = parseAdminCancelCommand(text);
   if (cancelCommand) {
-    cancelCommand.orderId = cancelCommand.orderId || orderIdFromWhatsappReplyContext(message);
-    const cancelOrderId = resolveAdminCommandOrderId(cancelCommand, ["paid", "preparing"]);
-    const order = await executeAdminOrderAction("live", cancelOrderId, "cancel", message.from);
-    return { handled: true, action: "cancelled", orderId: order.id };
+    const result = await scheduleV5CancelFromWhatsapp(message, "live", cancelCommand.orderId);
+    return { handled: true, action: "cancel_undo_window", orderId: result.orderId || "", skipped: Boolean(result.skipped) };
   }
   const approveCommand = parseAdminApproveCommand(text);
   if (!approveCommand) {
     return { handled: false, reason: "not_approve_command" };
   }
-  approveCommand.orderId = approveCommand.orderId || orderIdFromWhatsappReplyContext(message);
-  const orderId = resolveAdminCommandOrderId(approveCommand, ["paid"]);
-  const order = await executeAdminOrderAction("live", orderId, "approve", message.from);
-  return { handled: true, action: "approved", orderId: order.id };
+  const result = await approveV5PaidOrderFromWhatsapp(message, "live", approveCommand.orderId);
+  return { handled: true, action: "approve_delivery_requested", orderId: result.orderId || "", shipmentId: result.shipmentId || "", skipped: Boolean(result.skipped) };
 }
 
 async function processWhatsappWebhook(payload) {
@@ -2403,6 +3216,7 @@ async function processWhatsappWebhook(payload) {
             : new Date().toISOString();
         }
         updateAdminWhatsappDeliveryStatus(order, status);
+        updateWhatsappLifecycleDeliveryStatus(order, status);
       }
     });
     saveOrders(ordersLivePath, stores.live.orders);
@@ -2438,6 +3252,13 @@ function isPlaceholderValue(value = "") {
 
 function configuredValue(...values) {
   return values.find((value) => !isPlaceholderValue(value)) || "";
+}
+
+function normalizeWhatsappOrderTemplateName(value = "") {
+  const templateName = String(value || "").trim();
+  return ["order_status_update", "order_received"].includes(templateName)
+    ? "payment_confirmed"
+    : templateName;
 }
 
 function xenditKeyMode(value = "") {
@@ -2493,10 +3314,14 @@ function readIntegrationSettings() {
     whatsappReceiptTemplateName: configuredValue(savedSettings.whatsappReceiptTemplateName, envMap.WHATSAPP_RECEIPT_TEMPLATE_NAME, config.whatsappReceiptTemplateName),
     whatsappPaymentReminderTemplateName: configuredValue(savedSettings.whatsappPaymentReminderTemplateName, envMap.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME, config.whatsappPaymentReminderTemplateName),
     whatsappPaymentExpiredTemplateName: configuredValue(savedSettings.whatsappPaymentExpiredTemplateName, envMap.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME, config.whatsappPaymentExpiredTemplateName),
+    whatsappRefundCompletedTemplateName: configuredValue(savedSettings.whatsappRefundCompletedTemplateName, envMap.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME, config.whatsappRefundCompletedTemplateName),
+    whatsappAdminRefundTemplateName: configuredValue(savedSettings.whatsappAdminRefundTemplateName, envMap.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME, config.whatsappAdminRefundTemplateName),
     whatsappShippingTemplateName: configuredValue(savedSettings.whatsappShippingTemplateName, envMap.WHATSAPP_SHIPPING_TEMPLATE_NAME, config.whatsappShippingTemplateName),
     whatsappAdminNumber: configuredValue(savedSettings.whatsappAdminNumber, envMap.WHATSAPP_ADMIN_NUMBER, config.whatsappAdminNumber),
     whatsappAdminTemplateName: configuredValue(savedSettings.whatsappAdminTemplateName, envMap.WHATSAPP_ADMIN_TEMPLATE_NAME, config.whatsappAdminTemplateName),
     whatsappAdminShippingTemplateName: configuredValue(savedSettings.whatsappAdminShippingTemplateName, envMap.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME, config.whatsappAdminShippingTemplateName),
+    whatsappAdminDeliveryRecoveryTemplateName: configuredValue(savedSettings.whatsappAdminDeliveryRecoveryTemplateName, envMap.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME, config.whatsappAdminDeliveryRecoveryTemplateName),
+    whatsappAdminDeliveryCompleteTemplateName: configuredValue(savedSettings.whatsappAdminDeliveryCompleteTemplateName, envMap.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME, config.whatsappAdminDeliveryCompleteTemplateName),
     whatsappTemplateLanguage: configuredValue(savedSettings.whatsappTemplateLanguage, envMap.WHATSAPP_TEMPLATE_LANGUAGE, config.whatsappTemplateLanguage) || "en"
   };
   return settings;
@@ -2532,12 +3357,12 @@ function saveIntegrationSettings(input = {}) {
     whatsappAppSecret: secretValue("whatsappAppSecret"),
     whatsappGraphVersion: String(input.whatsappGraphVersion || "v22.0").trim() || "v22.0",
     whatsappOtpTemplateName: String(input.whatsappOtpTemplateName || "").trim(),
-    whatsappOrderTemplateName: String(input.whatsappOrderTemplateName || "").trim() === "order_status_update"
-      ? "order_received"
-      : String(input.whatsappOrderTemplateName || "").trim(),
+    whatsappOrderTemplateName: normalizeWhatsappOrderTemplateName(input.whatsappOrderTemplateName),
     whatsappReceiptTemplateName: String(input.whatsappReceiptTemplateName || "").trim(),
     whatsappPaymentReminderTemplateName: String(input.whatsappPaymentReminderTemplateName || "").trim(),
     whatsappPaymentExpiredTemplateName: String(input.whatsappPaymentExpiredTemplateName || "").trim(),
+    whatsappRefundCompletedTemplateName: String(input.whatsappRefundCompletedTemplateName || "").trim(),
+    whatsappAdminRefundTemplateName: String(input.whatsappAdminRefundTemplateName || "").trim(),
     whatsappShippingTemplateName: String(input.whatsappShippingTemplateName || "").trim(),
     whatsappAdminNumber: [...new Set(String(input.whatsappAdminNumber || "")
       .split(/[,\n;]+/)
@@ -2545,6 +3370,8 @@ function saveIntegrationSettings(input = {}) {
       .filter(Boolean))].slice(0, 3).join(","),
     whatsappAdminTemplateName: String(input.whatsappAdminTemplateName || "").trim(),
     whatsappAdminShippingTemplateName: String(input.whatsappAdminShippingTemplateName || "").trim(),
+    whatsappAdminDeliveryRecoveryTemplateName: String(input.whatsappAdminDeliveryRecoveryTemplateName || "").trim(),
+    whatsappAdminDeliveryCompleteTemplateName: String(input.whatsappAdminDeliveryCompleteTemplateName || "").trim(),
     whatsappTemplateLanguage: String(input.whatsappTemplateLanguage || "en").trim() || "en"
   };
 
@@ -2576,10 +3403,14 @@ function saveIntegrationSettings(input = {}) {
       WHATSAPP_RECEIPT_TEMPLATE_NAME: nextSettings.whatsappReceiptTemplateName,
       WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: nextSettings.whatsappPaymentReminderTemplateName,
       WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME: nextSettings.whatsappPaymentExpiredTemplateName,
+      WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME: nextSettings.whatsappRefundCompletedTemplateName,
+      WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME: nextSettings.whatsappAdminRefundTemplateName,
       WHATSAPP_SHIPPING_TEMPLATE_NAME: nextSettings.whatsappShippingTemplateName,
       WHATSAPP_ADMIN_NUMBER: nextSettings.whatsappAdminNumber,
       WHATSAPP_ADMIN_TEMPLATE_NAME: nextSettings.whatsappAdminTemplateName,
       WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: nextSettings.whatsappAdminShippingTemplateName,
+      WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME: nextSettings.whatsappAdminDeliveryRecoveryTemplateName,
+      WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME: nextSettings.whatsappAdminDeliveryCompleteTemplateName,
       WHATSAPP_TEMPLATE_LANGUAGE: nextSettings.whatsappTemplateLanguage
     });
   } catch (error) {
@@ -2606,49 +3437,31 @@ function saveIntegrationSettings(input = {}) {
   process.env.WHATSAPP_RECEIPT_TEMPLATE_NAME = nextSettings.whatsappReceiptTemplateName;
   process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME = nextSettings.whatsappPaymentReminderTemplateName;
   process.env.WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME = nextSettings.whatsappPaymentExpiredTemplateName;
+  process.env.WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME = nextSettings.whatsappRefundCompletedTemplateName;
+  process.env.WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME = nextSettings.whatsappAdminRefundTemplateName;
   process.env.WHATSAPP_SHIPPING_TEMPLATE_NAME = nextSettings.whatsappShippingTemplateName;
   process.env.WHATSAPP_ADMIN_NUMBER = nextSettings.whatsappAdminNumber;
   process.env.WHATSAPP_ADMIN_TEMPLATE_NAME = nextSettings.whatsappAdminTemplateName;
   process.env.WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME = nextSettings.whatsappAdminShippingTemplateName;
+  process.env.WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME = nextSettings.whatsappAdminDeliveryRecoveryTemplateName;
+  process.env.WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME = nextSettings.whatsappAdminDeliveryCompleteTemplateName;
   process.env.WHATSAPP_TEMPLATE_LANGUAGE = nextSettings.whatsappTemplateLanguage;
 
   return nextSettings;
 }
 
-function hydrateIntegrationEnvironment() {
-  const settings = readIntegrationSettings();
-  const runtimeKeys = {
-    WHATSAPP_ACCESS_TOKEN: "whatsappAccessToken",
-    WHATSAPP_PHONE_NUMBER_ID: "whatsappPhoneNumberId",
-    WHATSAPP_BUSINESS_ACCOUNT_ID: "whatsappBusinessAccountId",
-    WHATSAPP_VERIFY_TOKEN: "whatsappVerifyToken",
-    WHATSAPP_APP_ID: "whatsappAppId",
-    WHATSAPP_APP_SECRET: "whatsappAppSecret",
-    WHATSAPP_GRAPH_VERSION: "whatsappGraphVersion",
-    WHATSAPP_OTP_TEMPLATE_NAME: "whatsappOtpTemplateName",
-    WHATSAPP_ORDER_TEMPLATE_NAME: "whatsappOrderTemplateName",
-    WHATSAPP_RECEIPT_TEMPLATE_NAME: "whatsappReceiptTemplateName",
-    WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: "whatsappPaymentReminderTemplateName",
-    WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME: "whatsappPaymentExpiredTemplateName",
-    WHATSAPP_SHIPPING_TEMPLATE_NAME: "whatsappShippingTemplateName",
-    WHATSAPP_ADMIN_NUMBER: "whatsappAdminNumber",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "whatsappAdminTemplateName",
-    WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "whatsappAdminShippingTemplateName",
-    WHATSAPP_TEMPLATE_LANGUAGE: "whatsappTemplateLanguage"
-  };
-
-  Object.entries(runtimeKeys).forEach(([environmentKey, settingsKey]) => {
-    const value = String(settings[settingsKey] || "").trim();
-    if (value) process.env[environmentKey] = value;
-  });
-}
-
-// Admin-saved integration values live in the persistent data directory. Load
-// them into the runtime after every deploy/restart so message delivery does not
-// silently fall back to generated-but-unsent OTP codes.
-hydrateIntegrationEnvironment();
-
 let catalog = loadCatalog();
+{
+  const marketplace = normalizeMarketplaceCatalog(catalog);
+  catalog = {
+    ...catalog,
+    ...marketplace,
+    items: (catalog.items || []).map((item) => ({
+      ...item,
+      ...productMarketplaceFields(item, marketplace)
+    }))
+  };
+}
 
 function loadCustomers() {
   if (!fs.existsSync(customersPath)) {
@@ -2712,16 +3525,25 @@ function loadSessionCarts(targetPath) {
       return new Map();
     }
     return new Map(
-      Object.entries(parsed)
-        .filter(([sessionId, items]) => /^[a-f0-9]{32}$/i.test(sessionId) && items && typeof items === "object")
-        .map(([sessionId, items]) => [
-          sessionId.toLowerCase(),
-          new Map(
-            Object.entries(items)
-              .map(([itemId, quantity]) => [itemId, Number(quantity)])
-              .filter(([itemId, quantity]) => findMenuItem(itemId) && Number.isFinite(quantity) && quantity > 0)
-          )
-        ])
+      Object.entries(parsed).flatMap(([sessionId, storedCart]) => {
+        if (!/^[a-f0-9]{32}$/i.test(sessionId) || !storedCart || typeof storedCart !== "object") {
+          return [];
+        }
+        const isTimestampedRecord = !Array.isArray(storedCart)
+          && storedCart.items
+          && typeof storedCart.items === "object"
+          && !Array.isArray(storedCart.items);
+        const items = isTimestampedRecord ? storedCart.items : storedCart;
+        const cart = new Map(
+          Object.entries(items)
+            .map(([itemId, quantity]) => [itemId, Number(quantity)])
+            .filter(([itemId, quantity]) => findMenuItem(itemId) && Number.isFinite(quantity) && quantity > 0)
+        );
+        // Legacy quantity-only carts remain readable just long enough for a client with a
+        // valid local mutation timestamp to migrate them; all other legacy carts expire.
+        cart.lastMutatedAt = isTimestampedRecord ? Number(storedCart.lastMutatedAt || 0) : 0;
+        return [[sessionId.toLowerCase(), cart]];
+      })
     );
   } catch (_error) {
     return new Map();
@@ -2738,29 +3560,11 @@ function saveSessionCarts(targetPath, carts) {
       }
     }
     if (Object.keys(items).length) {
-      payload[sessionId] = items;
+      payload[sessionId] = {
+        items,
+        lastMutatedAt: Number(cart.lastMutatedAt || 0)
+      };
     }
-  }
-  writeJsonFile(targetPath, payload);
-}
-
-function loadRegistrations(targetPath) {
-  const payload = readJsonFileSafely(targetPath, {});
-  const now = Date.now();
-  return new Map(
-    Object.entries(payload || {}).filter(([phone, registration]) => (
-      isValidWhatsAppPhone(phone)
-      && registration?.codeHash
-      && Date.parse(registration.expiresAt) > now
-    ))
-  );
-}
-
-function saveRegistrations(targetPath, registrations) {
-  const now = Date.now();
-  const payload = {};
-  for (const [phone, registration] of registrations.entries()) {
-    if (Date.parse(registration.expiresAt) > now) payload[phone] = registration;
   }
   writeJsonFile(targetPath, payload);
 }
@@ -2867,10 +3671,6 @@ function cartsPathForMode(mode) {
   return mode === "test" ? cartsTestPath : cartsLivePath;
 }
 
-function registrationsPathForMode(mode) {
-  return mode === "test" ? registrationsTestPath : registrationsLivePath;
-}
-
 function persistWhatsappNotificationClaim(order) {
   const mode = order?.mode === "test" ? "test" : "live";
   const state = getStoreState(mode);
@@ -2885,13 +3685,13 @@ const stores = {
     cart: new Map(),
     carts: loadSessionCarts(cartsLivePath),
     orders: loadOrders(ordersLivePath),
-    registrations: loadRegistrations(registrationsLivePath)
+    registrations: new Map()
   },
   test: {
     cart: new Map(),
     carts: loadSessionCarts(cartsTestPath),
     orders: loadOrders(ordersTestPath),
-    registrations: loadRegistrations(registrationsTestPath)
+    registrations: new Map()
   }
 };
 const pendingAdminActionTimers = new Map();
@@ -2916,6 +3716,9 @@ const CUSTOMER_SESSION_COOKIE = "bakeaholic_customer_session";
 const ADMIN_SESSION_COOKIE = "bakeaholic_admin_session";
 const CART_SESSION_COOKIE = "bakeaholic_cart_session";
 const CART_SESSION_HEADER = "x-cart-session";
+const CART_SESSION_CREATED_AT_HEADER = "x-cart-session-created-at";
+const CART_SESSION_LAST_MUTATED_AT_HEADER = "x-cart-session-last-mutated-at";
+const CART_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const ADMIN_SESSION_TTL_SECONDS = 60 * 15;
 const SESSION_SECRET = process.env.SESSION_SECRET
@@ -3046,117 +3849,6 @@ function sendFile(response, targetPath) {
   });
 }
 
-function escapeMetadataHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function productIdFromPathname(pathname) {
-  const match = String(pathname || "").match(/^\/products\/([a-z0-9][a-z0-9-]{1,79})\/?$/i);
-  return match ? match[1].toLowerCase() : "";
-}
-
-const metaProductDeepLinks = Object.freeze({
-  "bliss-peanutella": Object.freeze({ opsProductId: "PEANUTELLA", barcode: "101066051706", latestStock: 42, featured: true }),
-  "cookie-lamington": Object.freeze({ opsProductId: "LAMINGTON", barcode: "101005051856", latestStock: 20, featured: true }),
-  "oats-banoffee-pie": Object.freeze({ opsProductId: "BANOFFEE", barcode: "101005051850", latestStock: 5, featured: true }),
-  "mallow-vanilla": Object.freeze({ opsProductId: "VANILLAM", barcode: "1010011202401", latestStock: 6, featured: true }),
-  "bliss-triple-chocolate": Object.freeze({ latestStock: 0, featured: false }),
-  "cookie-choc-chip": Object.freeze({ latestStock: 0, featured: false }),
-  "cookie-smores": Object.freeze({ latestStock: 1, featured: false })
-});
-
-function metaProductDeepLinkConfig(itemId) {
-  return metaProductDeepLinks[String(itemId || "")] || null;
-}
-
-function productPageHtml(template, item, categories = catalog.categories) {
-  const category = categories.find((entry) => entry.id === item.category);
-  const deepLinkConfig = metaProductDeepLinkConfig(item.id);
-  const canonicalUrl = `https://bakeaholicbali.com/products/${encodeURIComponent(item.id)}`;
-  const imageUrl = new URL(String(item.imagePath || "/assets/bakeaholic-logo.jpg"), "https://bakeaholicbali.com").href;
-  const title = `${item.name} | Bakeaholic Bali`;
-  const description = String(item.description || category?.description || "Bali-made snacks from Bakeaholic Bali.").trim();
-  const effectiveStock = deepLinkConfig && Number.isFinite(Number(deepLinkConfig.latestStock))
-    ? Number(deepLinkConfig.latestStock)
-    : Number(item.stock || 0);
-  const isAvailable = effectiveStock > 0;
-  const availability = isAvailable ? "in stock" : "out of stock";
-  const schema = JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: item.name,
-    image: [imageUrl],
-    description,
-    sku: item.id,
-    ...(deepLinkConfig?.opsProductId ? { mpn: deepLinkConfig.opsProductId } : {}),
-    ...(deepLinkConfig?.barcode?.length === 12 ? { gtin12: deepLinkConfig.barcode } : {}),
-    ...(deepLinkConfig?.barcode?.length === 13 ? { gtin13: deepLinkConfig.barcode } : {}),
-    brand: { "@type": "Brand", name: "Bakeaholic Bali" },
-    offers: {
-      "@type": "Offer",
-      url: canonicalUrl,
-      priceCurrency: "IDR",
-      price: Number(item.price || 0),
-      availability: isAvailable
-        ? "https://schema.org/InStock"
-        : "https://schema.org/OutOfStock"
-    }
-  }).replace(/</g, "\\u003c");
-  const metadata = `
-    <base href="/" />
-    <link rel="canonical" href="${escapeMetadataHtml(canonicalUrl)}" />
-    <meta name="description" content="${escapeMetadataHtml(description)}" />
-    <meta property="og:type" content="product" />
-    <meta property="og:site_name" content="Bakeaholic Bali" />
-    <meta property="og:title" content="${escapeMetadataHtml(title)}" />
-    <meta property="og:description" content="${escapeMetadataHtml(description)}" />
-    <meta property="og:url" content="${escapeMetadataHtml(canonicalUrl)}" />
-    <meta property="og:image" content="${escapeMetadataHtml(imageUrl)}" />
-    <meta property="og:image:alt" content="${escapeMetadataHtml(item.name)}" />
-    <meta property="product:brand" content="Bakeaholic Bali" />
-    <meta property="product:retailer_item_id" content="${escapeMetadataHtml(item.id)}" />
-    <meta property="product:price:amount" content="${Number(item.price || 0)}" />
-    <meta property="product:price:currency" content="IDR" />
-    <meta property="product:availability" content="${availability}" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${escapeMetadataHtml(title)}" />
-    <meta name="twitter:description" content="${escapeMetadataHtml(description)}" />
-    <meta name="twitter:image" content="${escapeMetadataHtml(imageUrl)}" />
-    <script type="application/ld+json">${schema}</script>`;
-  return String(template)
-    .replace("<title>Bakeaholic Online Shop</title>", `<title>${escapeMetadataHtml(title)}</title>`)
-    .replace("</head>", `${metadata}\n  </head>`);
-}
-
-function sendProductPage(response, item, method = "GET") {
-  fs.readFile(path.join(rootDir, "index.html"), "utf8", (error, template) => {
-    if (error) {
-      sendJson(response, 500, { error: "Unable to load product page" });
-      return;
-    }
-    const html = productPageHtml(template, item);
-    response.writeHead(200, {
-      "Content-Type": "text/html; charset=utf-8",
-      ...defaultSecurityHeaders("no-store")
-    });
-    response.end(method === "HEAD" ? "" : html);
-  });
-}
-
-function sendProductNotFound(response, method = "GET") {
-  const html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Product not found | Bakeaholic Bali</title></head><body><main><h1>Product not found</h1><p>This product is not currently available in our catalogue.</p><a href="/">Shop Bakeaholic</a></main></body></html>`;
-  response.writeHead(404, {
-    "Content-Type": "text/html; charset=utf-8",
-    ...defaultSecurityHeaders("no-store")
-  });
-  response.end(method === "HEAD" ? "" : html);
-}
-
 const publicStaticFiles = new Set([
   "account-common.js",
   "addresses.html",
@@ -3166,11 +3858,10 @@ const publicStaticFiles = new Set([
   "app.js",
   "cart.html",
   "cart.js",
-  "country-picker.js",
-  "data/countries.json",
   "index.html",
   "invoice.html",
   "invoice.js",
+  "invoice-print.css",
   "location-picker.js",
   "meta-pixel.js",
   "orders.html",
@@ -3392,6 +4083,25 @@ function ensureCartSession(request, response) {
   return sessionId;
 }
 
+function isCurrentCartMutationTimestamp(value, now = Date.now()) {
+  const timestamp = Number(value || 0);
+  return Number.isFinite(timestamp)
+    && timestamp > 0
+    && timestamp <= now
+    && now - timestamp < CART_SESSION_MAX_AGE_MS;
+}
+
+function clientCartMutationTimestamp(request) {
+  const lastMutatedAt = request.headers[CART_SESSION_LAST_MUTATED_AT_HEADER];
+  const createdAt = request.headers[CART_SESSION_CREATED_AT_HEADER];
+  if (isCurrentCartMutationTimestamp(lastMutatedAt)) {
+    return Number(lastMutatedAt);
+  }
+  // Pre-migration clients only know creation time. It may preserve a young cart once,
+  // but is never refreshed by reads and is replaced by an actual mutation timestamp later.
+  return isCurrentCartMutationTimestamp(createdAt) ? Number(createdAt) : 0;
+}
+
 function getSessionCartState(mode, request, response) {
   const storeState = getStoreState(mode);
   const sessionId = ensureCartSession(request, response);
@@ -3399,12 +4109,23 @@ function getSessionCartState(mode, request, response) {
   if (!storeState.carts.has(sessionId)) {
     storeState.carts.set(sessionId, new Map());
   }
+  const cart = storeState.carts.get(sessionId);
+  if (cart.size && !isCurrentCartMutationTimestamp(cart.lastMutatedAt)) {
+    const migrationTimestamp = clientCartMutationTimestamp(request);
+    if (migrationTimestamp) {
+      cart.lastMutatedAt = migrationTimestamp;
+    } else {
+      cart.clear();
+    }
+    storeState.carts.set(sessionId, cart);
+    saveSessionCarts(cartsPathForMode(mode), storeState.carts);
+  }
   return {
     storeState,
     sessionId,
     cartState: {
       ...storeState,
-      cart: storeState.carts.get(sessionId)
+      cart
     }
   };
 }
@@ -3569,79 +4290,6 @@ function requestIpAddress(request) {
   return candidate.slice(0, 128);
 }
 
-function funnelActorHash(request) {
-  return crypto.createHmac("sha256", SESSION_SECRET)
-    .update(requestIpAddress(request))
-    .digest("hex")
-    .slice(0, 20);
-}
-
-const clientFunnelEvents = new Set([
-  "page_view",
-  "cart_opened",
-  "checkout_clicked",
-  "checkout_viewed",
-  "login_opened",
-  "address_opened",
-  "address_selected",
-  "delivery_quote_succeeded",
-  "delivery_quote_failed"
-]);
-
-function isSupportedClientFunnelEvent(event) {
-  return clientFunnelEvents.has(String(event || ""));
-}
-
-function recordFunnelEvent(request, mode, event, outcome = "", reason = "") {
-  const allowedEvents = new Set([
-    ...clientFunnelEvents,
-    "otp_requested", "otp_verified", "profile_saved", "cart_changed", "checkout_attempted", "checkout_completed"
-  ]);
-  if (!allowedEvents.has(event)) return;
-  const entries = loadJsonArray(funnelEventsPath);
-  entries.push({
-    timestamp: new Date().toISOString(),
-    event,
-    outcome: String(outcome || "").slice(0, 32),
-    reason: String(reason || "").replace(/[\r\n]+/g, " ").slice(0, 180),
-    mode: mode === "test" ? "test" : "live",
-    actor: funnelActorHash(request)
-  });
-  const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
-  writeJsonFile(funnelEventsPath, entries.filter((entry) => Date.parse(entry.timestamp) >= cutoff).slice(-20000));
-}
-
-function funnelReport(days = 7) {
-  const boundedDays = Math.max(1, Math.min(90, Number(days) || 7));
-  const cutoff = Date.now() - boundedDays * 24 * 60 * 60 * 1000;
-  const entries = loadJsonArray(funnelEventsPath)
-    .filter((entry) => entry.mode === "live" && Date.parse(entry.timestamp) >= cutoff);
-  const groups = new Map();
-  for (const entry of entries) {
-    const key = `${entry.event}|${entry.outcome || ""}|${entry.reason || ""}`;
-    const group = groups.get(key) || {
-      event: entry.event,
-      outcome: entry.outcome || "",
-      reason: entry.reason || "",
-      count: 0,
-      actors: new Set()
-    };
-    group.count += 1;
-    group.actors.add(entry.actor);
-    groups.set(key, group);
-  }
-  return {
-    days: boundedDays,
-    events: [...groups.values()].map((group) => ({
-      event: group.event,
-      outcome: group.outcome,
-      reason: group.reason,
-      count: group.count,
-      uniqueActors: group.actors.size
-    }))
-  };
-}
-
 function checkRateLimit(key, limit, windowMs) {
   const now = Date.now();
   if (now - lastRateLimitSweepAt > 60 * 1000 || rateLimitBuckets.size >= MAX_RATE_LIMIT_BUCKETS) {
@@ -3734,6 +4382,16 @@ function getAppMode(requestUrl, request) {
 
 function getStoreState(mode) {
   return stores[mode] || stores.live;
+}
+
+// Test-only module seam. It is deliberately not routed through HTTP and is
+// exported solely so lifecycle orchestration can be exercised against the
+// actual store, lock, idempotency, and provider-call path without real orders.
+function replaceStoreOrdersForTest(mode, orders = []) {
+  const state = getStoreState(mode);
+  const previous = state.orders;
+  state.orders = orders;
+  return () => { state.orders = previous; };
 }
 
 function clearPaidOrderCart(order) {
@@ -3855,7 +4513,6 @@ function normalizePhoneNumber(input) {
 }
 
 function formatIndonesianPhone(input) {
-  const raw = String(input || "").trim();
   const digits = normalizePhoneNumber(input);
   if (!digits) {
     return "";
@@ -3863,30 +4520,7 @@ function formatIndonesianPhone(input) {
   if (digits.startsWith("62")) {
     return digits;
   }
-  if (raw.startsWith("+") || raw.startsWith("00")) {
-    return raw.startsWith("00") ? digits.replace(/^00/, "") : digits;
-  }
-  return digits.startsWith("0") ? `62${digits.replace(/^0+/, "")}` : digits;
-}
-
-function formatPhoneWithCountryCode(input, countryCode) {
-  const raw = String(input || "").trim();
-  const digits = normalizePhoneNumber(raw);
-  const selectedCode = normalizePhoneNumber(countryCode);
-  if (!digits || !selectedCode) return "";
-  const explicitPhone = raw.startsWith("00") ? digits.replace(/^00/, "") : digits;
-  if (raw.startsWith("+") || raw.startsWith("00")) {
-    return explicitPhone.startsWith(selectedCode) ? explicitPhone : "";
-  }
-  if (selectedCode === "62") {
-    const indonesianNumber = digits.replace(/^0+/, "");
-    return indonesianNumber.startsWith("62") ? indonesianNumber : `62${indonesianNumber}`;
-  }
-  return `${selectedCode}${digits}`;
-}
-
-function isValidWhatsAppPhone(phone) {
-  return /^[1-9]\d{7,14}$/.test(String(phone || ""));
+  return `62${digits.replace(/^0+/, "")}`;
 }
 
 function normalizeCustomerDetails(input = {}) {
@@ -3899,6 +4533,7 @@ function normalizeCustomerDetails(input = {}) {
     lastName,
     email: String(input.email || "").trim().toLowerCase(),
     phone: normalizePhoneNumber(input.phone),
+    verifiedPhone: formatIndonesianPhone(input.verifiedPhone),
     address: String(input.address || "").trim(),
     notes: String(input.notes || "").trim(),
     phoneVerifiedAt: String(input.phoneVerifiedAt || "").trim()
@@ -4067,7 +4702,6 @@ function saveCustomerAddress(input = {}, verifiedPhone = "") {
   if (!entry.formattedAddress) {
     throw new Error("Address is required");
   }
-  assertBaliDeliveryLocation(entry);
 
   const existingAddresses = Array.isArray(customer.addresses) ? customer.addresses : [];
   const nextAddresses = existingAddresses.filter((address) => address.id !== entry.id);
@@ -4113,35 +4747,6 @@ function normalizeDestination(input = {}) {
   };
 }
 
-function pointInPolygon(lng, lat, polygon) {
-  let inside = false;
-  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
-    const [currentLng, currentLat] = polygon[index];
-    const [previousLng, previousLat] = polygon[previous];
-    const intersects = ((currentLat > lat) !== (previousLat > lat))
-      && (lng < ((previousLng - currentLng) * (lat - currentLat)) / (previousLat - currentLat) + currentLng);
-    if (intersects) inside = !inside;
-  }
-  return inside;
-}
-
-function isBaliDeliveryLocation(input = {}) {
-  const destination = normalizeDestination(input);
-  if (destination.lat == null || destination.lng == null) return false;
-  const inMainIsland = pointInPolygon(destination.lng, destination.lat, BALI_MAIN_ISLAND_POLYGON);
-  const inNusaIslands = destination.lat >= BALI_NUSA_BOUNDS.minLat
-    && destination.lat <= BALI_NUSA_BOUNDS.maxLat
-    && destination.lng >= BALI_NUSA_BOUNDS.minLng
-    && destination.lng <= BALI_NUSA_BOUNDS.maxLng;
-  return inMainIsland || inNusaIslands;
-}
-
-function assertBaliDeliveryLocation(destination) {
-  if (!isBaliDeliveryLocation(destination)) {
-    throw new Error(BALI_ONLY_MESSAGE);
-  }
-}
-
 function hasCompleteDestination(destination) {
   return destination.lat != null
     && destination.lng != null
@@ -4181,6 +4786,21 @@ function validateCatalog(nextCatalog) {
     throw new Error("At least one product is required");
   }
 
+  const marketplace = normalizeMarketplaceCatalog(nextCatalog);
+  const brandIds = new Set(marketplace.brands.map((brand) => brand.id));
+  const locationIds = new Set(marketplace.fulfillmentLocations.map((location) => location.id));
+  if (brandIds.size !== marketplace.brands.length) {
+    throw new Error("Brand ids must be unique");
+  }
+  if (locationIds.size !== marketplace.fulfillmentLocations.length) {
+    throw new Error("Fulfillment location ids must be unique");
+  }
+  marketplace.fulfillmentLocations.forEach((location) => {
+    if (!brandIds.has(location.brandId)) {
+      throw new Error(`Unknown brand for fulfillment location ${location.id}`);
+    }
+  });
+
   const categoryIds = new Set(nextCatalog.categories.map((category) => category.id).filter(Boolean));
   if (categoryIds.size !== nextCatalog.categories.length) {
     throw new Error("Category ids must be unique");
@@ -4207,6 +4827,22 @@ function validateCatalog(nextCatalog) {
     if (!Number.isFinite(Number(item.stock))) {
       throw new Error(`Invalid stock value for product ${item.id}`);
     }
+    const ownership = productMarketplaceFields(item, marketplace);
+    if (!brandIds.has(ownership.brandId) || !locationIds.has(ownership.fulfillmentLocationId)) {
+      throw new Error(`Invalid brand or fulfillment location for product ${item.id}`);
+    }
+  });
+
+  nextCatalog.items.forEach((item) => {
+    if (!item.isBundle) return;
+    if (!Array.isArray(item.bundleComponents) || !item.bundleComponents.length) {
+      throw new Error(`Bundle ${item.id} needs components`);
+    }
+    item.bundleComponents.forEach((component) => {
+      if (!itemIds.has(String(component.itemId || "").trim()) || Number(component.quantity) <= 0) {
+        throw new Error(`Invalid component for bundle ${item.id}`);
+      }
+    });
   });
 
   if (!itemIds.has(nextCatalog.promo?.itemId)) {
@@ -4283,6 +4919,7 @@ function sanitizeCatalog(nextCatalog) {
   const brandStoryInput = nextCatalog.brandStory || {};
   const brandStorySlides = normalizeBrandStorySlides(brandStoryInput);
   const primarySlide = brandStorySlides[0] || DEFAULT_BRAND_STORY.slides[0];
+  const marketplace = normalizeMarketplaceCatalog(nextCatalog);
   return {
     store: {
       ...nextCatalog.store,
@@ -4303,6 +4940,8 @@ function sanitizeCatalog(nextCatalog) {
       points: primarySlide.points,
       slides: brandStorySlides
     },
+    brands: marketplace.brands,
+    fulfillmentLocations: marketplace.fulfillmentLocations,
     categories: nextCatalog.categories.map((category) => ({
       id: String(category.id).trim(),
       label: String(category.label || "").trim(),
@@ -4330,9 +4969,17 @@ function sanitizeCatalog(nextCatalog) {
       frameOffsetX: Math.min(30, Math.max(-30, Number(item.frameOffsetX ?? 0) || 0)),
       frameOffsetY: Math.min(30, Math.max(-30, Number(item.frameOffsetY ?? 0) || 0)),
       stock: Number(item.stock),
+      isBundle: item.isBundle === true,
+      bundleComponents: item.isBundle === true
+        ? item.bundleComponents.map((component) => ({
+          itemId: String(component.itemId || "").trim(),
+          quantity: Math.max(1, Math.round(Number(component.quantity) || 1))
+        }))
+        : [],
       lengthCm: Number(item.lengthCm) > 0 ? Number(item.lengthCm) : undefined,
       widthCm: Number(item.widthCm) > 0 ? Number(item.widthCm) : undefined,
-      heightCm: Number(item.heightCm) > 0 ? Number(item.heightCm) : undefined
+      heightCm: Number(item.heightCm) > 0 ? Number(item.heightCm) : undefined,
+      ...productMarketplaceFields(item, marketplace)
     }))
   };
 }
@@ -4354,14 +5001,10 @@ function cartItems(storeState) {
 }
 
 function clampCartToStock(storeState) {
-  for (const [itemId, quantity] of storeState.cart.entries()) {
+  for (const [itemId] of storeState.cart.entries()) {
     const item = findMenuItem(itemId);
-    if (!item || item.stock <= 0) {
+    if (!item) {
       storeState.cart.delete(itemId);
-      continue;
-    }
-    if (quantity > item.stock) {
-      storeState.cart.set(itemId, item.stock);
     }
   }
 }
@@ -4482,6 +5125,61 @@ function buildShipmentItemsFromOrder(order) {
     .filter(Boolean);
 }
 
+function shipmentRequestSnapshot(order) {
+  const store = getStoreConfig();
+  const shipping = order?.pricing?.shipping || {};
+  const destination = normalizeDestination(order?.fulfillment?.location || {});
+  return {
+    version: 1,
+    pickup: {
+      address: String(store.kitchenAddress || "").trim(), lat: Number(store.kitchenLat), lng: Number(store.kitchenLng)
+    },
+    dropoff: {
+      address: String(order?.customer?.address || order?.fulfillment?.address || "").trim(),
+      lat: destination.lat == null ? null : Number(destination.lat), lng: destination.lng == null ? null : Number(destination.lng)
+    },
+    items: buildShipmentItemsFromOrder(order),
+    service: {
+      courierCompany: String(shipping.courierCode || preferredInstantCourier(getIntegrationConfig().biteshipCouriers)).toLowerCase(),
+      courierType: String(shipping.courierServiceCode || shipping.serviceType || shipping.courierServiceName || "instant").toLowerCase()
+    },
+    quotedTotal: Number(shipping.total || order?.pricing?.deliveryFee || 0)
+  };
+}
+
+function sameShipmentRequestSnapshot(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function fetchBiteshipRebookQuote(order, snapshot) {
+  const config = getIntegrationConfig();
+  if (!config.biteshipApiKey) throw new Error("Biteship API key is not configured");
+  const response = await fetch("https://api.biteship.com/v1/rates/couriers", {
+    method: "POST",
+    headers: { Authorization: biteshipAuthorizationValue(config.biteshipApiKey), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      origin_latitude: snapshot.pickup.lat,
+      origin_longitude: snapshot.pickup.lng,
+      destination_latitude: snapshot.dropoff.lat,
+      destination_longitude: snapshot.dropoff.lng,
+      couriers: snapshot.service.courierCompany,
+      items: snapshot.items
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`Biteship rebook rate check failed with status ${response.status}`);
+  const rate = (Array.isArray(payload.pricing) ? payload.pricing : []).find((entry) => (
+    String(entry.courier_code || "").toLowerCase() === snapshot.service.courierCompany
+    && String(entry.courier_service_code || entry.service_type || entry.courier_service_name || "").toLowerCase() === snapshot.service.courierType
+  ));
+  if (!rate) throw new Error("The stored Biteship courier/service is no longer available for this route.");
+  const total = Number(rate.price || rate.shipping_fee || 0);
+  if (!Number.isFinite(total) || total < 0 || total > snapshot.quotedTotal) {
+    throw new Error("The live Biteship rate changed and needs staff review before another driver can be requested.");
+  }
+  return { total, courierCode: snapshot.service.courierCompany, courierType: snapshot.service.courierType };
+}
+
 function localIndonesianPhone(phone) {
   const normalized = formatIndonesianPhone(phone);
   return normalized ? normalized.replace(/^62/, "0") : "";
@@ -4499,12 +5197,14 @@ function recalculateSummary(summary, options = {}) {
   const store = getStoreConfig();
   const deliveryFee = Number(options.deliveryFee || 0);
   const shipping = options.shipping || summary.shipping;
-  const discount = computeDiscount(
-    summary.subtotal,
+  const bundleDiscount = computeAutomaticBundleDiscount(summary.lineItems || []);
+  const voucherDiscount = computeDiscount(
+    Math.max(0, summary.subtotal - bundleDiscount.amount),
     deliveryFee,
     String(options.voucherCode || summary.discount?.code || "").trim().toUpperCase(),
     summary.fulfillmentType
   );
+  const discount = combineDiscounts(bundleDiscount, voucherDiscount);
   const taxableAmount = Math.max(0, summary.subtotal + deliveryFee - discount.amount);
   const tax = roundCurrency(taxableAmount * store.taxRate);
   const total = Math.max(0, summary.subtotal + deliveryFee + tax - discount.amount);
@@ -4589,28 +5289,9 @@ async function getCartSummaryPayload(storeState, options = {}) {
     return summary;
   }
 
-  if (!isBaliDeliveryLocation(destination)) {
-    if (options.reportQuoteFailure) {
-      return {
-        ...recalculateSummary(summary, { deliveryFee: 0, shipping: { distanceKm: 0, bikeFare: 0, serviceFee: 0, total: 0 } }),
-        quoteError: BALI_ONLY_MESSAGE
-      };
-    }
-    assertBaliDeliveryLocation(destination);
-  }
-
   try {
     const liveQuote = await fetchBiteshipLiveQuote(storeState, destination);
     if (!liveQuote) {
-      if (options.requireLiveQuote && summary.itemCount) {
-        throw new Error("No delivery driver is available for this Bali address right now. Please try again shortly.");
-      }
-      if (options.reportQuoteFailure && summary.itemCount) {
-        return {
-          ...recalculateSummary(summary, { deliveryFee: 0, shipping: { distanceKm: 0, bikeFare: 0, serviceFee: 0, total: 0 } }),
-          quoteError: "No delivery driver is available for this Bali address right now. Please try again shortly."
-        };
-      }
       return summary;
     }
     return {
@@ -4621,17 +5302,7 @@ async function getCartSummaryPayload(storeState, options = {}) {
       }),
       quoteSource: "biteship"
     };
-  } catch (error) {
-    if (options.requireLiveQuote && summary.itemCount) {
-      if (String(error.message || "").startsWith("No delivery driver")) throw error;
-      throw new Error("We could not get a delivery quote for this Bali address. Please try again shortly.");
-    }
-    if (options.reportQuoteFailure && summary.itemCount) {
-      return {
-        ...recalculateSummary(summary, { deliveryFee: 0, shipping: { distanceKm: 0, bikeFare: 0, serviceFee: 0, total: 0 } }),
-        quoteError: "We could not get a delivery quote for this Bali address. Please try again shortly."
-      };
-    }
+  } catch (_error) {
     return summary;
   }
 }
@@ -4649,8 +5320,125 @@ function shipmentFromBiteshipPayload(payload = {}, fallback = {}) {
     courier,
     trackingLink: courier?.link || payload.courier_link || payload.tracking_link || payload.tracking_url || fallback.trackingLink || "",
     createdAt: fallback.createdAt || new Date().toISOString(),
-    raw: payload.raw || payload
+    raw: stripBiteshipProofFields(payload.raw || payload)
   };
+}
+
+function validatedHttpsUrl(value = "") {
+  const text = String(value || "").trim();
+  if (!text || text.length > 2048) return "";
+  try {
+    const parsed = new URL(text);
+    const hostname = parsed.hostname.toLowerCase();
+    const privateIpv4 = /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname);
+    const privateHost = hostname === "localhost"
+      || hostname.endsWith(".local")
+      || hostname === "::1"
+      || hostname === "0.0.0.0"
+      || privateIpv4;
+    return parsed.protocol === "https:" && !privateHost ? parsed.toString() : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function verifiedBiteshipDeliveryProofUrl(order, index = 0) {
+  const proof = order?.fulfillment?.shipment?.deliveryProof;
+  if (!proof?.verified || !proof?.available) return "";
+  const urls = [
+    ...(Array.isArray(proof.images) ? proof.images : []),
+    proof.signatureUrl
+  ].map(validatedHttpsUrl).filter(Boolean);
+  const requestedIndex = Number(index);
+  return Number.isInteger(requestedIndex) && requestedIndex >= 0 ? urls[requestedIndex] || "" : "";
+}
+
+function stripBiteshipProofFields(value) {
+  if (Array.isArray(value)) return value.map(stripBiteshipProofFields);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !/(proof_of_delivery|signature)/i.test(key))
+    .map(([key, nested]) => [key, stripBiteshipProofFields(nested)]));
+}
+
+function biteshipDeliveryProof(payload = {}, expectedShipmentId = "") {
+  const normalized = shipmentFromBiteshipPayload(payload);
+  const expected = String(expectedShipmentId || "").trim();
+  const identifiers = new Set(biteshipShipmentIdentifiers(normalized));
+  if (!expected || !identifiers.has(expected)) {
+    return { available: false, images: [], signatureUrl: "", timestamp: "", verified: false };
+  }
+  const histories = [
+    ...(Array.isArray(payload?.courier?.history) ? payload.courier.history : []),
+    ...(Array.isArray(payload?.history) ? payload.history : [])
+  ];
+  const images = [...new Set(histories.flatMap((entry) => {
+    const candidates = entry?.proof_of_delivery_images
+      || entry?.proofOfDeliveryImages
+      || entry?.proof_of_delivery_image
+      || [];
+    return (Array.isArray(candidates) ? candidates : [candidates])
+      .map((candidate) => validatedHttpsUrl(candidate?.url || candidate))
+      .filter(Boolean);
+  }))].slice(0, 10);
+  const signatureUrl = histories
+    .map((entry) => validatedHttpsUrl(entry?.signature?.url || entry?.signature || entry?.proof_of_delivery_signature))
+    .find(Boolean) || "";
+  const rawTimestamp = [...histories].reverse()
+    .map((entry) => entry?.timestamp || entry?.updated_at || entry?.created_at)
+    .find(Boolean);
+  const parsedTimestamp = Date.parse(rawTimestamp || "");
+  const timestamp = Number.isFinite(parsedTimestamp) ? new Date(parsedTimestamp).toISOString() : "";
+  return {
+    available: Boolean(images.length || signatureUrl),
+    images,
+    signatureUrl,
+    timestamp,
+    verified: true
+  };
+}
+
+function biteshipPayloadHasObservedHandoff(payload = {}) {
+  const histories = [
+    ...(Array.isArray(payload?.courier?.history) ? payload.courier.history : []),
+    ...(Array.isArray(payload?.history) ? payload.history : [])
+  ];
+  return histories.some((entry) => [
+    "picked", "picked_up", "successfully_pickup", "successfully_picked_up",
+    "dropping_off", "courier_delivering", "in_transit", "on_delivery"
+  ].includes(normalizedShipmentStatus(entry?.status || entry?.name || entry?.event)));
+}
+
+function verifyBiteshipDeliveredPayload(order, payload = {}) {
+  const shipment = order?.fulfillment?.shipment || {};
+  const shipmentId = String(shipment.orderId || "").trim();
+  if (!shipmentId) throw new Error("A Biteship shipment is required for delivery confirmation");
+  const normalized = shipmentFromBiteshipPayload(payload, shipment);
+  if (!biteshipShipmentIdentifiers(normalized).includes(shipmentId)) {
+    throw new Error("Biteship delivery confirmation did not match the active shipment");
+  }
+  if (shipmentStatusToOrderStatus(normalized.status) !== "delivered") {
+    throw new Error(`Biteship has not confirmed delivery for ${shipmentId}`);
+  }
+  if (!providerStatusCanCompleteOrder({
+    ...shipment,
+    ...normalized,
+    ...(biteshipPayloadHasObservedHandoff(payload) ? { pickupObservedAt: shipment.pickupObservedAt || new Date().toISOString() } : {})
+  }, normalized.status)) {
+    throw new Error("Biteship reported delivered before a pickup or handoff was observed");
+  }
+  return {
+    payload,
+    shipment: normalized,
+    proof: biteshipDeliveryProof(payload, shipmentId)
+  };
+}
+
+async function confirmBiteshipDeliveredShipment(order) {
+  const shipmentId = String(order?.fulfillment?.shipment?.orderId || "").trim();
+  if (!shipmentId) throw new Error("A Biteship shipment is required for delivery confirmation");
+  const payload = await fetchBiteshipShipment(shipmentId);
+  return verifyBiteshipDeliveredPayload(order, payload);
 }
 
 function biteshipTrackingIdFromUrl(value = "") {
@@ -4772,6 +5560,7 @@ async function createBiteshipShipment(order, options = {}) {
             status: "confirmed",
             waybillId: parsed.details.waybill_id || ""
           }),
+          requestSnapshot: shipmentRequestSnapshot(order),
           recoveredFromDuplicateReference: true,
           duplicateReferenceResponse: parsed
         };
@@ -4782,6 +5571,7 @@ async function createBiteshipShipment(order, options = {}) {
             status: "confirmed",
             waybillId: parsed.details.waybill_id || ""
           }),
+          requestSnapshot: shipmentRequestSnapshot(order),
           recoveredFromDuplicateReference: true,
           raw: parsed
         };
@@ -4790,7 +5580,7 @@ async function createBiteshipShipment(order, options = {}) {
     throw new Error(parsed?.error || parsed?.message || `Biteship order failed with status ${response.status}`);
   }
 
-  return shipmentFromBiteshipPayload(parsed);
+  return { ...shipmentFromBiteshipPayload(parsed), requestSnapshot: shipmentRequestSnapshot(order) };
 }
 
 async function maybeCreateBiteshipShipment(order) {
@@ -4928,8 +5718,33 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
   const previousStatus = order.status;
   const providerShipment = await fetchBiteshipShipmentForOrder(order, shipment);
   const shipmentStatus = String(providerShipment.status || shipment.status || "").toLowerCase();
-  const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
-  const normalizedShipment = shipmentFromBiteshipPayload(providerShipment, shipment);
+  let normalizedShipment = shipmentFromBiteshipPayload(providerShipment, shipment);
+  const observedHandoff = shipmentHasObservedHandoff(shipment)
+    || biteshipPayloadHasObservedHandoff(providerShipment)
+    || ["picked", "picked_up", "successfully_pickup", "successfully_picked_up", "dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalizedShipmentStatus(shipmentStatus));
+  if (observedHandoff && !normalizedShipment.pickupObservedAt) normalizedShipment.pickupObservedAt = new Date().toISOString();
+  let deliveryProof = shipment.deliveryProof || null;
+  let deliveryVerificationError = "";
+  if (shipmentStatusToOrderStatus(shipmentStatus) === "delivered") {
+    try {
+      const verified = verifyBiteshipDeliveredPayload({
+        ...order,
+        fulfillment: { ...order.fulfillment, shipment: { ...shipment, ...normalizedShipment } }
+      }, providerShipment);
+      normalizedShipment = { ...normalizedShipment, ...verified.shipment };
+      deliveryProof = verified.proof;
+    } catch (error) {
+      deliveryVerificationError = error.message;
+    }
+  }
+  let nextOrderStatus = !deliveryVerificationError && providerStatusCanCompleteOrder({ ...shipment, ...normalizedShipment }, shipmentStatus)
+    ? shipmentStatusToOrderStatus(shipmentStatus)
+    : "delivery_issue";
+  const verifiedPrePickupFailure = isRecoverableFailedShipmentStatus(shipmentStatus)
+    && !observedHandoff
+    && order.payment?.status === "paid"
+    && ["paid", "preparing"].includes(previousStatus);
+  if (verifiedPrePickupFailure) nextOrderStatus = "preparing";
   order.fulfillment = {
     ...order.fulfillment,
     shipment: {
@@ -4944,7 +5759,11 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
       waybillUrl: normalizedShipment.waybillUrl || shipment.waybillUrl || "",
       updatedAt: new Date().toISOString(),
       syncedAt: new Date().toISOString(),
-      raw: providerShipment
+      raw: stripBiteshipProofFields(providerShipment),
+      requestSnapshot: shipment.requestSnapshot,
+      ...(deliveryProof ? { deliveryProof } : {}),
+      providerDeliveredAwaitingHandoffReview: shipmentStatusToOrderStatus(shipmentStatus) === "delivered" && Boolean(deliveryVerificationError),
+      deliveryVerificationError
     }
   };
   if (nextOrderStatus) {
@@ -4957,8 +5776,14 @@ async function syncBiteshipDeliveryStatus(mode, orderId) {
   ].filter(Boolean).join(":");
   if (previousStatus !== order.status) {
     await maybeSendWhatsappOrderStatus(order, previousStatus);
+    if (order.status === "delivered") {
+      await maybeSendWhatsappAdminDeliveryComplete(order, `biteship:${order.fulfillment.shipment.orderId}:delivery-complete`);
+    }
   }
   await notifyShipmentUpdate(order, shipmentNotificationKey);
+  if (verifiedPrePickupFailure) {
+    await maybeSendWhatsappAdminDeliveryRecoveryAlert(order, shipmentStatus, `${shipmentNotificationKey}:verified-recovery`);
+  }
   saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
   return enrichOrder(order);
 }
@@ -4979,6 +5804,14 @@ function isRecoverableFailedShipmentStatus(status = "") {
   return ["cancelled", "rejected", "courier_not_found"].includes(normalizedShipmentStatus(status));
 }
 
+function shipmentHasObservedHandoff(shipment = {}) {
+  return Boolean(shipment.pickupObservedAt || shipment.inTransitObservedAt);
+}
+
+function providerStatusCanCompleteOrder(shipment = {}, status = "") {
+  return shipmentStatusToOrderStatus(status) !== "delivered" || shipmentHasObservedHandoff(shipment);
+}
+
 function replacementTrackingNotificationReady(shipment = {}) {
   return shipment.replacement !== true
     || ["allocated", "accepted"].includes(normalizedShipmentStatus(shipment.status));
@@ -4995,8 +5828,17 @@ function assertDeliveryRecoveryRequest(order, expectedShipmentId, actionId) {
   if (!actionId || !/^[a-zA-Z0-9_-]{16,100}$/.test(String(actionId))) {
     throw new Error("A valid recovery action ID is required");
   }
-  if (["delivered", "returned", "delivery_failed", "cancelled"].includes(order.status)) {
-    throw new Error("This order can no longer be recovered for delivery");
+  if (order.payment?.status !== "paid" || order.status !== "preparing") {
+    throw new Error("Only a paid preparing order can request a replacement driver");
+  }
+  if (!isRecoverableFailedShipmentStatus(order.fulfillment?.shipment?.status)) {
+    throw new Error("The active Biteship shipment is not a verified pre-pickup failure");
+  }
+  if (shipmentHasObservedHandoff(order.fulfillment?.shipment || {}) || order.fulfillment?.shipment?.replacement === true) {
+    throw new Error("A collected or replacement shipment cannot be automatically rebooked");
+  }
+  if (!order.fulfillment?.shipment?.requestSnapshot || !sameShipmentRequestSnapshot(order.fulfillment.shipment.requestSnapshot, shipmentRequestSnapshot(order))) {
+    throw new Error("The stored pickup, drop-off, items, or service changed and needs staff review");
   }
   return shipmentId;
 }
@@ -5107,6 +5949,10 @@ async function rebookBiteshipDelivery(mode, orderId, session, request = {}) {
       if (!isRecoverableFailedShipmentStatus(providerStatus)) {
         throw new Error(`Biteship still shows this delivery as ${providerStatus || "active"}. It cannot be replaced yet.`);
       }
+      if (biteshipPayloadHasObservedHandoff(providerShipment) || shipmentHasObservedHandoff(previousShipment)) {
+        throw new Error("Biteship shows a pickup/handoff for this delivery. It cannot be automatically rebooked.");
+      }
+      const liveRate = await fetchBiteshipRebookQuote(order, previousShipment.requestSnapshot);
       const history = Array.isArray(order.fulfillment.shipmentHistory)
         ? [...order.fulfillment.shipmentHistory]
         : [];
@@ -5142,9 +5988,10 @@ async function rebookBiteshipDelivery(mode, orderId, session, request = {}) {
       order.whatsappUrl = buildWhatsappUrl(order);
       finishDeliveryRecoveryAction(mode, order, claim.record, "completed", {
         replacementShipmentId: shipment.orderId,
-        providerStatus
+        providerStatus,
+        verifiedRate: liveRate,
+        providerVerifiedAt: new Date().toISOString()
       });
-      await maybeSendWhatsappAdminAlert(order, `order:${order.id}:delivery-rebooked:${shipment.orderId}`, `Replacement Biteship delivery requested after ${providerStatus}. Customer tracking waits for courier allocation.`);
       saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
       return enrichOrder(order);
     } catch (error) {
@@ -5208,6 +6055,32 @@ async function useSelfDelivery(mode, orderId, session, request = {}) {
       throw error;
     }
   });
+}
+
+function correctDisputedDeliveryToSelfDelivery(mode, orderId, session, request = {}) {
+  if ((session?.staffRole || "owner") !== "owner") throw new Error("Only the owner can correct a disputed courier delivery");
+  const order = findOrder(mode, orderId);
+  const shipment = order?.fulfillment?.shipment;
+  if (!order || order.payment?.status !== "paid" || order.fulfillment?.type !== "delivery" || order.status !== "delivered" || !shipment?.orderId) {
+    throw new Error("Only a paid delivered courier order can be corrected to self-delivery");
+  }
+  if (String(request.shipmentId || "") !== shipment.orderId || !/^[a-zA-Z0-9_-]{16,100}$/.test(String(request.actionId || "")) || request.reason !== "provider_delivered_disputed_no_pickup") {
+    throw new Error("A matching shipment, replay-safe action ID, and approved incident reason are required");
+  }
+  const actions = order.fulfillment.deliveryRecoveryActions || [];
+  if (actions.some((action) => action.actionId === request.actionId)) throw new Error("This delivery correction was already recorded");
+  const recordedAt = new Date().toISOString();
+  order.fulfillment = {
+    ...order.fulfillment,
+    shipment: null,
+    shipmentHistory: [...(order.fulfillment.shipmentHistory || []), { ...shipment, endedAt: recordedAt, endReason: request.reason }].slice(-10),
+    deliveryMethod: "self_delivery",
+    selfDelivery: { status: "preparing", recordedAt, recordedBy: session.email || "owner", replacesShipmentId: shipment.orderId, incidentReason: request.reason },
+    deliveryRecoveryActions: [...actions, { actionId: request.actionId, action: "correct_disputed_delivery_to_self_delivery", shipmentId: shipment.orderId, reason: request.reason, status: "completed", recordedAt }].slice(-25)
+  };
+  order.status = "preparing";
+  saveOrders(ordersPathForMode(mode), getStoreState(mode).orders);
+  return enrichOrder(order);
 }
 
 async function approveOrderForDelivery(mode, orderId, session) {
@@ -5367,6 +6240,56 @@ function biteshipActualPrice(payload = {}, body = {}) {
   return price == null ? null : Number(price);
 }
 
+const AUTOMATIC_BUNDLE_WINDOWS = Object.freeze({
+  BLISS4: Object.freeze({ start: Date.parse("2026-09-01T00:00:00+08:00"), end: Date.parse("2026-09-12T00:00:00+08:00") }),
+  COOKIES12: Object.freeze({ start: Date.parse("2026-09-07T08:00:00+08:00"), end: Date.parse("2026-09-14T00:00:00+08:00") })
+});
+const AUTOMATIC_BUNDLES = Object.freeze([
+  { id: "BLISS4", category: "bliss-balls", quantity: 4, bundlePrice: 250000, label: "Any 4 Bliss Balls packs for Rp250K" },
+  { id: "COOKIES12", category: "oatmeal-cookies", quantity: 12, bundlePrice: 200000, label: "Any 12 Oatmeal Cookies for Rp200K" }
+]);
+
+function bundlePromotionIsActive(now = Date.now(), offerId = "") {
+  const timestamp = Number(now);
+  const windows = offerId
+    ? [AUTOMATIC_BUNDLE_WINDOWS[offerId]]
+    : Object.values(AUTOMATIC_BUNDLE_WINDOWS);
+  return windows.some((window) => window && timestamp >= window.start && timestamp < window.end);
+}
+
+function computeAutomaticBundleDiscount(lineItems = [], now = Date.now()) {
+  const applied = [];
+  let amount = 0;
+  for (const offer of AUTOMATIC_BUNDLES) {
+    if (!bundlePromotionIsActive(now, offer.id)) continue;
+    const eligible = lineItems.filter((entry) => entry?.item?.category === offer.category && entry.item.isBundle !== true);
+    const quantity = eligible.reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
+    const bundleCount = Math.floor(quantity / offer.quantity);
+    if (bundleCount <= 0) continue;
+    const eligibleUnitPrices = eligible
+      .flatMap((entry) => Array.from({ length: Number(entry.quantity || 0) }, () => Number(entry.item.price || 0)))
+      .sort((left, right) => left - right);
+    const regularPrice = eligibleUnitPrices.slice(0, bundleCount * offer.quantity).reduce((sum, price) => sum + price, 0);
+    const offerPrice = bundleCount * offer.bundlePrice;
+    const saving = Math.max(0, regularPrice - offerPrice);
+    if (saving <= 0) continue;
+    amount += saving;
+    applied.push({ ...offer, bundleCount, appliedQuantity: bundleCount * offer.quantity, regularPrice, offerPrice, saving });
+  }
+  return { code: applied.map((offer) => offer.id).join("+"), label: applied.map((offer) => offer.label).join(" + "), amount, bundles: applied };
+}
+
+function combineDiscounts(bundleDiscount, voucherDiscount) {
+  const discounts = [bundleDiscount, voucherDiscount].filter((discount) => Number(discount?.amount || 0) > 0);
+  if (!discounts.length) return voucherDiscount || { code: "", label: "", amount: 0, bundles: [] };
+  return {
+    code: discounts.map((discount) => discount.code).filter(Boolean).join("+"),
+    label: discounts.map((discount) => discount.label).filter(Boolean).join(" + "),
+    amount: discounts.reduce((sum, discount) => sum + Number(discount.amount || 0), 0),
+    bundles: bundleDiscount?.bundles || []
+  };
+}
+
 function computeDiscount(subtotal, deliveryFee, voucherCode, fulfillmentType) {
   if (!voucherCode) {
     return { code: "", label: "", amount: 0 };
@@ -5428,8 +6351,6 @@ function computeDiscount(subtotal, deliveryFee, voucherCode, fulfillmentType) {
 }
 
 function buildCartSummary(storeState, options = {}) {
-  clampCartToStock(storeState);
-
   const lineItems = cartItems(storeState)
     .map(({ itemId, quantity }) => ({
       itemId,
@@ -5478,23 +6399,30 @@ function buildCartSummary(storeState, options = {}) {
   }
 
   const deliveryFee = shipping.total;
-  const discount = computeDiscount(
-    subtotal,
+  const bundleDiscount = computeAutomaticBundleDiscount(lineItems);
+  const voucherDiscount = computeDiscount(
+    Math.max(0, subtotal - bundleDiscount.amount),
     deliveryFee,
     String(options.voucherCode || "").trim().toUpperCase(),
     fulfillmentType
   );
+  const discount = combineDiscounts(bundleDiscount, voucherDiscount);
   const taxableAmount = Math.max(0, subtotal + deliveryFee - discount.amount);
   const tax = roundCurrency(taxableAmount * store.taxRate);
   const total = Math.max(0, subtotal + deliveryFee + tax - discount.amount);
 
   return {
     cartSessionId: String(options.cartSessionId || ""),
-    items: lineItems.map(({ itemId, quantity }) => ({ itemId, quantity })),
+    items: lineItems.map(({ item, itemId, quantity }) => ({
+      itemId,
+      quantity,
+      components: bundleComponentSnapshot(item, quantity)
+    })),
     lineItems: lineItems.map(({ item, quantity }) => ({
       itemId: item.id,
       quantity,
       lineTotal: item.price * quantity,
+      components: bundleComponentSnapshot(item, quantity),
       item
     })),
     subtotal,
@@ -5507,6 +6435,20 @@ function buildCartSummary(storeState, options = {}) {
     fulfillmentType,
     perkUnlocked: subtotal >= 120000
   };
+}
+
+function bundleComponentSnapshot(item, bundleQuantity = 1) {
+  if (!item?.isBundle || !Array.isArray(item.bundleComponents)) return [];
+  return item.bundleComponents.map((component) => {
+    const product = findMenuItem(component.itemId);
+    return {
+      itemId: component.itemId,
+      sku: product?.sku || component.itemId,
+      name: product?.name || component.itemId,
+      quantityPerBundle: Number(component.quantity),
+      quantity: Number(component.quantity) * Number(bundleQuantity)
+    };
+  });
 }
 
 function makeNumericSeed(value) {
@@ -5644,7 +6586,10 @@ function buildXenditInvoicePayload(order) {
     payer_email: order.customer.email || undefined,
     success_redirect_url: returnUrl,
     failure_redirect_url: returnUrl,
-    invoice_duration: 15 * 60
+    // This must match the server-authoritative +5 minute unpaid lifecycle.
+    // A longer provider window could otherwise accept payment after the order
+    // has been safely expired and its cart cleared.
+    invoice_duration: 5 * 60
   };
 
   const invoicePaymentMethods = xenditInvoicePaymentMethodsForOrder(order);
@@ -5676,7 +6621,7 @@ function xenditInvoicePaymentMethodsForOrder(order) {
 
 function buildXenditPaymentRequestPayload(order) {
   const returnUrl = getPublicOrderUrl(order);
-  const expiresAt = order.expiresAt || new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const expiresAt = order.expiresAt || new Date(Date.now() + 5 * 60 * 1000).toISOString();
   const referenceId = order.payment?.externalId || order.id;
 
   if (order.payment?.kind === "va") {
@@ -5950,7 +6895,7 @@ async function createXenditVirtualAccount(order) {
       expected_amount: order.pricing.total,
       is_closed: true,
       is_single_use: true,
-      expiration_date: order.expiresAt || new Date(Date.now() + 15 * 60 * 1000).toISOString()
+      expiration_date: order.expiresAt || new Date(Date.now() + 5 * 60 * 1000).toISOString()
     })
   });
 
@@ -6680,13 +7625,13 @@ async function fetchXenditQrCodeStatus(order) {
 }
 
 function applyXenditInvoiceStatusToOrder(order, invoice) {
+  const latePayment = isSuccessfulXenditPaymentEvent(invoice) && shouldHoldLateXenditPaymentForReview(order);
+  if (order.status === "paid_late_review" && !isSuccessfulXenditPaymentEvent(invoice)) return order;
   order.payment = applyXenditInvoiceToPayment(order.payment, invoice);
   const status = String(invoice.status || "").toUpperCase();
 
   if (status === "PAID" || status === "SETTLED") {
-    order.status = "paid";
-    order.payment.status = "paid";
-    order.paidAt = order.paidAt || new Date().toISOString();
+    setSuccessfulXenditPaymentState(order, invoice, latePayment);
   } else if (status === "EXPIRED") {
     order.status = "expired";
     order.payment.status = "expired";
@@ -6700,15 +7645,15 @@ function applyXenditInvoiceStatusToOrder(order, invoice) {
 }
 
 function applyXenditQrCodeStatusToOrder(order, qrCode = {}) {
+  const latePayment = isSuccessfulXenditPaymentEvent(qrCode) && shouldHoldLateXenditPaymentForReview(order);
+  if (order.status === "paid_late_review" && !isSuccessfulXenditPaymentEvent(qrCode)) return order;
   order.payment = applyXenditQrCodeToPayment(order.payment, {
     ...qrCode,
     qr_string: qrCode.qr_string || order.payment?.qrCodeData || ""
   });
   const status = String(qrCode.status || qrCode.payment_status || "").toUpperCase();
   if (isSuccessfulXenditPaymentEvent(qrCode)) {
-    order.status = "paid";
-    order.payment.status = "paid";
-    order.paidAt = order.paidAt || new Date().toISOString();
+    setSuccessfulXenditPaymentState(order, qrCode, latePayment);
   } else if (status === "EXPIRED" || (status === "INACTIVE" && isOrderPaymentWindowExpired(order))) {
     order.status = "expired";
     order.payment.status = status.toLowerCase();
@@ -6745,6 +7690,32 @@ function isFailedXenditPaymentEvent(payload = {}) {
 function isOrderPaymentWindowExpired(order, now = Date.now()) {
   const expiresAt = Date.parse(order?.expiresAt || "");
   return Number.isFinite(expiresAt) && now >= expiresAt;
+}
+
+function shouldHoldLateXenditPaymentForReview(order) {
+  // Provider settlement can race the local five-minute expiry. Preserve the
+  // captured funds but never reopen fulfilment automatically.
+  return ["expired", "cancelled"].includes(String(order?.status || ""))
+    || isOrderPaymentWindowExpired(order);
+}
+
+function setSuccessfulXenditPaymentState(order, payload = {}, wasLate = false) {
+  order.payment.status = "paid";
+  order.paidAt = order.paidAt || new Date().toISOString();
+  if (wasLate) {
+    const priorOrderStatus = order.status;
+    order.status = "paid_late_review";
+    order.latePaymentReview = {
+      status: "manual_review_required",
+      capturedAt: new Date().toISOString(),
+      priorOrderStatus: order.latePaymentReview?.priorOrderStatus || priorOrderStatus,
+      providerStatus: String(payload.status || payload.payment_status || payload.event || "paid").toUpperCase(),
+      message: "Payment was captured after the local payment window closed. Do not prepare or book delivery; review or refund through the governed workflow."
+    };
+  } else {
+    order.status = "paid";
+  }
+  return order;
 }
 
 function xenditPaymentAmount(payload = {}) {
@@ -6800,12 +7771,12 @@ function rememberXenditWebhook(order, webhookId = "") {
 }
 
 function applyXenditVirtualAccountStatusToOrder(order, virtualAccount = {}) {
+  const latePayment = isSuccessfulXenditPaymentEvent(virtualAccount) && shouldHoldLateXenditPaymentForReview(order);
+  if (order.status === "paid_late_review" && !isSuccessfulXenditPaymentEvent(virtualAccount)) return order;
   order.payment = applyXenditVirtualAccountToPayment(order.payment, virtualAccount);
   const status = String(virtualAccount.status || "").toUpperCase();
   if (isSuccessfulXenditPaymentEvent(virtualAccount)) {
-    order.status = "paid";
-    order.payment.status = "paid";
-    order.paidAt = order.paidAt || new Date().toISOString();
+    setSuccessfulXenditPaymentState(order, virtualAccount, latePayment);
   } else if (status === "EXPIRED" || (status === "INACTIVE" && isOrderPaymentWindowExpired(order))) {
     order.status = "expired";
     order.payment.status = status.toLowerCase();
@@ -6841,14 +7812,14 @@ function applyXenditTestPaymentSimulation(order) {
 }
 
 function applyXenditPaymentRequestStatusToOrder(order, paymentRequest = {}) {
+  const latePayment = isSuccessfulXenditPaymentEvent(paymentRequest) && shouldHoldLateXenditPaymentForReview(order);
+  if (order.status === "paid_late_review" && !isSuccessfulXenditPaymentEvent(paymentRequest)) return order;
   order.payment = applyXenditPaymentRequestToPayment(order.payment, paymentRequest);
   const status = String(paymentRequest.status || "").toUpperCase();
   const eventName = String(paymentRequest.event || "").toLowerCase();
 
   if (status === "SUCCEEDED" || eventName === "payment.capture") {
-    order.status = "paid";
-    order.payment.status = "paid";
-    order.paidAt = order.paidAt || new Date().toISOString();
+    setSuccessfulXenditPaymentState(order, paymentRequest, latePayment);
   } else if (status === "FAILED" || eventName === "payment.failure") {
     order.status = "payment_failed";
     order.payment.status = "failed";
@@ -6865,14 +7836,14 @@ function applyXenditPaymentRequestStatusToOrder(order, paymentRequest = {}) {
 }
 
 function applyXenditPaymentSessionStatusToOrder(order, session = {}) {
+  const latePayment = isSuccessfulXenditPaymentEvent(session) && shouldHoldLateXenditPaymentForReview(order);
+  if (order.status === "paid_late_review" && !isSuccessfulXenditPaymentEvent(session)) return order;
   order.payment = applyXenditPaymentSessionToPayment(order.payment, session);
   const status = String(session.status || "").toUpperCase();
   const eventName = String(session.event || "").toLowerCase();
 
   if (status === "COMPLETED" || eventName === "payment_session.completed") {
-    order.status = "paid";
-    order.payment.status = "paid";
-    order.paidAt = order.paidAt || new Date().toISOString();
+    setSuccessfulXenditPaymentState(order, session, latePayment);
   } else if (status === "FAILED" || eventName === "payment.failure") {
     order.status = "payment_failed";
     order.payment.status = "failed";
@@ -6962,6 +7933,16 @@ function enrichOrder(order, options = {}) {
   if (!order) return null;
   const { metaAttribution: _privateMetaAttribution, ...publicOrder } = order;
   const payment = { ...(order.payment || {}) };
+  const fulfillment = order.fulfillment ? { ...order.fulfillment } : {};
+  if (fulfillment.shipment) {
+    const { deliveryProof, ...shipmentWithoutProof } = fulfillment.shipment;
+    fulfillment.shipment = {
+      ...shipmentWithoutProof,
+      ...(options.includeAdminDeliveryProofAvailability
+        ? { deliveryProofAvailable: Boolean(deliveryProof?.available) }
+        : {})
+    };
+  }
   const refund = order.refund ? { ...order.refund } : null;
   // A successful refund-request response is not the same as confirmation from
   // the payment channel. Older orders stored that request response as
@@ -6990,17 +7971,22 @@ function enrichOrder(order, options = {}) {
   }
   return {
     ...publicOrder,
+    fulfillment,
     payment,
     ...(refund ? { refund } : {}),
+    ...(options.includeAdminCustomerWhatsappUrl
+      ? { whatsappUrl: adminCustomerWhatsappUrl(order) }
+      : {}),
     documentUrl: getPublicDocumentUrl(order),
     lineItems: order.items
-      .map(({ itemId, quantity }) => {
+      .map(({ itemId, quantity, components = [] }) => {
         const item = findMenuItem(itemId);
         if (!item) return null;
         return {
           itemId,
           quantity,
           lineTotal: item.price * quantity,
+          components,
           item
         };
       })
@@ -7020,6 +8006,178 @@ function buildOrderDocument(order) {
     order: enriched,
     generatedAt: new Date().toISOString()
   };
+}
+
+// The Android print pipeline is free to replace HTML's requested paper size
+// with the printer's selected media. A real PDF gives it one fixed A5 page to
+// scale as a whole instead of asking it to reflow the receipt into that media.
+const A5_PDF_WIDTH = 419.53;
+const A5_PDF_HEIGHT = 595.28;
+
+function pdfText(value, maxLength = 80) {
+  return String(value == null ? "" : value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7e]/g, "-")
+    .replace(/[\\()]/g, "\\$&")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function pdfMoney(value) {
+  return `Rp ${Math.round(Number(value) || 0).toLocaleString("id-ID")}`;
+}
+
+function pdfLines(value, maxLength, limit = 2) {
+  const words = pdfText(value, maxLength * limit * 2).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length <= maxLength || !line) {
+      line = next;
+      continue;
+    }
+    lines.push(line);
+    if (lines.length >= limit) return lines;
+    line = word;
+  }
+  if (line && lines.length < limit) lines.push(line);
+  return lines;
+}
+
+function buildFixedA5ReceiptPdf(documentPayload) {
+  const { store = {}, order = {} } = documentPayload || {};
+  const commands = ["1 J", "1 j"];
+  const left = 18;
+  const right = A5_PDF_WIDTH - left;
+  let y = A5_PDF_HEIGHT - 22;
+  const ink = "0.12 0.1 0.09";
+  const muted = "0.36 0.32 0.29";
+  const cocoa = "0.38 0.21 0.15";
+  const pale = "0.96 0.93 0.9";
+  const line = "0.82 0.78 0.74";
+  const text = (font, size, x, baseline, value, color = ink, align = "left") => {
+    const safe = pdfText(value);
+    if (!safe) return;
+    const width = safe.length * size * 0.49;
+    const positionedX = align === "right" ? x - width : x;
+    commands.push(`BT /${font} ${size.toFixed(2)} Tf ${color} rg 1 0 0 1 ${positionedX.toFixed(2)} ${baseline.toFixed(2)} Tm (${safe}) Tj ET`);
+  };
+  const rule = (fromX, fromY, toX, toY, color = line, width = 0.55) => {
+    commands.push(`${color} RG ${width.toFixed(2)} w ${fromX.toFixed(2)} ${fromY.toFixed(2)} m ${toX.toFixed(2)} ${toY.toFixed(2)} l S`);
+  };
+  const fill = (x, bottom, width, height, color) => {
+    commands.push(`${color} rg ${x.toFixed(2)} ${bottom.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re f`);
+  };
+
+  // Keep the compact fixed-page document dependency-free. The existing logo is
+  // a raster asset; a full vector wordmark is safer here than embedding and
+  // potentially clipping a JPEG in a hand-authored PDF stream.
+  text("F2", 12, left, y - 9, store.name || "Bakeaholic Bali", cocoa);
+  text("F1", 7.2, left, y - 20, store.perkTitle || "Bali, Indonesia", muted);
+  text("F2", 8.5, right, y - 9, "INVOICE / RECEIPT", cocoa, "right");
+  text("F2", 15, right, y - 23, order.id || "ORDER", ink, "right");
+  y -= 33;
+  rule(left, y, right, y);
+
+  const status = humanizeOrderStatus(order) || "Order";
+  y -= 16;
+  text("F2", 7.1, left, y, "CUSTOMER", muted);
+  text("F2", 7.1, left + 198, y, "DELIVERY ADDRESS", muted);
+  y -= 11;
+  text("F2", 9.1, left, y, order.customer?.name || "Customer");
+  const address = order.fulfillment?.address || order.customer?.address || "-";
+  pdfLines(address, 36, 2).forEach((entry, index) => text("F1", 8, left + 198, y - index * 10, entry));
+  y -= 12;
+  text("F1", 8, left, y, order.customer?.phone || "");
+  y -= 11;
+  text("F1", 7.4, left, y, order.customer?.email || "", muted);
+  y -= 14;
+  text("F2", 7.1, left, y, "PAYMENT", muted);
+  text("F2", 7.1, left + 198, y, "ORDER", muted);
+  y -= 11;
+  text("F1", 8, left, y, order.payment?.label || "-");
+  text("F1", 8, left + 198, y, `Status: ${status}`);
+  y -= 11;
+  text("F1", 7.4, left, y, order.paidAt ? `Paid: ${new Date(order.paidAt).toLocaleString("en-GB")}` : "Payment pending", muted);
+  text("F1", 7.4, left + 198, y, `Items: ${order.itemCount || 0}`, muted);
+
+  const shipment = order.fulfillment?.shipment || {};
+  const courier = shipment.courier?.company || shipment.courier?.name || shipment.raw?.courier?.company || shipment.raw?.courier?.name || "";
+  if (shipment.orderId || shipment.status || courier) {
+    y -= 21;
+    fill(left, y - 30, right - left, 30, pale);
+    text("F2", 7.1, left + 7, y - 9, "DELIVERY TRACKING", cocoa);
+    text("F2", 10, left + 7, y - 21, courier || "Delivery partner");
+    text("F1", 7.6, left + 94, y - 21, `Status: ${shipment.status || order.status || "-"}`, muted);
+    text("F1", 7.6, left + 220, y - 21, `Waybill: ${shipment.waybillId || "-"}`, muted);
+    y -= 39;
+  } else {
+    y -= 12;
+  }
+
+  const rows = order.lineItems || [];
+  const tableTop = y;
+  const tableBottom = 104;
+  const rowHeight = Math.max(4.2, Math.min(10.5, (tableTop - tableBottom - 15) / Math.max(rows.length, 1)));
+  const rowFont = Math.max(4.7, Math.min(7.9, rowHeight - 1.8));
+  fill(left, y - 13, right - left, 13, cocoa);
+  text("F2", 7, left + 4, y - 8.5, "ITEM", "1 1 1");
+  text("F2", 7, left + 230, y - 8.5, "QTY", "1 1 1");
+  text("F2", 7, left + 278, y - 8.5, "PRICE", "1 1 1");
+  text("F2", 7, right - 4, y - 8.5, "TOTAL", "1 1 1", "right");
+  y -= 13;
+  for (const entry of rows) {
+    y -= rowHeight;
+    const itemName = entry.item?.name || entry.itemId || "Item";
+    text("F1", rowFont, left + 4, y + 1.5, itemName.slice(0, rowHeight < 6 ? 40 : 34));
+    text("F1", rowFont, left + 236, y + 1.5, String(entry.quantity || 0));
+    text("F1", rowFont, left + 280, y + 1.5, pdfMoney(entry.item?.price || 0));
+    text("F2", rowFont, right - 4, y + 1.5, pdfMoney(entry.lineTotal || 0), ink, "right");
+    rule(left, y - 1.8, right, y - 1.8, line, 0.35);
+  }
+
+  const pricing = order.pricing || {};
+  // Reserve a fixed totals block below the last item row. The previous HTML
+  // receipt allowed the browser to move this block onto a second page; a
+  // fixed PDF must keep the table and totals visually separate on this page.
+  const totalsY = Math.max(42, y - 55);
+  const labelX = right - 132;
+  text("F1", 7.2, labelX, totalsY + 26, "Subtotal", muted);
+  text("F2", 7.2, right, totalsY + 26, pdfMoney(pricing.subtotal || 0), ink, "right");
+  text("F1", 7.2, labelX, totalsY + 15, "Delivery fee", muted);
+  text("F2", 7.2, right, totalsY + 15, pdfMoney(pricing.deliveryFee || 0), ink, "right");
+  text("F1", 7.2, labelX, totalsY + 4, "Tax", muted);
+  text("F2", 7.2, right, totalsY + 4, pdfMoney(pricing.tax || 0), ink, "right");
+  rule(labelX, totalsY - 3, right, totalsY - 3, cocoa, 0.8);
+  text("F2", 10, labelX, totalsY - 16, "TOTAL PAID", cocoa);
+  text("F2", 11, right, totalsY - 16, pdfMoney(pricing.total || 0), cocoa, "right");
+  text("F1", 6.8, (left + right) / 2, 20, "Bakeaholic Bali - keep this receipt for delivery handoff.", muted, "right");
+
+  const content = commands.join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A5_PDF_WIDTH} ${A5_PDF_HEIGHT}] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>`,
+    `<< /Length ${Buffer.byteLength(content, "ascii")} >>\nstream\n${content}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"
+  ];
+  let pdf = "%PDF-1.4\n% fixed-a5-receipt\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf, "ascii"));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(pdf, "ascii");
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(pdf, "ascii");
 }
 
 function buildWhatsappUrl(order) {
@@ -7044,10 +8202,13 @@ function buildWhatsappUrl(order) {
     "Items:"
   ];
 
-  order.items.forEach(({ itemId, quantity }) => {
+  order.items.forEach(({ itemId, quantity, components = [] }) => {
     const item = findMenuItem(itemId);
     if (!item) return;
     lines.push(`- ${item.name} x${quantity} = Rp ${item.price * quantity}`);
+    components.forEach((component) => {
+      lines.push(`  • ${component.name} x${component.quantity}`);
+    });
   });
 
   lines.push("");
@@ -7061,6 +8222,23 @@ function buildWhatsappUrl(order) {
   lines.push(`Status: ${order.status}`);
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
+}
+
+function adminCustomerWhatsappUrl(order) {
+  let recipient = "";
+  try {
+    recipient = verifiedCustomerWhatsappNumber(order);
+  } catch (_error) {
+    return "";
+  }
+  const firstName = String(order?.customer?.firstName || order?.customer?.name || "there")
+    .trim()
+    .split(/\s+/)[0];
+  const message = [
+    `Hi ${firstName || "there"}, this is Bakeaholic Bali.`,
+    `We are contacting you about order ${String(order?.id || "").trim()}.`
+  ].join("\n");
+  return `https://wa.me/${recipient}?text=${encodeURIComponent(message)}`;
 }
 
 function customerOwnsOrder(session, order) {
@@ -7098,25 +8276,16 @@ function validateCheckoutDraft(draft, summary) {
   if (draft.destination.lat == null || draft.destination.lng == null) {
     throw new Error("Please choose a delivery location from the map");
   }
-  assertBaliDeliveryLocation(draft.destination);
 }
 
 function createOtpCode() {
   return String(crypto.randomInt(100000, 1000000));
 }
 
-function hashOtpCode(phone, code) {
-  return crypto.createHmac("sha256", SESSION_SECRET)
-    .update(`${formatIndonesianPhone(phone)}:${String(code || "").replace(/\D/g, "")}`)
-    .digest("hex");
-}
-
 async function startRegistration(mode, storeState, input = {}) {
-  const phone = input.countryCode
-    ? formatPhoneWithCountryCode(input.phone, input.countryCode)
-    : formatIndonesianPhone(input.phone);
-  if (!isValidWhatsAppPhone(phone)) {
-    throw new Error("Please enter a valid WhatsApp number with country code");
+  const phone = formatIndonesianPhone(input.phone);
+  if (!phone || phone.length < 10) {
+    throw new Error("Please enter a valid WhatsApp number");
   }
 
   const now = Date.now();
@@ -7129,7 +8298,7 @@ async function startRegistration(mode, storeState, input = {}) {
   const code = createOtpCode();
   const registration = {
     phone,
-    codeHash: hashOtpCode(phone, code),
+    code,
     attempts: 0,
     createdAt: new Date(now).toISOString(),
     expiresAt: new Date(now + 10 * 60 * 1000).toISOString(),
@@ -7138,24 +8307,13 @@ async function startRegistration(mode, storeState, input = {}) {
   };
 
   storeState.registrations.set(phone, registration);
-  saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
 
-  let message = `Sandbox code: ${code}`;
+  let message = mode === "test"
+    ? `Sandbox code: ${code}`
+    : "Verification code generated. Connect a WhatsApp provider to send it automatically.";
 
-  if (mode !== "test") {
-    if (!isWhatsappCloudReady()) {
-      storeState.registrations.delete(phone);
-      saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
-      throw new Error("WhatsApp verification is temporarily unavailable. Please try again shortly.");
-    }
-    try {
-      await sendWhatsappOtpCode(phone, code);
-    } catch (error) {
-      storeState.registrations.delete(phone);
-      saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
-      console.warn(`WhatsApp OTP delivery failed: ${error.message}`);
-      throw new Error("We could not send the WhatsApp verification code. Check the number and try again.");
-    }
+  if (mode !== "test" && isWhatsappCloudReady()) {
+    await sendWhatsappOtpCode(phone, code);
     message = "Verification code sent to WhatsApp.";
   }
 
@@ -7169,7 +8327,7 @@ async function startRegistration(mode, storeState, input = {}) {
   };
 }
 
-function verifyRegistration(mode, storeState, input = {}) {
+function verifyRegistration(storeState, input = {}) {
   const phone = formatIndonesianPhone(input.phone);
   const code = String(input.code || "").replace(/[^\d]/g, "");
   const registration = storeState.registrations.get(phone);
@@ -7179,19 +8337,16 @@ function verifyRegistration(mode, storeState, input = {}) {
 
   if (new Date(registration.expiresAt).getTime() < Date.now()) {
     storeState.registrations.delete(phone);
-    saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
     throw new Error("This verification code expired. Please request a new code");
   }
 
   registration.attempts += 1;
   if (registration.attempts > 5) {
     storeState.registrations.delete(phone);
-    saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
     throw new Error("Too many attempts. Please request a new code");
   }
 
-  if (!timingSafeEqualString(registration.codeHash, hashOtpCode(phone, code))) {
-    saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
+  if (registration.code !== code) {
     throw new Error("Incorrect verification code");
   }
 
@@ -7201,14 +8356,11 @@ function verifyRegistration(mode, storeState, input = {}) {
     customers[phone].lastLoginAt = registration.verifiedAt;
     saveCustomers(customers);
   }
-  const result = {
+  return {
     phone,
     verifiedAt: registration.verifiedAt,
     profile
   };
-  storeState.registrations.delete(phone);
-  saveRegistrations(registrationsPathForMode(mode), storeState.registrations);
-  return result;
 }
 
 async function createOrder(mode, payload, cartOverride = null, cartSessionId = "", metaAttribution = {}) {
@@ -7223,8 +8375,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
   const summary = await getCartSummaryPayload(cartState, {
     fulfillmentType: draft.fulfillmentType,
     voucherCode: draft.voucherCode,
-    destination: draft.destination,
-    requireLiveQuote: mode !== "test"
+    destination: draft.destination
   });
 
   validateCheckoutDraft(draft, summary);
@@ -7245,7 +8396,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
     id: orderId,
     mode,
     createdAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
+    expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
     status: isZeroTotalOrder ? "paid" : "awaiting_payment",
     paidAt: isZeroTotalOrder ? now.toISOString() : "",
     receiptToken: crypto.randomBytes(18).toString("hex"),
@@ -7253,6 +8404,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
     cartSessionId: /^[a-f0-9]{32}$/i.test(cartSessionId) ? cartSessionId.toLowerCase() : "",
     itemCount: summary.itemCount,
     items: summary.items,
+    fulfillmentGroups: buildFulfillmentGroups(summary.lineItems, catalog),
     customer: draft.customer,
     fulfillment: {
       type: draft.fulfillmentType,
@@ -7295,6 +8447,7 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
     schedulePaymentReminderFlow(mode, order);
   }
   if (isZeroTotalOrder) {
+    await maybeSendWhatsappPaymentConfirmed(order, `order:${order.id}:payment-confirmed`);
     await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
   }
@@ -7302,6 +8455,9 @@ async function createOrder(mode, payload, cartOverride = null, cartSessionId = "
   storeState.orders.unshift(order);
   upsertCustomerFromCheckout(order);
   saveOrders(ordersPathForMode(mode), storeState.orders);
+  await enqueueStorefrontOrderSync(order, catalog, { dataDir }).catch((error) => {
+    console.error("Ops synchronization queue error", error);
+  });
   if (isZeroTotalOrder) {
     cartState.cart.clear();
     clearPaidOrderCart(order);
@@ -7318,7 +8474,8 @@ async function createOrderForSession(mode, payload, session, cartOverride = null
     customer: {
       ...(payload.customer || {}),
       phone: `+${formatIndonesianPhone(session.phone)}`,
-      phoneVerifiedAt: session.verifiedAt || new Date().toISOString()
+      phoneVerifiedAt: session.verifiedAt || new Date().toISOString(),
+      verifiedPhone: formatIndonesianPhone(session.phone)
     }
   };
   return createOrder(mode, body, cartOverride, cartSessionId, metaAttribution);
@@ -7415,10 +8572,13 @@ async function updateOrderPaymentStatus(mode, orderId, options = {}) {
   if (previousStatus !== order.status) {
     if (order.status === "paid") {
       await maybeSendMetaPurchase(order);
+      await maybeSendWhatsappPaymentConfirmed(order, `order:${order.id}:payment-confirmed`);
       await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
     }
     if (order.status === "paid") {
       await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
+    } else if (order.status === "paid_late_review") {
+      await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid-late-review`, humanizeOrderStatus(order));
     }
   }
 
@@ -7650,22 +8810,14 @@ function handleCartUpsert(mode, storeState, response, body, strategy, cartSessio
   const nextQuantity = strategy(item, quantity);
   if (nextQuantity <= 0) {
     storeState.cart.delete(item.id);
+    storeState.cart.lastMutatedAt = Date.now();
     saveSessionCarts(cartsPathForMode(mode), getStoreState(mode).carts);
     sendJson(response, 200, buildCartSummary(storeState, { cartSessionId }));
     return;
   }
 
-  if (item.stock <= 0) {
-    sendJson(response, 409, { error: `${item.name} is out of stock` });
-    return;
-  }
-
-  if (nextQuantity > item.stock) {
-    sendJson(response, 409, { error: `Only ${item.stock} left for ${item.name}` });
-    return;
-  }
-
   storeState.cart.set(item.id, nextQuantity);
+  storeState.cart.lastMutatedAt = Date.now();
   saveSessionCarts(cartsPathForMode(mode), getStoreState(mode).carts);
   sendJson(response, 200, buildCartSummary(storeState, { cartSessionId }));
 }
@@ -7792,7 +8944,7 @@ function handleApi(requestUrl, request, response) {
             event: payload.event || body.event || "",
             identifiers: biteshipWebhookIdentifiers(body),
             status: payload.status || body.status || "",
-            body
+            body: stripBiteshipProofFields(body)
           });
           return;
         }
@@ -7814,8 +8966,33 @@ function handleApi(requestUrl, request, response) {
         const previousStatus = order.status;
         const previousShipmentStatus = order.fulfillment?.shipment?.status || "";
         const shipmentStatus = payload.status || body.status || order.fulfillment.shipment.status || "";
-        const nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
-        const normalizedShipment = shipmentFromBiteshipPayload(payload, order.fulfillment.shipment);
+        let nextOrderStatus = shipmentStatusToOrderStatus(shipmentStatus);
+        let normalizedShipment = shipmentFromBiteshipPayload(payload, order.fulfillment.shipment);
+        const observedHandoff = shipmentHasObservedHandoff(order.fulfillment.shipment)
+          || ["picked", "picked_up", "successfully_pickup", "successfully_picked_up", "dropping_off", "courier_delivering", "in_transit", "on_delivery"].includes(normalizedShipmentStatus(shipmentStatus));
+        if (observedHandoff && !normalizedShipment.pickupObservedAt) {
+          normalizedShipment.pickupObservedAt = new Date().toISOString();
+        }
+        let deliveryProof = order.fulfillment.shipment.deliveryProof || null;
+        let deliveryVerificationError = "";
+        if (nextOrderStatus === "delivered") {
+          try {
+            const verified = await confirmBiteshipDeliveredShipment({
+              ...order,
+              fulfillment: { ...order.fulfillment, shipment: { ...order.fulfillment.shipment, ...normalizedShipment } }
+            });
+            normalizedShipment = { ...normalizedShipment, ...verified.shipment };
+            deliveryProof = verified.proof;
+          } catch (error) {
+            nextOrderStatus = "delivery_issue";
+            deliveryVerificationError = error.message;
+          }
+        }
+        const verifiedPrePickupFailure = isRecoverableFailedShipmentStatus(shipmentStatus)
+          && !observedHandoff
+          && order.payment?.status === "paid"
+          && ["paid", "preparing"].includes(previousStatus);
+        if (verifiedPrePickupFailure) nextOrderStatus = "preparing";
         const actualPrice = biteshipActualPrice(payload, body);
         const quotedPrice = Number(order.pricing?.deliveryFee || 0);
         const previousActualPrice = Number(order.fulfillment?.shipment?.actualPrice);
@@ -7863,8 +9040,12 @@ function handleApi(requestUrl, request, response) {
             body.tracking_url ||
             order.fulfillment.shipment.trackingLink ||
             "",
+          pickupObservedAt: normalizedShipment.pickupObservedAt || order.fulfillment.shipment.pickupObservedAt || "",
           updatedAt: new Date().toISOString(),
-          lastWebhook: body
+          lastWebhook: stripBiteshipProofFields(body),
+          ...(deliveryProof ? { deliveryProof } : {}),
+          providerDeliveredAwaitingHandoffReview: shipmentStatusToOrderStatus(shipmentStatus) === "delivered" && Boolean(deliveryVerificationError),
+          deliveryVerificationError
         };
         if (nextOrderStatus) {
           order.status = nextOrderStatus;
@@ -7877,6 +9058,9 @@ function handleApi(requestUrl, request, response) {
         const whatsappResult = previousStatus !== order.status
           ? await maybeSendWhatsappOrderStatus(order, previousStatus)
           : { sent: false, skipped: true, reason: "same_order_status" };
+        const adminDeliveryCompleteWhatsappResult = previousStatus !== order.status && order.status === "delivered"
+          ? await maybeSendWhatsappAdminDeliveryComplete(order, `biteship:${order.fulfillment.shipment.orderId}:delivery-complete`)
+          : { sent: false, skipped: true, reason: "order_not_newly_delivered" };
         const shippingWhatsappResult = await notifyShipmentUpdate(order, shipmentNotificationKey);
         const adminWhatsappResult = shouldAlertAdminForBiteshipWebhook({ shipmentStatus, priceChanged })
           ? await maybeSendWhatsappAdminAlert(
@@ -7887,6 +9071,9 @@ function handleApi(requestUrl, request, response) {
                 : `Biteship ${shipmentStatus || "delivery update"}`
             )
           : { sent: false, skipped: true, reason: "normal_biteship_status" };
+        const deliveryRecoveryWhatsappResult = verifiedPrePickupFailure
+          ? await maybeSendWhatsappAdminDeliveryRecoveryAlert(order, shipmentStatus, `${shipmentNotificationKey}:verified-recovery`)
+          : { sent: false, skipped: true, reason: "not_verified_pre_pickup_failure" };
         recordBiteshipWebhookLog({
           matched: true,
           event: payload.event || body.event || "",
@@ -7902,9 +9089,11 @@ function handleApi(requestUrl, request, response) {
           priceChanged,
           merchantAbsorbedAmount,
           whatsappResult,
+          adminDeliveryCompleteWhatsappResult,
           shippingWhatsappResult,
           adminWhatsappResult,
-          body
+          deliveryRecoveryWhatsappResult,
+          body: stripBiteshipProofFields(body)
         });
         saveOrders(ordersPathForMode(order.mode || "live"), getStoreState(order.mode || "live").orders);
       })
@@ -7920,8 +9109,7 @@ function handleApi(requestUrl, request, response) {
 
   if (request.method === "GET" && pathname === "/api/public-config") {
     sendJson(response, 200, {
-      googleMapsApiKey: getIntegrationConfig().googleMapsApiKey,
-      whatsappOtpAvailable: isWhatsappCloudReady()
+      googleMapsApiKey: getIntegrationConfig().googleMapsApiKey
     });
     return true;
   }
@@ -8139,7 +9327,7 @@ function handleApi(requestUrl, request, response) {
       promo: catalog.promo,
       brandStory: withDefaultBrandStory(catalog.brandStory),
       categories: catalog.categories,
-      items: catalog.items,
+      items: catalog.items.filter((item) => item.isBundle !== true),
       paymentMethods: availablePaymentMethods(mode)
     });
     return true;
@@ -8158,8 +9346,7 @@ function handleApi(requestUrl, request, response) {
       fulfillmentType: requestUrl.searchParams.get("fulfillment"),
       voucherCode: requestUrl.searchParams.get("voucher"),
       cartSessionId: sessionId,
-      destination,
-      reportQuoteFailure: mode !== "test"
+      destination
     })
       .then((payload) => sendJson(response, 200, payload))
       .catch((error) => sendJson(response, 400, { error: error.message }));
@@ -8197,6 +9384,29 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
+  if (request.method === "GET" && pathname === "/api/order/receipt.pdf") {
+    const orderId = String(requestUrl.searchParams.get("id") || "").trim();
+    const token = String(requestUrl.searchParams.get("token") || "").trim();
+    const order = findOrder(mode, orderId);
+    const adminSession = currentAdminSession(request);
+    const customerSession = currentCustomerSession(request);
+    const tokenMatches = token && order?.receiptToken && timingSafeEqualString(token, order.receiptToken);
+    const customerOwnsDocument = customerSession && order && customerOwnsOrder(customerSession, order);
+    if (!order || (!tokenMatches && !adminSession && !customerOwnsDocument)) {
+      sendJson(response, 404, { error: "Order document not found" });
+      return true;
+    }
+    const document = buildOrderDocument(order);
+    const filename = `${String(order.id || "receipt").replace(/[^a-z0-9_-]+/gi, "-")}-receipt.pdf`;
+    response.writeHead(200, {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${filename}"`,
+      ...defaultSecurityHeaders("private, no-store, max-age=0")
+    });
+    response.end(buildFixedA5ReceiptPdf(document));
+    return true;
+  }
+
   if (request.method === "GET" && pathname.startsWith("/api/order/document/")) {
     const ref = decodeURIComponent(pathname.replace("/api/order/document/", ""));
     const parsedRef = parsePublicOrderReference(ref);
@@ -8221,9 +9431,29 @@ function handleApi(requestUrl, request, response) {
     // immediately, then reconcile unresolved card payments in the background.
     sendJson(response, 200, {
       mode,
-      orders: storeState.orders.map((order) => enrichOrder(order))
+      orders: storeState.orders.map((order) => enrichOrder(order, {
+        includeAdminCustomerWhatsappUrl: true,
+        includeAdminDeliveryProofAvailability: true
+      }))
     });
     scheduleUnresolvedCardPaymentSweep(mode);
+    return true;
+  }
+
+  if (request.method === "GET" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/delivery-proof")) {
+    const session = requireAdminPermission(request, response, "orders");
+    if (!session) return true;
+    const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/delivery-proof", ""));
+    const destination = verifiedBiteshipDeliveryProofUrl(findOrder(mode, orderId), requestUrl.searchParams.get("index") || "0");
+    if (!destination) {
+      sendJson(response, 404, { error: "No verified delivery proof is available for this order" });
+      return true;
+    }
+    response.writeHead(302, {
+      Location: destination,
+      ...defaultSecurityHeaders("private, no-store, max-age=0")
+    });
+    response.end();
     return true;
   }
 
@@ -8277,6 +9507,17 @@ function handleApi(requestUrl, request, response) {
     const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/self-delivery", ""));
     parseBody(request)
       .then((body) => useSelfDelivery(mode, orderId, session, body))
+      .then((order) => sendJson(response, 200, { ok: true, order }))
+      .catch((error) => sendJson(response, 400, { error: error.message }));
+    return true;
+  }
+
+  if (request.method === "POST" && pathname.startsWith("/api/admin/orders/") && pathname.endsWith("/correct-disputed-delivery")) {
+    const session = requireAdminPermission(request, response, "orders");
+    if (!session) return true;
+    const orderId = decodeURIComponent(pathname.replace("/api/admin/orders/", "").replace("/correct-disputed-delivery", ""));
+    parseBody(request)
+      .then((body) => correctDisputedDeliveryToSelfDelivery(mode, orderId, session, body))
       .then((order) => sendJson(response, 200, { ok: true, order }))
       .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
@@ -8510,7 +9751,7 @@ function handleApi(requestUrl, request, response) {
   if (request.method === "POST" && pathname === "/api/meta/events") {
     parseBody(request)
       .then(async (body) => {
-        const allowedEvents = new Set(["PageView", "ViewContent", "AddToCart", "InitiateCheckout", "AddPaymentInfo", "Purchase"]);
+        const allowedEvents = new Set(["PageView", "ViewContent", "AddToCart", "InitiateCheckout", "Purchase"]);
         const eventName = String(body.eventName || "");
         if (!allowedEvents.has(eventName)) {
           sendJson(response, 400, { error: "Unsupported analytics event" });
@@ -8553,62 +9794,30 @@ function handleApi(requestUrl, request, response) {
     return true;
   }
 
-  if (request.method === "POST" && pathname === "/api/funnel/events") {
-    parseBody(request)
-      .then((body) => {
-        const event = String(body.event || "");
-        if (!isSupportedClientFunnelEvent(event)) {
-          sendJson(response, 400, { error: "Unsupported funnel event" });
-          return;
-        }
-        recordFunnelEvent(request, mode, event, "observed");
-        sendJson(response, 202, { ok: true });
-      })
-      .catch((error) => sendJson(response, 400, { error: error.message }));
-    return true;
-  }
-
-  if (request.method === "GET" && pathname === "/api/admin/funnel") {
-    const session = requireAdminPermission(request, response, "reports");
-    if (!session) return true;
-    sendJson(response, 200, funnelReport(requestUrl.searchParams.get("days")));
-    return true;
-  }
-
   if (request.method === "POST" && pathname === "/api/cart") {
     const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
-      .then((body) => {
-        const result = handleCartUpsert(
+      .then((body) =>
+        handleCartUpsert(
           mode,
           cartState,
           response,
           body,
           (item, quantity) => (cartState.cart.get(item.id) || 0) + quantity,
           sessionId
-        );
-        recordFunnelEvent(request, mode, "cart_changed", "success");
-        return result;
-      })
-      .catch((error) => {
-        recordFunnelEvent(request, mode, "cart_changed", "failed", error.message);
-        sendJson(response, 400, { error: error.message });
-      });
+        )
+      )
+      .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
   }
 
   if (request.method === "PATCH" && pathname === "/api/cart") {
     const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
-      .then((body) => {
-        const result = handleCartUpsert(mode, cartState, response, body, (_item, quantity) => quantity, sessionId);
-        recordFunnelEvent(request, mode, "cart_changed", "success");
-        return result;
-      })
-      .catch((error) => {
-        recordFunnelEvent(request, mode, "cart_changed", "failed", error.message);
-        sendJson(response, 400, { error: error.message });
-      });
+      .then((body) =>
+        handleCartUpsert(mode, cartState, response, body, (_item, quantity) => quantity, sessionId)
+      )
+      .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
   }
 
@@ -8616,23 +9825,16 @@ function handleApi(requestUrl, request, response) {
     const ipAddress = requestIpAddress(request);
     parseBody(request)
       .then(async (body) => {
-        const phone = body.countryCode
-          ? formatPhoneWithCountryCode(body.phone, body.countryCode)
-          : formatIndonesianPhone(body.phone);
+        const phone = formatIndonesianPhone(body.phone);
         if (!checkRateLimit(`otp-start-ip:${ipAddress}`, 8, 15 * 60 * 1000)
           || !checkRateLimit(`otp-start-phone:${phone}`, 5, 15 * 60 * 1000)) {
-          recordFunnelEvent(request, mode, "otp_requested", "failed", "rate_limited");
           sendJson(response, 429, { error: "Too many verification requests. Please try again later." });
           return;
         }
         const registration = await startRegistration(mode, storeState, body);
-        recordFunnelEvent(request, mode, "otp_requested", "success");
         sendJson(response, 200, { registration });
       })
-      .catch((error) => {
-        recordFunnelEvent(request, mode, "otp_requested", "failed", error.message);
-        sendJson(response, 400, { error: error.message });
-      });
+      .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
   }
 
@@ -8643,23 +9845,18 @@ function handleApi(requestUrl, request, response) {
         const phone = formatIndonesianPhone(body.phone);
         if (!checkRateLimit(`otp-verify-ip:${ipAddress}`, 20, 15 * 60 * 1000)
           || !checkRateLimit(`otp-verify-phone:${phone}`, 10, 15 * 60 * 1000)) {
-          recordFunnelEvent(request, mode, "otp_verified", "failed", "rate_limited");
           sendJson(response, 429, { error: "Too many verification attempts. Please try again later." });
           return;
         }
-        const registration = verifyRegistration(mode, storeState, body);
+        const registration = verifyRegistration(storeState, body);
         setSignedSessionCookie(response, request, CUSTOMER_SESSION_COOKIE, {
           role: "customer",
           phone: registration.phone,
           verifiedAt: registration.verifiedAt
         }, SESSION_TTL_SECONDS);
-        recordFunnelEvent(request, mode, "otp_verified", "success");
         sendJson(response, 200, { registration });
       })
-      .catch((error) => {
-        recordFunnelEvent(request, mode, "otp_verified", "failed", error.message);
-        sendJson(response, 400, { error: error.message });
-      });
+      .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
   }
 
@@ -8685,13 +9882,9 @@ function handleApi(requestUrl, request, response) {
     parseBody(request)
       .then((body) => {
         const profile = saveCustomerProfile(body, session.phone);
-        recordFunnelEvent(request, mode, "profile_saved", "success");
         sendJson(response, 200, { profile });
       })
-      .catch((error) => {
-        recordFunnelEvent(request, mode, "profile_saved", "failed", error.message);
-        sendJson(response, 400, { error: error.message });
-      });
+      .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
   }
 
@@ -8735,13 +9928,11 @@ function handleApi(requestUrl, request, response) {
   if (request.method === "POST" && pathname === "/api/checkout") {
     const session = requireCustomerSession(request, response);
     if (!session) {
-      recordFunnelEvent(request, mode, "checkout_attempted", "failed", "login_required");
       return true;
     }
     const { cartState, sessionId } = getSessionCartState(mode, request, response);
     parseBody(request)
       .then(async (body) => {
-        recordFunnelEvent(request, mode, "checkout_attempted", "started");
         const order = await createOrderForSession(
           mode,
           body,
@@ -8750,13 +9941,9 @@ function handleApi(requestUrl, request, response) {
           sessionId,
           metaAttributionFromRequest(request)
         );
-        recordFunnelEvent(request, mode, "checkout_completed", "success");
         sendJson(response, 201, { order });
       })
-      .catch((error) => {
-        recordFunnelEvent(request, mode, "checkout_completed", "failed", error.message);
-        sendJson(response, 400, { error: error.message });
-      });
+      .catch((error) => sendJson(response, 400, { error: error.message }));
     return true;
   }
 
@@ -8899,24 +10086,10 @@ function handleApi(requestUrl, request, response) {
           }
           if (refundOrder.refund.status !== previousRefundStatus) {
             if (refundOrder.mode !== "test" && isWhatsappCloudReady()) {
-              // The request notification was already sent when the admin
-              // cancelled the order. Only a failure needs another alert.
-              if (refundOrder.refund.status === "failed" && !refundOrder.refund.notifications?.adminFailureSentAt) {
-                try {
-                  const adminResponse = await sendWhatsappAdminRefundUpdate(refundOrder);
-                  refundOrder.refund.notifications = {
-                    ...(refundOrder.refund.notifications || {}),
-                    adminFailureSentAt: new Date().toISOString(),
-                    adminFailureResults: adminResponse.results
-                  };
-                } catch (error) {
-                  refundOrder.refund.notifications = {
-                    ...(refundOrder.refund.notifications || {}),
-                    adminFailureError: error.message,
-                    adminFailureAttemptedAt: new Date().toISOString()
-                  };
-                }
-              }
+              // Xendit processed is the first confirmed terminal success;
+              // do not send refund_completed for requested or pending states.
+              await maybeSendWhatsappRefundCompleted(refundOrder, `order:${refundOrder.id}:refund-processed`);
+              await maybeSendWhatsappAdminRefundTerminalUpdate(refundOrder, `order:${refundOrder.id}:refund-${refundOrder.refund.status}`);
             }
           }
           saveOrders(ordersPathForMode(refundOrder.mode || "live"), getStoreState(refundOrder.mode || "live").orders);
@@ -9009,9 +10182,11 @@ function handleApi(requestUrl, request, response) {
           if (order.status === "paid") {
             clearPaidOrderCart(order);
             await maybeSendMetaPurchase(order);
-            await maybeSendWhatsappOrderStatus(order, previousStatus);
+            await maybeSendWhatsappPaymentConfirmed(order, `order:${order.id}:payment-confirmed`);
             await maybeSendWhatsappPaymentReceipt(order, `order:${order.id}:receipt`);
             await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid`, humanizeOrderStatus(order));
+          } else if (order.status === "paid_late_review") {
+            await maybeSendWhatsappAdminAlert(order, `order:${order.id}:paid-late-review`, humanizeOrderStatus(order));
           } else if (order.status === "expired") {
             order.expiredAt = order.expiredAt || new Date().toISOString();
             order.paymentReminderFlow = {
@@ -9119,18 +10294,8 @@ const server = http.createServer((request, response) => {
     return;
   }
 
-  if ((request.method === "GET" || request.method === "HEAD") && requestUrl.pathname.startsWith("/products/")) {
-    const productId = productIdFromPathname(requestUrl.pathname);
-    const item = productId ? findMenuItem(productId) : null;
-    if (!item) {
-      sendProductNotFound(response, request.method);
-      return;
-    }
-    sendProductPage(response, item, request.method);
-    return;
-  }
-
-  const relativePath = requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname;
+  const isProductPage = /^\/products\/[^/]+\/?$/.test(requestUrl.pathname);
+  const relativePath = requestUrl.pathname === "/" || isProductPage ? "/index.html" : requestUrl.pathname;
   const targetPath = path.normalize(path.join(rootDir, relativePath));
   if (!targetPath.startsWith(`${rootDir}${path.sep}`) && targetPath !== rootDir) {
     sendJson(response, 403, { error: "Forbidden" });
@@ -9146,7 +10311,6 @@ const server = http.createServer((request, response) => {
 
 if (require.main === module) {
   server.listen(port, host, () => {
-    scheduleExistingPendingAdminActions();
     scheduleExistingPaymentReminderFlows();
     sweepBiteshipDeliveryStatuses().catch((error) => {
       console.warn(`Biteship delivery sweep failed: ${error.message}`);
@@ -9170,11 +10334,20 @@ if (require.main === module) {
 }
 
 module.exports = {
+  addressArea,
+  adminOrderActionReviewMessage,
+  adminCustomerWhatsappUrl,
   adminPermissions,
   adminOrderReviewButtonQuery,
   adminOrderReviewWhatsappParameters,
   adminWhatsappParameters,
   adminWhatsappNumbers,
+  approveV5PaidOrderFromWhatsapp,
+  isProductionRuntime,
+  isPublicStaticFile,
+  isShipmentAllocatedForMessaging,
+  applyXenditInvoiceStatusToOrder,
+  applyXenditPaymentRequestStatusToOrder,
   applyXenditQrCodeStatusToOrder,
   applyXenditPaymentSessionStatusToOrder,
   applyXenditRefundStatusToOrder,
@@ -9188,22 +10361,20 @@ module.exports = {
   defaultSecurityHeaders,
   customerShippingWhatsappParameters,
   findOrderPaymentByXenditReference,
-  formatIndonesianPhone,
-  formatPhoneWithCountryCode,
   hasBiteshipShipmentForMessaging,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
-  isValidWhatsAppPhone,
-  isBaliDeliveryLocation,
   isFailedXenditPaymentEvent,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,
   parsePublicOrderReference,
   paymentExpiredWhatsappParameters,
+  paymentReminderFlowTimes,
   paymentReminderWhatsappParameters,
   receiptWhatsappParameters,
   runWhatsappTemplateDiagnostics,
   maybeSendWhatsappPaymentReceipt,
+  maybeSendWhatsappPaymentReminder,
   maybeSendWhatsappAdminAlert,
   sendWhatsappAdminAlert,
   sendWhatsappAdminRefundUpdate,
@@ -9215,9 +10386,25 @@ module.exports = {
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   normalizedShipmentStatus,
+  normalizeWhatsappOrderTemplateName,
+  finalizePendingAdminOrderAction,
   isRecoverableFailedShipmentStatus,
+  shipmentHasObservedHandoff,
+  providerStatusCanCompleteOrder,
+  isDeliveryRecoveryStatus,
+  maybeSendWhatsappAdminDeliveryRecoveryAlert,
+  correctDisputedDeliveryToSelfDelivery,
   replacementTrackingNotificationReady,
   assertDeliveryRecoveryRequest,
+  shipmentRequestSnapshot,
+  replaceStoreOrdersForTest,
+  sameShipmentRequestSnapshot,
+  findStaffNotificationFromReply,
+  isCurrentStaffV5ContactReply,
+  verifyMetaWebhookSignature,
+  scheduleV5CancelFromWhatsapp,
+  undoPendingAdminOrderAction,
+  isContactCustomerCommand,
   isSupportedImageBuffer,
   metaAttributionFromRequest,
   metaUserDataFromOrder,
@@ -9231,15 +10418,22 @@ module.exports = {
   xenditKeyMode,
   hashAdminPassword,
   hashRecoveryCode,
+  isCurrentCartMutationTimestamp,
+  normalizeCustomerDetails,
   generateRecoveryCodes,
   verifyAdminPassword,
   base32Encode,
   totpCode,
   verifyTotp,
+  verifiedCustomerWhatsappNumber,
+  verifiedBiteshipDeliveryProofUrl,
   productionCookieDomain,
   serializeCookie,
-  isSupportedClientFunnelEvent,
-  productIdFromPathname,
-  productPageHtml,
-  metaProductDeepLinkConfig
+  bundlePromotionIsActive,
+  computeAutomaticBundleDiscount,
+  combineDiscounts,
+  buildFixedA5ReceiptPdf,
+  buildFulfillmentGroups,
+  normalizeMarketplaceCatalog,
+  productMarketplaceFields
 };

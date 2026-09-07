@@ -355,6 +355,10 @@ const integrationFields = {
   whatsappAdminNumber3: document.getElementById("whatsappAdminNumber3Input"),
   whatsappAdminTemplateName: document.getElementById("whatsappAdminTemplateNameInput"),
   whatsappAdminShippingTemplateName: document.getElementById("whatsappAdminShippingTemplateNameInput"),
+  whatsappAdminDeliveryRecoveryTemplateName: document.getElementById("whatsappAdminDeliveryRecoveryTemplateNameInput"),
+  whatsappAdminDeliveryCompleteTemplateName: document.getElementById("whatsappAdminDeliveryCompleteTemplateNameInput"),
+  whatsappRefundCompletedTemplateName: document.getElementById("whatsappRefundCompletedTemplateNameInput"),
+  whatsappAdminRefundTemplateName: document.getElementById("whatsappAdminRefundTemplateNameInput"),
   whatsappTemplateLanguage: document.getElementById("whatsappTemplateLanguageInput")
 };
 const secretIntegrationKeys = new Set([
@@ -1174,7 +1178,7 @@ function renderAdminOrders() {
           ? "status-paid"
           : "";
     const deliveryActions = `${canApprove
-      ? `<button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}">${canRetryFailedBooking ? "Retry delivery booking" : "Approve delivery"}</button>`
+      ? `<button class="admin-button" type="button" data-approve-delivery="${escapeHtml(order.id)}">${canRetryFailedBooking ? "Review & retry delivery" : "Review & request delivery"}</button>`
       : isDeliveryIssue
         ? `
           <button class="admin-button secondary" type="button" data-sync-delivery="${escapeHtml(order.id)}">Sync delivery status</button>
@@ -1190,13 +1194,27 @@ function renderAdminOrders() {
             ? `<button class="admin-button danger" type="button" data-cancel-order="${escapeHtml(order.id)}">Cancel order &amp; refund</button>`
             : ""}`;
     const lineItems = (order.lineItems || []).map((entry) => `
-      <li>${entry.quantity}x ${escapeHtml(entry.item?.name || entry.itemId)} (${formatRupiah.format(entry.lineTotal || 0)})</li>
+      <li>${entry.quantity}x ${escapeHtml(entry.item?.name || entry.itemId)} (${formatRupiah.format(entry.lineTotal || 0)})${Array.isArray(entry.components) && entry.components.length ? `<ul>${entry.components.map((component) => `<li>${escapeHtml(component.name)} ×${Number(component.quantity || 0)}</li>`).join("")}</ul>` : ""}</li>
     `).join("");
     const shipmentText = order.fulfillment?.shipment?.orderId
       ? `Biteship ${order.fulfillment.shipment.orderId}`
       : order.fulfillment?.shipmentError
         ? order.fulfillment.shipmentError
         : "Not requested yet";
+    // Proof is provider-verified before it is stored. Do not surface Biteship's
+    // raw payload here: staff need only an authenticated HTTPS proof link (or a
+    // clear absence), not untrusted driver/customer metadata.
+    const deliveryProofAvailable = Boolean(order.fulfillment?.shipment?.deliveryProofAvailable);
+    const deliveryProofDetails = order.fulfillment?.shipment?.orderId
+      ? `
+        <div class="admin-delivery-note">
+          <strong>Official delivery proof</strong><br>
+          ${deliveryProofAvailable
+            ? `<a href="/api/admin/orders/${encodeURIComponent(order.id)}/delivery-proof" target="_blank" rel="noopener noreferrer">Open verified Biteship proof</a>`
+            : "No verified provider proof is available yet."}
+        </div>
+      `
+      : "";
     const notificationErrors = [
       order.whatsappShippingNotificationError ? `Customer shipping WhatsApp: ${order.whatsappShippingNotificationError}` : "",
       order.adminWhatsappShippingNotificationError ? `Admin shipping WhatsApp: ${order.adminWhatsappShippingNotificationError}` : "",
@@ -1282,6 +1300,14 @@ function renderAdminOrders() {
             <small>${escapeHtml(shipmentText)}</small>
           </div>
         </div>
+        ${deliveryProofDetails}
+        ${canApprove ? `
+          <div class="admin-delivery-note">
+            <strong>Driver route to verify before requesting</strong><br>
+            Pickup: ${escapeHtml(state.catalog?.store?.kitchenAddress || "Bakeaholic Bali kitchen")}<br>
+            Drop-off: ${escapeHtml(order.fulfillment?.address || order.customer?.address || "-")}
+          </div>
+        ` : ""}
         <div class="admin-order-actions">
           <a class="admin-button secondary" href="${escapeHtml(order.documentUrl || "#")}" target="_blank" rel="noreferrer">Open &amp; print invoice</a>
           <a class="admin-button secondary" href="${escapeHtml(order.whatsappUrl || "#")}" target="_blank" rel="noreferrer" data-contact-customer="${escapeHtml(order.id)}">Contact customer</a>
@@ -2430,6 +2456,10 @@ async function saveIntegrations() {
       ].map((value) => value.trim()).filter(Boolean).slice(0, 3).join(","),
       whatsappAdminTemplateName: integrationFields.whatsappAdminTemplateName.value.trim(),
       whatsappAdminShippingTemplateName: integrationFields.whatsappAdminShippingTemplateName.value.trim(),
+      whatsappAdminDeliveryRecoveryTemplateName: integrationFields.whatsappAdminDeliveryRecoveryTemplateName.value.trim(),
+      whatsappAdminDeliveryCompleteTemplateName: integrationFields.whatsappAdminDeliveryCompleteTemplateName.value.trim(),
+      whatsappRefundCompletedTemplateName: integrationFields.whatsappRefundCompletedTemplateName.value.trim(),
+      whatsappAdminRefundTemplateName: integrationFields.whatsappAdminRefundTemplateName.value.trim(),
       whatsappTemplateLanguage: integrationFields.whatsappTemplateLanguage.value.trim()
     };
     const response = await request("/api/admin/integrations", {
@@ -2568,14 +2598,27 @@ async function loadOrders() {
 }
 
 async function approveDelivery(orderId) {
+  const order = state.orders.find((entry) => entry.id === orderId);
+  if (!order) {
+    setStatus(`Order ${orderId} is no longer available. Refresh orders and try again.`);
+    return;
+  }
+  const pickup = state.catalog?.store?.kitchenAddress || "Bakeaholic Bali kitchen";
+  const dropoff = order.fulfillment?.address || order.customer?.address || "Customer address unavailable";
+  if (!window.confirm(
+    `Request a Biteship driver for ${orderId}?\n\nPickup (driver starts here):\n${pickup}\n\nDrop-off (customer):\n${dropoff}\n\nContinue only after the package is ready and both locations are correct.`
+  )) {
+    setStatus(`No delivery was requested for ${orderId}.`);
+    return;
+  }
   try {
-    setStatus(`Approving delivery for ${orderId}...`);
+    setStatus(`Requesting delivery for ${orderId}...`);
     await request(`/api/admin/orders/${encodeURIComponent(orderId)}/approve-delivery`, {
       method: "POST",
       body: JSON.stringify({})
     });
     await loadOrders();
-    setStatus(`Delivery approved for ${orderId}.`);
+    setStatus(`Delivery requested for ${orderId}.`);
   } catch (error) {
     setStatus(error.message);
   }

@@ -1,11 +1,17 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const vm = require("node:vm");
+const path = require("node:path");
 
 const {
+  addressArea,
+  adminOrderActionReviewMessage,
+  adminCustomerWhatsappUrl,
   adminPermissions,
   adminOrderReviewButtonQuery,
   adminOrderReviewWhatsappParameters,
+  applyXenditInvoiceStatusToOrder,
+  applyXenditPaymentRequestStatusToOrder,
   applyXenditQrCodeStatusToOrder,
   applyXenditPaymentSessionStatusToOrder,
   applyXenditRefundStatusToOrder,
@@ -15,28 +21,31 @@ const {
   buildXenditPaymentSessionPayload,
   adminWhatsappParameters,
   adminWhatsappNumbers,
+  approveV5PaidOrderFromWhatsapp,
+  isProductionRuntime,
+  isPublicStaticFile,
+  isShipmentAllocatedForMessaging,
   availablePaymentMethods,
   configuredWhatsappOrderTemplateName,
   customerShippingWhatsappParameters,
   defaultSecurityHeaders,
   findOrderPaymentByXenditReference,
-  formatIndonesianPhone,
-  formatPhoneWithCountryCode,
   hasBiteshipShipmentForMessaging,
+  isCurrentStaffV5ContactReply,
   isOrderPaymentWindowExpired,
   isSuccessfulXenditPaymentEvent,
-  isValidWhatsAppPhone,
-  isBaliDeliveryLocation,
   isFailedXenditPaymentEvent,
   isSupportedImageBuffer,
   metaAttributionFromRequest,
   metaUserDataFromOrder,
   isXenditRefundEvent,
   orderUpdateWhatsappParameters,
+  paymentReminderFlowTimes,
   orderIdFromWhatsappReplyContext,
   parsePublicOrderReference,
   runWhatsappTemplateDiagnostics,
   maybeSendWhatsappPaymentReceipt,
+  maybeSendWhatsappPaymentReminder,
   maybeSendWhatsappAdminAlert,
   sendWhatsappAdminAlert,
   sendWhatsappAdminRefundUpdate,
@@ -47,9 +56,16 @@ const {
   shippingWhatsappDetails,
   shipmentStatusToOrderStatus,
   normalizedShipmentStatus,
+  finalizePendingAdminOrderAction,
+  normalizeWhatsappOrderTemplateName,
+  shipmentHasObservedHandoff,
+  providerStatusCanCompleteOrder,
+  isDeliveryRecoveryStatus,
   isRecoverableFailedShipmentStatus,
   replacementTrackingNotificationReady,
   assertDeliveryRecoveryRequest,
+  shipmentRequestSnapshot,
+  replaceStoreOrdersForTest,
   xenditPaymentAmount,
   xenditOrderReferenceIds,
   xenditQrExternalIds,
@@ -59,94 +75,120 @@ const {
   xenditKeyMode,
   hashAdminPassword,
   hashRecoveryCode,
+  isCurrentCartMutationTimestamp,
+  normalizeCustomerDetails,
   generateRecoveryCodes,
   verifyAdminPassword,
   base32Encode,
   totpCode,
   verifyTotp,
+  verifiedCustomerWhatsappNumber,
+  verifiedBiteshipDeliveryProofUrl,
+  verifyMetaWebhookSignature,
+  scheduleV5CancelFromWhatsapp,
+  undoPendingAdminOrderAction,
   productionCookieDomain,
   serializeCookie,
-  isSupportedClientFunnelEvent,
-  productIdFromPathname,
-  productPageHtml,
-  metaProductDeepLinkConfig
+  bundlePromotionIsActive,
+  computeAutomaticBundleDiscount,
+  combineDiscounts,
+  buildFixedA5ReceiptPdf
 } = require("./server");
 
-test("Meta Collection mapping uses the Ops-ranked available products", () => {
-  assert.deepEqual(metaProductDeepLinkConfig("bliss-peanutella"), {
-    opsProductId: "PEANUTELLA", barcode: "101066051706", latestStock: 42, featured: true
+test("cart mutation expiry handles exact, stale, missing, invalid and future timestamps", () => {
+  const now = Date.parse("2026-09-03T09:00:00.000Z");
+  const day = 24 * 60 * 60 * 1000;
+  assert.equal(isCurrentCartMutationTimestamp(now - day + 1, now), true);
+  assert.equal(isCurrentCartMutationTimestamp(now - day, now), false);
+  assert.equal(isCurrentCartMutationTimestamp(now - day - 1, now), false);
+  assert.equal(isCurrentCartMutationTimestamp(0, now), false);
+  assert.equal(isCurrentCartMutationTimestamp("invalid", now), false);
+  assert.equal(isCurrentCartMutationTimestamp(now + 1, now), false);
+});
+
+test("fixed customer receipts are one A5 PDF page for standard and longer orders", () => {
+  const line = (index) => ({
+    itemId: `bliss-${index}`,
+    quantity: index % 3 + 1,
+    item: { name: `Bakeaholic Bliss Ball flavour ${index + 1}`, price: 75000 },
+    lineTotal: (index % 3 + 1) * 75000
   });
-  assert.deepEqual(metaProductDeepLinkConfig("cookie-lamington"), {
-    opsProductId: "LAMINGTON", barcode: "101005051856", latestStock: 20, featured: true
+  const document = (lineCount) => ({
+    store: { name: "Bakeaholic Bali", perkTitle: "WhatsApp +62 815-5700-627" },
+    order: {
+      id: "BAK-0147",
+      status: "preparing",
+      itemCount: lineCount,
+      customer: { name: "Ibu Lina", phone: "628111596778", email: "maiareview@gmail.com" },
+      fulfillment: {
+        address: "Gg. Tunjung Sari, Sanur, Denpasar Selatan, Kota Denpasar, Bali 80227, Indonesia",
+        shipment: { orderId: "biteship-0147", status: "allocated", courier: { company: "Grab" } }
+      },
+      payment: { label: "Credit / Debit Card" },
+      lineItems: Array.from({ length: lineCount }, (_, index) => line(index)),
+      pricing: { subtotal: lineCount * 75000, deliveryFee: 26000, tax: 26100, total: lineCount * 75000 + 52100 }
+    }
   });
-  assert.deepEqual(metaProductDeepLinkConfig("oats-banoffee-pie"), {
-    opsProductId: "BANOFFEE", barcode: "101005051850", latestStock: 5, featured: true
-  });
-  assert.deepEqual(metaProductDeepLinkConfig("mallow-vanilla"), {
-    opsProductId: "VANILLAM", barcode: "1010011202401", latestStock: 6, featured: true
-  });
-  for (const itemId of ["bliss-triple-chocolate", "cookie-choc-chip", "cookie-smores"]) {
-    assert.equal(metaProductDeepLinkConfig(itemId).featured, false);
+  for (const lineCount of [3, 18]) {
+    const pdf = buildFixedA5ReceiptPdf(document(lineCount)).toString("ascii");
+    assert.match(pdf, /\/MediaBox \[0 0 419\.53 595\.28\]/);
+    assert.match(pdf, /\/Type \/Pages \/Kids \[3 0 R\] \/Count 1/);
+    assert.match(pdf, /BAK-0147/);
+    assert.match(pdf, new RegExp(`flavour ${lineCount}`));
   }
 });
 
-test("product deep links resolve exact catalogue ids and reject invalid paths", () => {
-  assert.equal(productIdFromPathname("/products/bliss-peanutella"), "bliss-peanutella");
-  assert.equal(productIdFromPathname("/products/COOKIE-SMORES/"), "cookie-smores");
-  assert.equal(productIdFromPathname("/products/"), "");
-  assert.equal(productIdFromPathname("/products/private customer data"), "");
-  assert.equal(productIdFromPathname("/products/bliss-peanutella/extra"), "");
+test("A5 invoice print stylesheet is publicly served with the invoice", () => {
+  assert.equal(isPublicStaticFile(path.join(process.cwd(), "invoice-print.css")), true);
+  assert.equal(isPublicStaticFile(path.join(process.cwd(), ".env")), false);
 });
 
-test("product pages expose Meta metadata for available and unavailable products", () => {
-  const template = "<html><head><title>Bakeaholic Online Shop</title></head><body></body></html>";
-  const available = productPageHtml(template, {
-    id: "bliss-peanutella",
-    name: "Peanutella Bliss Balls",
-    category: "bliss-balls",
-    description: "Chocolate and peanut snack.",
-    imagePath: "/assets/products/peanutella.png",
-    price: 75000,
-    stock: 12
-  }, [{ id: "bliss-balls", label: "Bliss Balls", description: "Bali-made snacks." }]);
-  assert.match(available, /<title>Peanutella Bliss Balls \| Bakeaholic Bali<\/title>/);
-  assert.match(available, /<base href="\/" \/>/);
-  assert.match(available, /property="og:type" content="product"/);
-  assert.match(available, /property="og:url" content="https:\/\/bakeaholicbali\.com\/products\/bliss-peanutella"/);
-  assert.match(available, /property="product:price:amount" content="75000"/);
-  assert.match(available, /property="product:availability" content="in stock"/);
-  assert.match(available, /https:\/\/schema\.org\/InStock/);
-
-  const opsUnavailable = productPageHtml(template, {
-    id: "cookie-choc-chip",
-    name: "Chocolate Chip Oatmeal Cookie",
-    category: "oatmeal-cookies",
-    imagePath: "/assets/products/cookies.jpg",
-    price: 20000,
-    stock: 36
-  }, []);
-  assert.match(opsUnavailable, /property="product:availability" content="out of stock"/);
-  assert.match(opsUnavailable, /https:\/\/schema\.org\/OutOfStock/);
-
-  const unavailable = productPageHtml(template, {
-    id: "cookie-raisin",
-    name: "Raisin Oatmeal Cookie",
-    category: "oatmeal-cookies",
-    imagePath: "/assets/products/cookies.jpg",
-    price: 20000,
-    stock: 0
-  }, []);
-  assert.match(unavailable, /property="product:availability" content="out of stock"/);
-  assert.match(unavailable, /https:\/\/schema\.org\/OutOfStock/);
+test("five-day mix-and-match promotion applies across flavours and then expires", () => {
+  const lineItems = [
+    { item: { category: "bliss-balls", price: 75000 }, quantity: 1 },
+    { item: { category: "bliss-balls", price: 75000 }, quantity: 3 },
+    { item: { category: "oatmeal-cookies", price: 20000 }, quantity: 4 },
+    { item: { category: "oatmeal-cookies", price: 20000 }, quantity: 8 }
+  ];
+  const activeAt = Date.parse("2026-09-03T12:00:00+08:00");
+  assert.equal(bundlePromotionIsActive(activeAt), true);
+  assert.equal(bundlePromotionIsActive(activeAt, "BLISS4"), true);
+  assert.equal(bundlePromotionIsActive(activeAt, "COOKIES12"), false);
+  const active = computeAutomaticBundleDiscount(lineItems, activeAt);
+  assert.equal(active.amount, 50000);
+  assert.equal(active.code, "BLISS4");
+  const blissHandover = Date.parse("2026-09-12T00:00:00+08:00");
+  const overlapAt = Date.parse("2026-09-07T09:00:00+08:00");
+  const expiredAt = Date.parse("2026-09-14T00:00:00+08:00");
+  assert.equal(bundlePromotionIsActive(blissHandover - 1, "BLISS4"), true);
+  assert.equal(bundlePromotionIsActive(blissHandover, "BLISS4"), false);
+  assert.equal(bundlePromotionIsActive(overlapAt, "BLISS4"), true);
+  assert.equal(bundlePromotionIsActive(overlapAt, "COOKIES12"), true);
+  assert.equal(bundlePromotionIsActive(blissHandover - 1, "COOKIES12"), true);
+  assert.equal(bundlePromotionIsActive(blissHandover, "COOKIES12"), true);
+  assert.equal(bundlePromotionIsActive(expiredAt), false);
+  const expired = computeAutomaticBundleDiscount(lineItems, expiredAt);
+  assert.equal(expired.amount, 0);
+  assert.equal(expired.code, "");
+  const cookieStart = Date.parse("2026-09-07T08:00:00+08:00");
+  const cookieEnd = Date.parse("2026-09-14T00:00:00+08:00");
+  assert.equal(bundlePromotionIsActive(cookieStart - 1, "COOKIES12"), false);
+  assert.equal(bundlePromotionIsActive(cookieStart, "COOKIES12"), true);
+  assert.equal(bundlePromotionIsActive(cookieEnd - 1, "COOKIES12"), true);
+  assert.equal(bundlePromotionIsActive(cookieEnd, "COOKIES12"), false);
+  const cookieOnly = computeAutomaticBundleDiscount(lineItems, Date.parse("2026-09-08T12:00:00+08:00"));
+  assert.equal(cookieOnly.amount, 90000);
+  assert.equal(cookieOnly.code, "BLISS4+COOKIES12");
 });
 
-test("product deep-link UI preserves existing cart and checkout actions", () => {
-  const appSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "app.js"), "utf8");
-  assert.match(appSource, /addToCart\(selectedProductId, productModalAddButton\)/);
-  assert.match(appSource, /window\.location\.href = cartPageUrl\(\)/);
-  assert.match(appSource, /applyCatalogPayload\(payload\);\s+document\.title = "Bakeaholic Online Shop";\s+if \(deepLinkedProductId\) \{\s+openProductModal\(deepLinkedProductId, \{ updateHistory: false \}\)/);
-  assert.match(appSource, /deepLinkedProductAvailability === "out of stock"/);
-  assert.match(appSource, /BakeaholicAnalytics\?\.viewProduct\(item\)/);
+test("bundle and voucher discounts remain separate from tax and delivery", () => {
+  const bundle = computeAutomaticBundleDiscount([
+    { item: { category: "bliss-balls", price: 75000 }, quantity: 4 }
+  ], Date.parse("2026-09-02T12:00:00+08:00"));
+  const combined = combineDiscounts(bundle, { code: "WELCOME", label: "Welcome", amount: 10000 });
+  assert.equal(bundle.amount, 50000);
+  assert.equal(combined.amount, 60000);
+  assert.equal(combined.code, "BLISS4+WELCOME");
 });
 
 function createMetaPixelHarness(pathname = "/products/bliss-peanutella") {
@@ -165,7 +207,7 @@ function createMetaPixelHarness(pathname = "/products/bliss-peanutella") {
   return { window, fetches, fbqCalls };
 }
 
-test("product ViewContent uses the exact Meta payload once per product view", () => {
+test("product ViewContent uses one stable exact product payload", () => {
   for (const [itemId, price] of [
     ["bliss-peanutella", 75000],
     ["cookie-lamington", 20000],
@@ -193,69 +235,200 @@ test("product ViewContent uses the exact Meta payload once per product view", ()
   }
 });
 
-test("product ViewContent deduplicates hydration and modal reopen but tracks a new exact state", () => {
-  const harness = createMetaPixelHarness();
-  const item = { id: "cookie-lamington", price: 20000 };
-  harness.window.BakeaholicAnalytics.viewProduct(item);
-  harness.window.BakeaholicAnalytics.viewProduct(item);
-  harness.window.location.pathname = "/products/oats-banoffee-pie";
-  harness.window.BakeaholicAnalytics.viewProduct({ id: "oats-banoffee-pie", price: 25000 });
-  harness.window.location.pathname = "/products/cookie-lamington";
-  harness.window.BakeaholicAnalytics.viewProduct(item);
-  const events = harness.fbqCalls.filter((entry) => entry[1] === "ViewContent");
-  assert.deepEqual(events.map((entry) => entry[2].content_ids[0]), [
-    "cookie-lamington", "oats-banoffee-pie", "cookie-lamington"
-  ]);
+test("pixel is public and product UI calls the privacy-safe ViewContent helper", () => {
+  const serverSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "server.js"), "utf8");
+  const appSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "app.js"), "utf8");
+  assert.match(serverSource, /"meta-pixel\.js"/);
+  assert.match(appSource, /BakeaholicAnalytics\?\.viewProduct\(item\)/);
 });
 
-test("invalid product state does not emit ViewContent", () => {
-  const harness = createMetaPixelHarness("/products/not-a-real-product");
-  assert.equal(harness.window.BakeaholicAnalytics.viewProduct(null), "");
-  assert.equal(harness.window.BakeaholicAnalytics.viewProduct({ id: "", price: 75000 }), "");
-  assert.equal(harness.window.BakeaholicAnalytics.viewProduct({ id: "not-a-real-product", price: "invalid" }), "");
-  assert.equal(harness.fbqCalls.some((entry) => entry[1] === "ViewContent"), false);
+test("provider delivered status cannot complete an order without observed courier handoff", () => {
+  assert.equal(shipmentHasObservedHandoff({}), false);
+  assert.equal(providerStatusCanCompleteOrder({}, "delivered"), false);
+  assert.equal(providerStatusCanCompleteOrder({ pickupObservedAt: "2026-09-01T00:00:00.000Z" }, "delivered"), true);
+  assert.equal(providerStatusCanCompleteOrder({}, "picked_up"), true);
 });
 
-test("checkout-stage funnel events are fixed and privacy-safe", () => {
-  for (const event of [
-    "checkout_viewed",
-    "address_opened",
-    "address_selected",
-    "delivery_quote_succeeded",
-    "delivery_quote_failed"
-  ]) {
-    assert.equal(isSupportedClientFunnelEvent(event), true);
+test("shipping successors wait for Biteship courier allocation", () => {
+  assert.equal(isShipmentAllocatedForMessaging({ status: "confirmed" }), false);
+  assert.equal(isShipmentAllocatedForMessaging({ status: "allocated" }), true);
+  assert.equal(isShipmentAllocatedForMessaging({ status: "accepted" }), true);
+  assert.equal(isShipmentAllocatedForMessaging({ status: "picked_up" }), true);
+  assert.equal(isShipmentAllocatedForMessaging({ status: "courier_not_found" }), false);
+});
+
+test("Meta webhook verification fails closed in production when the app secret is absent", () => {
+  const previous = {
+    nodeEnv: process.env.NODE_ENV,
+    railwayEnvironment: process.env.RAILWAY_ENVIRONMENT,
+    appSecret: process.env.WHATSAPP_APP_SECRET
+  };
+  const request = { headers: {} };
+  try {
+    process.env.NODE_ENV = "production";
+    delete process.env.RAILWAY_ENVIRONMENT;
+    delete process.env.WHATSAPP_APP_SECRET;
+    assert.equal(isProductionRuntime(), true);
+    assert.equal(verifyMetaWebhookSignature(request, "{}"), false);
+    process.env.NODE_ENV = "test";
+    assert.equal(isProductionRuntime(), false);
+    assert.equal(verifyMetaWebhookSignature(request, "{}"), true);
+    process.env.WHATSAPP_APP_SECRET = "test-secret";
+    const signature = `sha256=${require("node:crypto").createHmac("sha256", "test-secret").update("{}").digest("hex")}`;
+    assert.equal(verifyMetaWebhookSignature({ headers: { "x-hub-signature-256": signature } }, "{}"), true);
+    assert.equal(verifyMetaWebhookSignature({ headers: { "x-hub-signature-256": "sha256:wrong" } }, "{}"), false);
+  } finally {
+    for (const [key, value] of Object.entries({ NODE_ENV: previous.nodeEnv, RAILWAY_ENVIRONMENT: previous.railwayEnvironment, WHATSAPP_APP_SECRET: previous.appSecret })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
-  assert.equal(isSupportedClientFunnelEvent("address=private customer data"), false);
-  assert.equal(isSupportedClientFunnelEvent("delivery_quote_failed:customer address"), false);
 });
 
-test("WhatsApp normalization supports international and Indonesian registrations", () => {
-  assert.equal(formatPhoneWithCountryCode("0812 3456 7890", "62"), "6281234567890");
-  assert.equal(formatPhoneWithCountryCode("62812 3456 7890", "62"), "6281234567890");
-  assert.equal(formatPhoneWithCountryCode("21 97021 6750", "55"), "5521970216750");
-  assert.equal(formatPhoneWithCountryCode("55 219 702 1675", "55"), "55552197021675");
-  assert.equal(formatPhoneWithCountryCode("+55 21 97021 6750", "55"), "5521970216750");
-  assert.equal(formatPhoneWithCountryCode("+55 21 97021 6750", "62"), "");
-  assert.equal(formatIndonesianPhone("5521970216750"), "5521970216750");
-  assert.equal(isValidWhatsAppPhone("5521970216750"), true);
+test("delivery proof redirect exposes only verified HTTPS provider proof", () => {
+  const order = {
+    fulfillment: {
+      shipment: {
+        deliveryProof: {
+          verified: true,
+          available: true,
+          images: ["https://proof.biteship.com/delivery-1.jpg", "http://unsafe.example/proof.jpg"],
+          signatureUrl: "https://proof.biteship.com/signature-1.png"
+        }
+      }
+    }
+  };
+  assert.equal(verifiedBiteshipDeliveryProofUrl(order), "https://proof.biteship.com/delivery-1.jpg");
+  assert.equal(verifiedBiteshipDeliveryProofUrl(order, 1), "https://proof.biteship.com/signature-1.png");
+  assert.equal(verifiedBiteshipDeliveryProofUrl(order, 2), "");
+  assert.equal(verifiedBiteshipDeliveryProofUrl({ fulfillment: { shipment: { deliveryProof: { ...order.fulfillment.shipment.deliveryProof, verified: false } } } }), "");
 });
 
-test("delivery geofence accepts Bali and rejects international destinations", () => {
-  assert.equal(isBaliDeliveryLocation({ lat: -8.66425, lng: 115.176172 }), true);
-  assert.equal(isBaliDeliveryLocation({ lat: -8.7275, lng: 115.5444 }), true);
-  assert.equal(isBaliDeliveryLocation({ lat: -23.55052, lng: -46.633308 }), false);
-  assert.equal(isBaliDeliveryLocation({ lat: 3.139, lng: 101.6869 }), false);
+test("delivery recovery alerts are limited to verified recoverable courier states", () => {
+  assert.equal(isDeliveryRecoveryStatus("cancelled"), true);
+  assert.equal(isDeliveryRecoveryStatus("rejected"), true);
+  assert.equal(isDeliveryRecoveryStatus("courier_not_found"), true);
+  assert.equal(isDeliveryRecoveryStatus("delivered"), false);
+  assert.equal(isDeliveryRecoveryStatus("picked_up"), false);
+});
+
+test("customer WhatsApp templates use only the verified order owner, including an owner who is also staff", () => {
+  const customer = {
+    customer: {
+      phone: "+62 811 222 3333",
+      verifiedPhone: "628112223333",
+      phoneVerifiedAt: "2026-09-01T00:00:00.000Z"
+    }
+  };
+  assert.equal(verifiedCustomerWhatsappNumber(customer), "628112223333");
+  assert.equal(verifiedCustomerWhatsappNumber({
+    customer: { phone: "628111111111", verifiedPhone: "628111111111", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" }
+  }), "628111111111");
+  assert.throws(
+    () => verifiedCustomerWhatsappNumber({
+      customer: { phone: "628111111111", verifiedPhone: "628999999999", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" }
+    }),
+    /must match the verified order owner/i
+  );
+  assert.throws(
+    () => verifiedCustomerWhatsappNumber({ customer: { phone: "+62 811 222 3333" } }, []),
+    /verified customer WhatsApp number is required/i
+  );
+});
+
+test("checkout preserves the verified owner snapshot and Admin contact targets only that customer", () => {
+  const customer = normalizeCustomerDetails({
+    name: "Customer Example",
+    phone: "+62 811 222 3333",
+    verifiedPhone: "628112223333",
+    phoneVerifiedAt: "2026-09-04T08:51:58.948Z"
+  });
+  assert.equal(customer.verifiedPhone, "628112223333");
+
+  const contactUrl = new URL(adminCustomerWhatsappUrl({ id: "BAK-0147", customer }));
+  assert.equal(contactUrl.hostname, "wa.me");
+  assert.equal(contactUrl.pathname, "/628112223333");
+  assert.match(contactUrl.searchParams.get("text"), /Bakeaholic Bali/);
+  assert.match(contactUrl.searchParams.get("text"), /BAK-0147/);
+  assert.equal(adminCustomerWhatsappUrl({
+    id: "BAK-0148",
+    customer: { ...customer, verifiedPhone: "628999999999" }
+  }), "");
+});
+
+test("payment reminders preserve customer/staff roles, deduplicate retries, and stop after payment or cancellation", async () => {
+  const previousFetch = global.fetch;
+  const envKeys = ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ADMIN_NUMBER", "WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME", "WHATSAPP_ADMIN_TEMPLATE_NAME"];
+  const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const recipients = [];
+  Object.assign(process.env, {
+    WHATSAPP_ACCESS_TOKEN: "test-token",
+    WHATSAPP_PHONE_NUMBER_ID: "123456",
+    WHATSAPP_ADMIN_NUMBER: "628111111111,628222222222",
+    WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: "payment_update_order",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5"
+  });
+  global.fetch = async (_url, options) => {
+    recipients.push(JSON.parse(options.body).to);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return { ok: true, status: 200, text: async () => JSON.stringify({ messages: [{ id: "wamid.reminder" }] }) };
+  };
+  const order = {
+    id: "BAK-ROLE-TEST",
+    status: "awaiting_payment",
+    customer: { phone: "628111111111", verifiedPhone: "628111111111", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
+    pricing: { subtotal: 75000, deliveryFee: 0, tax: 0, discount: { amount: 0 }, total: 75000 },
+    payment: {},
+    receiptToken: "role-test-token"
+  };
+  try {
+    const results = await Promise.all([
+      maybeSendWhatsappPaymentReminder(order, "first"),
+      maybeSendWhatsappPaymentReminder(order, "first")
+    ]);
+    assert.equal(results.filter((result) => result.sent).length, 1);
+    assert.deepEqual(recipients, ["628111111111"]);
+    assert.equal(order.paymentReminderFlow.firstMessageId, "wamid.reminder");
+    assert.equal(order.paymentReminderFlow.firstQueuedAt, undefined);
+
+    await sendWhatsappAdminAlert(order, "Staff review only");
+    assert.deepEqual(recipients, ["628111111111", "628111111111", "628222222222"]);
+
+    order.status = "paid";
+    assert.deepEqual(await maybeSendWhatsappPaymentReminder(order, "second"), {
+      sent: false, skipped: true, reason: "not_awaiting_payment"
+    });
+    order.status = "cancelled";
+    assert.deepEqual(await maybeSendWhatsappPaymentReminder(order, "second"), {
+      sent: false, skipped: true, reason: "not_awaiting_payment"
+    });
+    order.status = "expired";
+    assert.deepEqual(await maybeSendWhatsappPaymentReminder(order, "second"), {
+      sent: false, skipped: true, reason: "not_awaiting_payment"
+    });
+    assert.deepEqual(recipients, ["628111111111", "628111111111", "628222222222"]);
+  } finally {
+    global.fetch = previousFetch;
+    for (const key of envKeys) {
+      if (previousEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEnv[key];
+    }
+  }
 });
 
 test("delivery recovery accepts only the exact failed shipment and a replay-safe action ID", () => {
   const order = {
-    status: "delivery_issue",
+    status: "preparing",
+    payment: { status: "paid" },
+    pricing: { deliveryFee: 10000, shipping: { total: 10000 } },
+    customer: { address: "Customer road", phone: "6281234567890" },
     fulfillment: {
       type: "delivery",
+      address: "Customer road", location: { lat: -8.6, lng: 115.2 },
       shipment: { orderId: "ship-failed-1", status: "courier_not_found" }
     }
   };
+  order.fulfillment.shipment.requestSnapshot = shipmentRequestSnapshot(order);
   assert.equal(
     assertDeliveryRecoveryRequest(order, "ship-failed-1", "recovery_action_123456"),
     "ship-failed-1"
@@ -368,7 +541,7 @@ test("admin alerts fan out to all three configured recipients", async () => {
     WHATSAPP_ACCESS_TOKEN: "test-token",
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111, 628222222222;628333333333",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2"
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5"
   });
   global.fetch = async (_url, options) => {
     const payload = JSON.parse(options.body);
@@ -384,7 +557,7 @@ test("admin alerts fan out to all three configured recipients", async () => {
     const result = await sendWhatsappAdminAlert({
       id: "BAK-0999",
       status: "paid",
-      customer: { name: "Customer", phone: "628999999999" },
+      customer: { name: "Customer", phone: "628999999999", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
       pricing: { total: 18700 },
       payment: { label: "QRIS" },
       fulfillment: { shipment: {} },
@@ -421,7 +594,7 @@ test("concurrent paid-event processing sends each WhatsApp notification only onc
     WHATSAPP_ACCESS_TOKEN: "test-token",
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111,628222222222,628333333333",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5",
     WHATSAPP_RECEIPT_TEMPLATE_NAME: "payment_receipt"
   });
   global.fetch = async (_url, options) => {
@@ -438,7 +611,7 @@ test("concurrent paid-event processing sends each WhatsApp notification only onc
     id: "BAK-CONCURRENT",
     mode: "test",
     status: "paid",
-    customer: { name: "Customer", phone: "628999999999" },
+    customer: { name: "Customer", phone: "628999999999", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
     pricing: { total: 18700 },
     payment: { label: "QRIS" },
     fulfillment: { shipment: {} },
@@ -563,47 +736,159 @@ test("WhatsApp quick replies resolve the order from each admin recipient message
   assert.equal(orderIdFromWhatsappReplyContext({}, orders), "");
 });
 
+test("Contact customer accepts only the current recipient-bound v5 quick reply", () => {
+  const now = Date.parse("2026-09-04T10:00:00.000Z");
+  const current = {
+    order: { id: "BAK-0134", status: "paid" },
+    recipient: { recipient: "628111111111", messageId: "wamid.current" },
+    staffNumber: "628111111111",
+    notification: { templateName: "admin_order_alert_v5", lastSentAt: "2026-09-04T09:55:00.000Z" }
+  };
+  assert.equal(isCurrentStaffV5ContactReply(current, now), true);
+  assert.equal(isCurrentStaffV5ContactReply({ ...current, notification: { ...current.notification, templateName: "legacy_template" } }, now), false);
+  assert.equal(isCurrentStaffV5ContactReply({ ...current, recipient: null }, now), false);
+  assert.equal(isCurrentStaffV5ContactReply({ ...current, staffNumber: "" }, now), false);
+  assert.equal(isCurrentStaffV5ContactReply({ ...current, notification: { ...current.notification, lastSentAt: "2026-09-04T09:49:59.000Z" } }, now), false);
+  assert.equal(isCurrentStaffV5ContactReply({ ...current, notification: { ...current.notification, lastSentAt: "2026-09-04T10:00:01.000Z" } }, now), false);
+});
+
+test("v5 Approve orchestrates one snapshot-bound Biteship booking and allocation-gated shipping notices", async () => {
+  const envKeys = ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ADMIN_NUMBER", "WHATSAPP_ADMIN_TEMPLATE_NAME", "WHATSAPP_SHIPPING_TEMPLATE_NAME", "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME", "BITESHIP_API_KEY", "BITESHIP_COURIERS"];
+  const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const previousFetch = global.fetch;
+  const calls = [];
+  Object.assign(process.env, {
+    WHATSAPP_ACCESS_TOKEN: "test-token", WHATSAPP_PHONE_NUMBER_ID: "123", WHATSAPP_ADMIN_NUMBER: "628111111111",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5", WHATSAPP_SHIPPING_TEMPLATE_NAME: "shipping_update_v2",
+    WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update_v2", BITESHIP_API_KEY: "biteship-test", BITESHIP_COURIERS: "grab"
+  });
+  const order = {
+    id: "TEST-V5-APPROVE", mode: "test", status: "paid", paidAt: "2026-09-04T09:00:00.000Z",
+    items: [{ itemId: "bliss-peanutella", quantity: 1 }],
+    customer: { name: "Verified owner", phone: "628222222222", verifiedPhone: "628222222222", phoneVerifiedAt: "2026-09-04T09:00:00.000Z", address: "Verified customer drop-off" },
+    fulfillment: { type: "delivery", address: "Verified customer drop-off", location: { lat: -8.65, lng: 115.22 } },
+    pricing: { subtotal: 75000, deliveryFee: 10000, tax: 0, discount: { amount: 0 }, total: 85000, shipping: { courierCode: "grab", courierServiceCode: "instant", total: 10000 } },
+    payment: { status: "paid", label: "QRIS" }, receiptToken: "v5-approve-token"
+  };
+  order.adminWhatsappNotifications = {
+    templateName: "admin_order_alert_v5", lastSentAt: new Date().toISOString(),
+    v5ApprovalSnapshot: shipmentRequestSnapshot(order),
+    recipients: [{ recipientNumber: "628111111111", messageId: "wamid.v5.approve" }]
+  };
+  const restore = replaceStoreOrdersForTest("test", [order]);
+  global.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), body: options.body ? JSON.parse(options.body) : null });
+    if (String(url).includes("/rates/couriers")) return { ok: true, json: async () => ({ pricing: [{ courier_code: "grab", courier_service_code: "instant", price: 10000 }] }) };
+    if (String(url).includes("api.biteship.com/v1/orders")) return { ok: true, text: async () => JSON.stringify({ id: "ship-v5-1", status: "allocated", courier: { company: "Grab", link: "https://track.biteship.com/ship-v5-1" } }) };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ messages: [{ id: `wamid.${calls.length}` }] }) };
+  };
+  const message = { id: "inbound-v5-approve-1", from: "628111111111", context: { id: "wamid.v5.approve" }, button: { payload: "APPROVE TEST-V5-APPROVE" } };
+  try {
+    const first = await approveV5PaidOrderFromWhatsapp(message, "test");
+    const second = await approveV5PaidOrderFromWhatsapp(message, "test");
+    assert.equal(first.shipmentId, "ship-v5-1");
+    assert.equal(second.reason, "already_claimed");
+    assert.equal(order.fulfillment.shipment.orderId, "ship-v5-1");
+    assert.deepEqual(order.fulfillment.shipment.requestSnapshot, shipmentRequestSnapshot(order));
+    const booking = calls.find((call) => call.url.includes("api.biteship.com/v1/orders"));
+    assert.equal(calls.filter((call) => call.url.includes("api.biteship.com/v1/orders")).length, 1);
+    assert.equal(booking.body.origin_address, order.adminWhatsappNotifications.v5ApprovalSnapshot.pickup.address);
+    assert.equal(booking.body.destination_address, "Verified customer drop-off");
+    assert.deepEqual(calls.filter((call) => call.body?.template?.name).map((call) => call.body.template.name), ["shipping_update_v2", "admin_shipping_update_v2"]);
+    await assert.rejects(() => approveV5PaidOrderFromWhatsapp({ ...message, id: "inbound-v5-mismatch" }, "test", "TEST-OTHER"), /does not match/i);
+    order.status = "paid";
+    order.fulfillment.shipment = undefined;
+    order.fulfillment.address = "Changed drop-off";
+    order.customer.address = "Changed drop-off";
+    await assert.rejects(() => approveV5PaidOrderFromWhatsapp({ ...message, id: "inbound-v5-stale" }, "test"), /changed after this alert/i);
+  } finally {
+    restore(); global.fetch = previousFetch;
+    for (const key of envKeys) { if (previousEnv[key] === undefined) delete process.env[key]; else process.env[key] = previousEnv[key]; }
+  }
+});
+
+test("v5 Cancel keeps a 60-second undo window then commits cancellation/refund effects once", async () => {
+  const envKeys = ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ADMIN_NUMBER", "WHATSAPP_ADMIN_TEMPLATE_NAME", "WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME"];
+  const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+  const previousFetch = global.fetch;
+  Object.assign(process.env, { WHATSAPP_ACCESS_TOKEN: "test-token", WHATSAPP_PHONE_NUMBER_ID: "123", WHATSAPP_ADMIN_NUMBER: "628111111111", WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5", WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME: "order_cancelled" });
+  const order = {
+    id: "TEST-V5-CANCEL", mode: "test", status: "paid", paidAt: "2026-09-04T09:00:00.000Z", items: [{ itemId: "bliss-peanutella", quantity: 1 }],
+    customer: { name: "Verified owner", phone: "628222222222", verifiedPhone: "628222222222", phoneVerifiedAt: "2026-09-04T09:00:00.000Z", address: "Customer drop-off" },
+    fulfillment: { type: "delivery", address: "Customer drop-off", location: { lat: -8.65, lng: 115.22 } },
+    pricing: { subtotal: 75000, deliveryFee: 10000, tax: 0, discount: { amount: 0 }, total: 85000, shipping: { courierCode: "grab", courierServiceCode: "instant", total: 10000 } }, payment: { status: "paid", label: "QRIS" }, receiptToken: "v5-cancel-token"
+  };
+  order.adminWhatsappNotifications = { templateName: "admin_order_alert_v5", lastSentAt: new Date().toISOString(), v5ApprovalSnapshot: shipmentRequestSnapshot(order), recipients: [{ recipientNumber: "628111111111", messageId: "wamid.v5.cancel" }] };
+  const restore = replaceStoreOrdersForTest("test", [order]);
+  const templateNames = [];
+  global.fetch = async (_url, options = {}) => { const body = options.body ? JSON.parse(options.body) : {}; if (body.template?.name) templateNames.push(body.template.name); return { ok: true, status: 200, text: async () => JSON.stringify({ messages: [{ id: "wamid.cancel" }] }) }; };
+  const message = { id: "inbound-v5-cancel-1", from: "628111111111", context: { id: "wamid.v5.cancel" }, button: { payload: "CANCEL TEST-V5-CANCEL" } };
+  try {
+    const pending = await scheduleV5CancelFromWhatsapp(message, "test");
+    assert.ok(pending.undoToken); assert.equal(order.status, "paid"); assert.ok(order.adminPendingAction);
+    await undoPendingAdminOrderAction("test", { orderId: order.id, token: pending.undoToken });
+    assert.equal(order.status, "paid"); assert.equal(order.adminPendingAction, undefined);
+    await assert.rejects(() => scheduleV5CancelFromWhatsapp({ ...message, id: "inbound-v5-cancel-mismatch" }, "test", "TEST-OTHER"), /does not match/i);
+    const committed = await scheduleV5CancelFromWhatsapp({ ...message, id: "inbound-v5-cancel-2" }, "test");
+    order.adminPendingAction.executeAt = new Date(Date.now() - 1).toISOString();
+    await finalizePendingAdminOrderAction("test", order.id, committed.undoToken);
+    assert.equal(order.status, "cancelled");
+    assert.equal(templateNames.includes("order_cancelled"), true);
+    assert.notEqual(order.refund?.status, "processed");
+  } finally {
+    restore(); global.fetch = previousFetch;
+    for (const key of envKeys) { if (previousEnv[key] === undefined) delete process.env[key]; else process.env[key] = previousEnv[key]; }
+  }
+});
+
 test("paid admin alert describes an unbooked delivery and required approval", () => {
   const parameters = adminWhatsappParameters({
     id: "BAK-0105",
     status: "paid",
-    customer: { name: "Eduardo", phone: "+6281234567890" },
+    customer: { name: "Eduardo", phone: "+6281234567890", verifiedPhone: "6281234567890", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
     pricing: { total: 18700 },
     payment: { label: "QRIS" },
     fulfillment: { shipment: {} },
     receiptToken: "token"
   }, "Payment received");
   assert.equal(parameters[6], "Not booked yet");
-  assert.match(parameters[8], /Reply APPROVE/);
-  assert.doesNotMatch(JSON.stringify(parameters), /Eduardo|6281234567890/);
+  assert.equal(parameters[2], "Eduardo");
+  assert.equal(parameters[3], "+6281234567890");
+  assert.match(parameters[8], /requests one governed Biteship driver/i);
+  assert.match(parameters[8], /60-second governed Undo window/i);
 });
 
-test("secure order-review alerts exclude customer details and carry only the order reference", async () => {
+test("approved detailed admin alert overrides the deprecated review template", async () => {
   const order = {
     id: "BAK-0106",
     status: "paid",
-    customer: { name: "Private Customer", phone: "+6281234567890" }
+    customer: {
+      name: "Verified Customer",
+      phone: "+6281234567890",
+      verifiedPhone: "6281234567890",
+      phoneVerifiedAt: "2026-09-01T00:00:00.000Z"
+    },
+    pricing: { total: 187000 },
+    payment: { label: "QRIS" },
+    fulfillment: { type: "delivery", address: "Customer road, Denpasar Selatan, Kota Denpasar, Bali", shipment: {} },
+    receiptToken: "receipt-token"
   };
-  assert.equal(adminOrderReviewButtonQuery(order), "BAK-0106");
-  assert.deepEqual(adminOrderReviewWhatsappParameters(order, "This input is deliberately ignored"), [
-    "BAK-0106",
-    "Stock and fulfilment review required"
-  ]);
-  assert.doesNotMatch(JSON.stringify(adminOrderReviewWhatsappParameters(order, "Private Customer +6281234567890")), /Private Customer|6281234567890/);
 
   const previousFetch = global.fetch;
   const previousEnv = {
     token: process.env.WHATSAPP_ACCESS_TOKEN,
     phoneId: process.env.WHATSAPP_PHONE_NUMBER_ID,
     adminNumbers: process.env.WHATSAPP_ADMIN_NUMBER,
-    reviewTemplate: process.env.WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME
+    reviewTemplate: process.env.WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME,
+    template: process.env.WHATSAPP_ADMIN_TEMPLATE_NAME
   };
   let payload;
   Object.assign(process.env, {
     WHATSAPP_ACCESS_TOKEN: "test-token",
     WHATSAPP_PHONE_NUMBER_ID: "123456",
     WHATSAPP_ADMIN_NUMBER: "628111111111",
-    WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: "admin_order_review"
+    WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: "__retired_template_sentinel__",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5"
   });
   global.fetch = async (_url, options) => {
     payload = JSON.parse(options.body);
@@ -615,28 +900,60 @@ test("secure order-review alerts exclude customer details and carry only the ord
   };
 
   try {
-    await sendWhatsappAdminAlert(order, "Stock review required");
+    const result = await sendWhatsappAdminAlert(order, "Payment received - awaiting staff approval");
+    assert.equal(result.templateName, "admin_order_alert_v5");
   } finally {
     global.fetch = previousFetch;
     for (const [key, value] of Object.entries({
       WHATSAPP_ACCESS_TOKEN: previousEnv.token,
       WHATSAPP_PHONE_NUMBER_ID: previousEnv.phoneId,
       WHATSAPP_ADMIN_NUMBER: previousEnv.adminNumbers,
-      WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: previousEnv.reviewTemplate
+      WHATSAPP_ADMIN_REVIEW_TEMPLATE_NAME: previousEnv.reviewTemplate,
+      WHATSAPP_ADMIN_TEMPLATE_NAME: previousEnv.template
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
   }
 
-  assert.equal(payload.template.name, "admin_order_review");
+  assert.equal(payload.template.name, "admin_order_alert_v5");
   const body = payload.template.components.find((component) => component.type === "body");
-  assert.deepEqual(body.parameters.map((parameter) => parameter.text), ["BAK-0106", "Stock and fulfilment review required"]);
+  assert.equal(body.parameters.length, 9);
+  assert.equal(body.parameters[1].text, "BAK-0106");
+  assert.equal(body.parameters[2].text, "Customer details available by quick reply");
+  assert.equal(body.parameters[3].text, "Verified order owner only");
   assert.equal(payload.template.components.some((component) => component.type === "header"), false);
-  const reviewButton = payload.template.components.find((component) => component.type === "button");
-  assert.equal(reviewButton.sub_type, "url");
-  assert.equal(reviewButton.parameters[0].text, "BAK-0106");
-  assert.doesNotMatch(JSON.stringify(payload), /Private Customer|6281234567890/);
+  const buttons = payload.template.components.filter((component) => component.type === "button");
+  assert.deepEqual(buttons.map((button) => [button.index, button.sub_type, button.parameters[0].payload]), [
+    ["0", "quick_reply", "APPROVE BAK-0106"],
+    ["1", "quick_reply", "CONTACT_CUSTOMER"],
+    ["2", "quick_reply", "CANCEL BAK-0106"]
+  ]);
+});
+
+test("legacy staff-review helper remains redacted and does not book delivery", () => {
+  const previousSiteUrl = process.env.PUBLIC_SITE_URL;
+  process.env.PUBLIC_SITE_URL = "https://bakeaholicbali.com";
+  try {
+    const order = {
+      id: "BAK-0147",
+      fulfillment: {
+        type: "delivery",
+        address: "12 Customer Street, Denpasar Selatan, Kota Denpasar, Bali 80227, Indonesia"
+      },
+      customer: { address: "12 Customer Street, Denpasar Selatan, Kota Denpasar, Bali 80227, Indonesia" }
+    };
+    const message = adminOrderActionReviewMessage(order, "approve");
+    assert.match(message, /No driver has been requested/);
+    assert.match(message, /Pickup:/);
+    assert.match(message, /Drop-off: Denpasar Selatan, Kota Denpasar, Bali, Indonesia/);
+    assert.match(message, /admin\.html\?section=orders&order=BAK-0147/);
+    assert.doesNotMatch(message, /12 Customer Street|80227/);
+    assert.equal(addressArea("12 Customer Street, Denpasar Selatan, Kota Denpasar, Bali 80227, Indonesia"), "Denpasar Selatan, Kota Denpasar, Bali, Indonesia");
+  } finally {
+    if (previousSiteUrl === undefined) delete process.env.PUBLIC_SITE_URL;
+    else process.env.PUBLIC_SITE_URL = previousSiteUrl;
+  }
 });
 
 function whatsappOrder(overrides = {}) {
@@ -644,7 +961,7 @@ function whatsappOrder(overrides = {}) {
     id: "BAK-0001",
     mode: "live",
     status: "paid",
-    customer: { phone: "+6281234567890" },
+    customer: { phone: "+6281234567890", phoneVerifiedAt: "2026-09-01T00:00:00.000Z" },
     fulfillment: { shipment: {} },
     ...overrides
   };
@@ -708,6 +1025,8 @@ test("admin diagnostics exercise every configured template without creating an o
     "WHATSAPP_SHIPPING_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME",
+    "WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME",
     "WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME",
     "WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME",
     "WHATSAPP_TEMPLATE_LANGUAGE"
@@ -724,9 +1043,11 @@ test("admin diagnostics exercise every configured template without creating an o
     WHATSAPP_PAYMENT_REMINDER_TEMPLATE_NAME: "payment_update_order",
     WHATSAPP_PAYMENT_EXPIRED_TEMPLATE_NAME: "order_cancelled_unpaid",
     WHATSAPP_ORDER_CANCELLED_TEMPLATE_NAME: "order_cancelled",
-    WHATSAPP_SHIPPING_TEMPLATE_NAME: "shipping_update",
-    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v2",
-    WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update",
+    WHATSAPP_SHIPPING_TEMPLATE_NAME: "shipping_update_v2",
+    WHATSAPP_ADMIN_TEMPLATE_NAME: "admin_order_alert_v5",
+    WHATSAPP_ADMIN_SHIPPING_TEMPLATE_NAME: "admin_shipping_update_v2",
+    WHATSAPP_ADMIN_DELIVERY_RECOVERY_TEMPLATE_NAME: "admin_driver_cancelled_v1",
+    WHATSAPP_ADMIN_DELIVERY_COMPLETE_TEMPLATE_NAME: "admin_delivery_complete_v1",
     WHATSAPP_REFUND_COMPLETED_TEMPLATE_NAME: "refund_completed",
     WHATSAPP_ADMIN_REFUND_TEMPLATE_NAME: "admin_refund_update",
     WHATSAPP_TEMPLATE_LANGUAGE: "en_US"
@@ -755,42 +1076,68 @@ test("admin diagnostics exercise every configured template without creating an o
   assert.equal(diagnostic.synthetic, true);
   assert.equal(diagnostic.charged, false);
   assert.equal(diagnostic.orderCreated, false);
-  assert.equal(payloads.length, 16);
+  assert.equal(payloads.length, 14);
   const bodyCounts = Object.fromEntries(payloads.map((payload) => {
     const body = payload.template.components?.find((component) => component.type === "body");
     return [payload.template.name, body?.parameters?.length || 0];
   }));
   assert.deepEqual(bodyCounts, {
     otp_verification: 1,
-    payment_pending: 0,
-    order_received: 0,
-    order_preparing: 0,
     payment_confirmed: 0,
-    order_shipped: 0,
     order_delivered: 0,
     payment_receipt: 2,
     payment_update_order: 1,
     order_cancelled_unpaid: 1,
     order_cancelled: 1,
-    shipping_update: 4,
-    admin_order_alert_v2: 9,
-    admin_shipping_update: 4,
+    shipping_update_v2: 4,
+    admin_order_alert_v5: 9,
+    admin_driver_cancelled_v1: 4,
+    admin_delivery_complete_v1: 3,
+    admin_shipping_update_v2: 4,
     refund_completed: 3,
     admin_refund_update: 4
   });
-  const preparingPayload = payloads.find((payload) => payload.template.name === "order_preparing");
-  assert.equal(preparingPayload.template.components, undefined);
+  assert.equal(payloads.some((payload) => payload.template.name === "order_preparing"), false);
+  const driverCancelledPayload = payloads.find((payload) => payload.template.name === "admin_driver_cancelled_v1");
+  const driverCancelledParameters = driverCancelledPayload.template.components.find((component) => component.type === "body").parameters.map((parameter) => parameter.text);
+  assert.equal(driverCancelledParameters.length, 4);
+  assert.match(driverCancelledParameters[0], /^WA-TEST-/);
+  assert.deepEqual(driverCancelledParameters.slice(1), [
+    "Template Test Courier",
+    "bakeaholic-template-test",
+    "Biteship courier_not_found before pickup/handoff"
+  ]);
+  assert.deepEqual(driverCancelledPayload.template.components.filter((component) => component.type === "button").map((button) => [button.index, button.sub_type, button.parameters[0].payload]), [
+    ["0", "quick_reply", "REQUEST_NEW_DRIVER"]
+  ]);
+  for (const templateName of ["payment_receipt", "payment_update_order", "order_cancelled_unpaid", "shipping_update_v2", "refund_completed"]) {
+    const payload = payloads.find((item) => item.template.name === templateName);
+    const button = payload.template.components.find((component) => component.type === "button" && component.sub_type === "url");
+    assert.equal(button.parameters.length, 1);
+    assert.equal(button.parameters[0].type, "text");
+    assert.match(button.parameters[0].text, /^[a-f0-9]{36}$/);
+  }
+  const deliveryCompletePayload = payloads.find((payload) => payload.template.name === "admin_delivery_complete_v1");
+  const deliveryCompleteButton = deliveryCompletePayload.template.components.find((component) => component.type === "button" && component.sub_type === "url");
+  assert.deepEqual(deliveryCompleteButton.parameters.map((parameter) => parameter.type), ["text"]);
+  assert.match(deliveryCompleteButton.parameters[0].text, /^WA-TEST-/);
 });
 
-test("status templates select the paid confirmation for legacy settings", () => {
+test("status templates normalize retired order-received settings to payment confirmation", () => {
   const previous = process.env.WHATSAPP_ORDER_TEMPLATE_NAME;
-  process.env.WHATSAPP_ORDER_TEMPLATE_NAME = "order_received";
+  process.env.WHATSAPP_ORDER_TEMPLATE_NAME = "__retired_template_sentinel__";
   try {
     assert.equal(configuredWhatsappOrderTemplateName(whatsappOrder()), "payment_confirmed");
   } finally {
     if (previous === undefined) delete process.env.WHATSAPP_ORDER_TEMPLATE_NAME;
     else process.env.WHATSAPP_ORDER_TEMPLATE_NAME = previous;
   }
+});
+
+test("saved integration template names migrate to payment confirmation", () => {
+  assert.equal(normalizeWhatsappOrderTemplateName("order_status_update"), "payment_confirmed");
+  assert.equal(normalizeWhatsappOrderTemplateName("order_received"), "payment_confirmed");
+  assert.equal(normalizeWhatsappOrderTemplateName("payment_confirmed"), "payment_confirmed");
 });
 
 test("shipping notifications wait for a real Biteship booking", () => {
@@ -957,6 +1304,48 @@ test("temporary inactive QRIS or VA status does not expire an active checkout", 
   assert.equal(isOrderPaymentWindowExpired({
     expiresAt: "2026-07-27T10:15:00.000Z"
   }, Date.parse("2026-07-27T10:15:00.000Z")), true);
+});
+
+test("unpaid lifecycle is exactly +2/+4/+5 minutes", () => {
+  const createdAt = "2026-09-04T00:00:00.000Z";
+  const flow = paymentReminderFlowTimes(createdAt);
+  assert.equal(flow.version, 2);
+  assert.equal(Date.parse(flow.firstReminderAt) - Date.parse(createdAt), 2 * 60 * 1000);
+  assert.equal(Date.parse(flow.secondReminderAt) - Date.parse(createdAt), 4 * 60 * 1000);
+  assert.equal(Date.parse(flow.expireAt) - Date.parse(createdAt), 5 * 60 * 1000);
+});
+
+test("late Xendit success is held for staff review across providers and stale expiry cannot reopen it", () => {
+  const lateOrder = (provider) => ({
+    id: `BAK-LATE-${provider}`,
+    status: "expired",
+    expiresAt: "2026-09-04T00:00:00.000Z",
+    customer: { phone: "6281234567890" },
+    items: [],
+    lineItems: [],
+    pricing: { subtotal: 75000, deliveryFee: 0, tax: 0, discount: { amount: 0 }, total: 75000 },
+    payment: { provider, status: "expired" },
+    fulfillment: { type: "delivery" }
+  });
+  const cases = [
+    ["xendit_invoice", applyXenditInvoiceStatusToOrder, { status: "PAID" }, { status: "EXPIRED" }],
+    ["xendit_qr_code", applyXenditQrCodeStatusToOrder, { status: "SUCCESS" }, { status: "EXPIRED" }],
+    ["xendit_virtual_account", applyXenditVirtualAccountStatusToOrder, { status: "PAID" }, { status: "EXPIRED" }],
+    ["xendit_payments_api", applyXenditPaymentRequestStatusToOrder, { status: "SUCCEEDED" }, { status: "EXPIRED" }],
+    ["xendit_components", applyXenditPaymentSessionStatusToOrder, { status: "COMPLETED" }, { status: "EXPIRED" }]
+  ];
+  for (const [provider, applyStatus, success, staleExpiry] of cases) {
+    const order = lateOrder(provider);
+    applyStatus(order, success);
+    assert.equal(order.status, "paid_late_review", provider);
+    assert.equal(order.payment.status, "paid", provider);
+    assert.equal(order.latePaymentReview.status, "manual_review_required", provider);
+    assert.match(order.latePaymentReview.message, /Do not prepare or book delivery/i, provider);
+    assert.equal(order.fulfillment.shipment, undefined, provider);
+    applyStatus(order, staleExpiry);
+    assert.equal(order.status, "paid_late_review", `${provider} stale expiry`);
+    assert.equal(order.payment.status, "paid", `${provider} stale expiry`);
+  }
 });
 
 test("inactive QRIS and VA instruments remain payable until the checkout expires", () => {
