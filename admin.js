@@ -37,10 +37,8 @@ const storefrontPreviewViewport = document.getElementById("storefrontPreviewView
 const storefrontPublishState = document.getElementById("storefrontPublishState");
 const adminLoginPanel = document.getElementById("adminLoginPanel");
 const adminLoginForm = document.getElementById("adminLoginForm");
-const adminEmailInput = document.getElementById("adminEmailInput");
-const adminPasswordInput = document.getElementById("adminPasswordInput");
-const adminOtpInput = document.getElementById("adminOtpInput");
-const adminLoginButton = document.getElementById("adminLoginButton");
+const adminGoogleLoginButton = document.getElementById("adminGoogleLoginButton");
+const adminLoginMessage = document.getElementById("adminLoginMessage");
 const adminStaffForm = document.getElementById("adminStaffForm");
 const adminStaffList = document.getElementById("adminStaffList");
 const staffSetupResult = document.getElementById("staffSetupResult");
@@ -373,10 +371,12 @@ const secretIntegrationKeys = new Set([
 ]);
 
 async function request(path, options = {}) {
+  const csrf = document.cookie.split(";").map((entry) => entry.trim()).find((entry) => entry.startsWith("bakeaholic_admin_csrf="))?.split("=").slice(1).join("=") || "";
   const response = await fetch(path, {
     headers: {
       "Content-Type": "application/json",
-      "X-App-Mode": appMode
+      "X-App-Mode": appMode,
+      ...(csrf ? { "X-Admin-CSRF": decodeURIComponent(csrf) } : {})
     },
     ...options
   });
@@ -406,44 +406,12 @@ async function ensureAdminSession() {
   }
 
   adminLoginPanel.hidden = false;
-  adminEmailInput?.focus();
-  setStatus("Enter your admin credentials to continue.");
-
-  await new Promise((resolve) => {
-    adminLoginForm.onsubmit = async (event) => {
-      event.preventDefault();
-      const email = adminEmailInput?.value.trim() || "";
-      const password = adminPasswordInput.value.trim();
-      const otp = adminOtpInput?.value.trim() || "";
-      if (!password) {
-        setStatus("Please enter the admin password.");
-        return;
-      }
-
-      adminLoginButton.disabled = true;
-      setStatus("Checking admin password...");
-      try {
-        const payload = await request("/api/admin/login", {
-          method: "POST",
-          body: JSON.stringify({ email, password, otp })
-        });
-        state.adminSession = payload.session;
-        if (adminEmailInput) adminEmailInput.value = "";
-        adminPasswordInput.value = "";
-        if (adminOtpInput) adminOtpInput.value = "";
-        adminLoginPanel.hidden = true;
-        applyAdminPermissions();
-        resolve();
-      } catch (error) {
-        adminLoginButton.disabled = false;
-        setStatus(error.message);
-      }
-    };
-  });
-
-  adminLoginButton.disabled = false;
-  setStatus("Admin login successful. Session lasts 15 minutes.");
-  return state.adminSession;
+  setStatus("Continue with your approved Google account.");
+  adminLoginMessage.textContent = new URLSearchParams(window.location.search).get("auth") === "oauth_error"
+    ? "Google sign-in was not accepted. Use the approved Bakeaholic account or contact the owner."
+    : "";
+  adminGoogleLoginButton?.addEventListener("click", () => { window.location.href = "/api/admin/oauth/google/start"; }, { once: true });
+  return new Promise(() => {});
 }
 
 async function logoutAdmin() {

@@ -2,6 +2,12 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const vm = require("node:vm");
 const path = require("node:path");
+const os = require("node:os");
+const fs = require("node:fs");
+
+process.env.GOOGLE_ADMIN_CLIENT_ID ||= "test-google-client-id";
+process.env.ADMIN_AUTH_STATE_PATH ||= path.join(os.tmpdir(), "bakeaholic-admin-auth-state-test.json");
+process.env.ADMIN_AUTH_AUDIT_PATH ||= path.join(os.tmpdir(), "bakeaholic-admin-auth-audit-test.jsonl");
 
 const {
   addressArea,
@@ -82,6 +88,17 @@ const {
   base32Encode,
   totpCode,
   verifyTotp,
+  buildGoogleAuthorizationUrl,
+  consumeGoogleOAuthState,
+  validateGoogleIdTokenClaims,
+  createAdminSession,
+  isAdminSessionUsable,
+  revokeAdminSession,
+  adminCsrfValid,
+  adminSessionMatchesUser,
+  isAdminFreshAuthRequired,
+  readAdminAuthState,
+  recordAdminSecurityEvent,
   verifiedCustomerWhatsappNumber,
   verifiedBiteshipDeliveryProofUrl,
   verifyMetaWebhookSignature,
@@ -523,6 +540,77 @@ test("staff two-step verification accepts only the current authenticator code", 
   const now = Date.now();
   assert.equal(verifyTotp(secret, totpCode(secret, now), now), true);
   assert.equal(verifyTotp(secret, "000000", now), false);
+});
+
+test("Google OAuth authorization uses state, nonce and S256 PKCE", () => {
+  const { url, state } = buildGoogleAuthorizationUrl({ headers: { host: "localhost:4173", "x-forwarded-proto": "http" } });
+  const parsed = new URL(url);
+  assert.equal(parsed.searchParams.get("response_type"), "code");
+  assert.equal(parsed.searchParams.get("code_challenge_method"), "S256");
+  assert.equal(parsed.searchParams.get("state"), state);
+  assert.ok(parsed.searchParams.get("nonce"));
+  assert.match(parsed.searchParams.get("redirect_uri"), /\/api\/admin\/oauth\/google\/callback$/);
+  const stateRecord = consumeGoogleOAuthState(state);
+  assert.ok(stateRecord?.verifier);
+  const persisted = JSON.parse(fs.readFileSync(process.env.ADMIN_AUTH_STATE_PATH, "utf8"));
+  assert.ok(persisted.consumedStates[state]);
+  assert.equal(consumeGoogleOAuthState(state), null);
+});
+
+test("Google OAuth ID-token claims reject issuer, audience, expiry, unverified and unlisted identities", () => {
+  const base = { iss: "https://accounts.google.com", aud: process.env.GOOGLE_ADMIN_CLIENT_ID || "", exp: Math.floor(Date.now() / 1000) + 60, email_verified: true, email: "not-on-allowlist@example.com", sub: "sub" };
+  assert.throws(() => validateGoogleIdTokenClaims({ ...base, iss: "https://evil.example" }), /issuer/);
+  assert.throws(() => validateGoogleIdTokenClaims({ ...base, aud: "wrong" }), /audience/);
+  assert.throws(() => validateGoogleIdTokenClaims({ ...base, exp: 1 }), /Expired/);
+  assert.throws(() => validateGoogleIdTokenClaims({ ...base, email_verified: false }), /verified/);
+  assert.throws(() => validateGoogleIdTokenClaims(base), /allowlist/);
+});
+
+test("OAuth admin sessions expire on idle timeout and revoke on logout", () => {
+  const session = createAdminSession({ role: "admin", staffRole: "owner", email: "owner@example.com" });
+  assert.equal(isAdminSessionUsable(session), true);
+  const persisted = JSON.parse(fs.readFileSync(process.env.ADMIN_AUTH_STATE_PATH, "utf8"));
+  assert.equal(persisted.sessions[session.sid].revoked, false);
+  revokeAdminSession(session.sid);
+  const revoked = JSON.parse(fs.readFileSync(process.env.ADMIN_AUTH_STATE_PATH, "utf8"));
+  assert.equal(revoked.sessions[session.sid].revoked, true);
+  assert.equal(isAdminSessionUsable(session), false);
+});
+
+test("Admin mutations require same-origin CSRF cookie and header", () => {
+  const request = { headers: { host: "bakeaholicbali.com", "x-forwarded-proto": "https", origin: "https://bakeaholicbali.com", cookie: "bakeaholic_admin_csrf=token" } };
+  assert.equal(adminCsrfValid({ ...request, headers: { ...request.headers, "x-admin-csrf": "token" } }), true);
+  assert.equal(adminCsrfValid({ ...request, headers: { ...request.headers, "x-admin-csrf": "wrong" } }), false);
+  assert.equal(adminCsrfValid({ ...request, headers: { ...request.headers, origin: "https://evil.example", "x-admin-csrf": "token" } }), false);
+});
+
+test("Active admin sessions fail closed when role or blocked state changes", () => {
+  const session = { staffId: "staff-1", staffRole: "orders_manager", email: "staff@example.com" };
+  const user = { id: "staff-1", role: "orders_manager", email: "staff@example.com", blocked: false };
+  assert.equal(adminSessionMatchesUser(session, user), true);
+  assert.equal(adminSessionMatchesUser(session, { ...user, blocked: true }), false);
+  assert.equal(adminSessionMatchesUser(session, { ...user, role: "brand_manager" }), false);
+});
+
+test("Fresh auth is limited to security, material finance and synthetic-message actions", () => {
+  assert.equal(isAdminFreshAuthRequired("/api/admin/orders/BAK-1/approve-delivery"), false);
+  assert.equal(isAdminFreshAuthRequired("/api/admin/orders/BAK-1/reconcile-payment"), true);
+  assert.equal(isAdminFreshAuthRequired("/api/admin/orders/BAK-1/cancel-order"), true);
+  assert.equal(isAdminFreshAuthRequired("/api/admin/whatsapp-template-tests"), true);
+  assert.equal(isAdminFreshAuthRequired("/api/admin/staff"), true);
+});
+
+test("Corrupt durable auth state fails closed instead of becoming empty state", () => {
+  const original = fs.readFileSync(process.env.ADMIN_AUTH_STATE_PATH, "utf8");
+  fs.writeFileSync(process.env.ADMIN_AUTH_STATE_PATH, "{corrupt", "utf8");
+  assert.throws(() => readAdminAuthState(), /unreadable/);
+  fs.writeFileSync(process.env.ADMIN_AUTH_STATE_PATH, original, "utf8");
+});
+
+test("Auth audit rotation is bounded and nonfatal", () => {
+  fs.writeFileSync(process.env.ADMIN_AUTH_AUDIT_PATH, "x".repeat(5 * 1024 * 1024 + 1), "utf8");
+  assert.doesNotThrow(() => recordAdminSecurityEvent("test_audit", { outcome: "ok" }));
+  assert.equal(fs.statSync(process.env.ADMIN_AUTH_AUDIT_PATH).size < 1000, true);
 });
 
 test("admin alerts fan out to all three configured recipients", async () => {

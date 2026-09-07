@@ -92,21 +92,10 @@
           <form id="adminLoginForm" class="admin-login-form">
             <div>
               <h2>Admin Login</h2>
-              <p class="helper-text">Staff and the protected owner account enter their email, password, and authenticator code. Until owner two-step setup is completed, the existing owner password remains available without email.</p>
+              <p class="helper-text">Use your approved Google account. Access is limited to existing Bakeaholic admin accounts; no account is created automatically.</p>
             </div>
-            <label class="admin-field" for="adminEmailInput">
-              <span>Email <small>(staff accounts)</small></span>
-              <input id="adminEmailInput" type="email" autocomplete="username" placeholder="staff@bakeaholicbali.com" />
-            </label>
-            <label class="admin-field" for="adminPasswordInput">
-              <span>Password</span>
-              <input id="adminPasswordInput" type="password" autocomplete="current-password" />
-            </label>
-            <label class="admin-field" for="adminOtpInput">
-              <span>Authenticator or recovery code</span>
-              <input id="adminOtpInput" type="text" autocomplete="one-time-code" maxlength="14" placeholder="000000 or recovery code" />
-            </label>
-            <button class="admin-button" id="adminLoginButton" type="submit">Log in</button>
+            <button class="admin-button" id="adminGoogleLoginButton" type="button">Continue with Google</button>
+            <p class="helper-text" id="adminLoginMessage" aria-live="polite"></p>
           </form>
         </section>
 
