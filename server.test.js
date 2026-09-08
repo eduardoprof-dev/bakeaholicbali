@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const vm = require("node:vm");
 const path = require("node:path");
+const fs = require("node:fs");
 
 const {
   addressArea,
@@ -143,7 +144,7 @@ test("A5 invoice print stylesheet is publicly served with the invoice", () => {
   assert.equal(isPublicStaticFile(path.join(process.cwd(), ".env")), false);
 });
 
-test("five-day mix-and-match promotion applies across flavours and then expires", () => {
+test("time-bound mix-and-match promotions apply across flavours and expire at exact WITA boundaries", () => {
   const lineItems = [
     { item: { category: "bliss-balls", price: 75000 }, quantity: 1 },
     { item: { category: "bliss-balls", price: 75000 }, quantity: 3 },
@@ -179,6 +180,37 @@ test("five-day mix-and-match promotion applies across flavours and then expires"
   const cookieOnly = computeAutomaticBundleDiscount(lineItems, Date.parse("2026-09-08T12:00:00+08:00"));
   assert.equal(cookieOnly.amount, 90000);
   assert.equal(cookieOnly.code, "BLISS4+COOKIES12");
+});
+
+test("homepage offer display, cache key, and stockist logo slots stay aligned with the server contract", () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+  const homeSource = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+  const stylesSource = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
+
+  assert.match(appSource, /id: "BLISS4", start: "2026-09-01T00:00:00\+08:00", end: "2026-09-12T00:00:00\+08:00"/);
+  assert.match(appSource, /id: "COOKIES12", start: "2026-09-07T08:00:00\+08:00", end: "2026-09-14T00:00:00\+08:00"/);
+  assert.match(appSource, /now >= Date\.parse\(offer\.start\) && now < Date\.parse\(offer\.end\)/);
+  assert.match(homeSource, /app\.js\?v=20260907-bliss-cookie-overlap-reconciled/);
+  assert.match(homeSource, /styles\.css\?v=20260908-stockist-optical-contract-v1/);
+
+  const stockistSection = homeSource.match(/<div class="offline-stockist-grid">([\s\S]*?)<\/div>\s*<small>/)?.[1] || "";
+  const stockistLogos = [...stockistSection.matchAll(/<img class="([^"]*offline-stockist-logo[^"]*)" src="([^"]+)" alt="([^"]+)"/g)];
+  assert.equal(stockistLogos.length, 12);
+  assert.equal(new Set(stockistLogos.map(([, , , alt]) => alt)).size, 12);
+  assert.deepEqual(stockistLogos.map(([, , src]) => src).filter((src) => src.includes("optical")), [
+    "/assets/stockists/whsmith-optical.png",
+    "/assets/stockists/bali-direct-optical.png"
+  ]);
+
+  const stockistStyles = stylesSource.slice(
+    stylesSource.indexOf(".offline-stockist-grid"),
+    stylesSource.indexOf(".cart-site-footer")
+  );
+  assert.match(stockistStyles, /width: min\(100%, 150px\);/);
+  assert.match(stockistStyles, /height: 56px;/);
+  assert.match(stockistStyles, /object-fit: contain;/);
+  assert.doesNotMatch(stockistStyles, /object-fit: cover;/);
+  assert.match(stockistStyles, /@media \(max-width: 620px\)/);
 });
 
 test("bundle and voucher discounts remain separate from tax and delivery", () => {
