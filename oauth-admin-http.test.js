@@ -13,7 +13,7 @@ process.env.ADMIN_AUTH_AUDIT_PATH = path.join(runtimeDir, "admin-auth-audit.json
 process.env.GOOGLE_ADMIN_CLIENT_ID = "http-test-google-client";
 process.env.GOOGLE_ADMIN_CLIENT_SECRET = "unused-http-test-secret";
 process.env.GOOGLE_ADMIN_REDIRECT_URI = "https://staging.example.invalid/api/admin/oauth/google/callback";
-process.env.ADMIN_GOOGLE_ALLOWED_EMAILS = "owner@example.invalid,orders-manager@example.invalid";
+process.env.ADMIN_GOOGLE_ALLOWED_EMAILS = "owner@example.invalid,orders-manager@example.invalid,missing@example.invalid,blocked@example.invalid";
 process.env.ADMIN_SESSION_SECRET = "isolated-admin-test-secret";
 process.env.SESSION_SECRET = "customer-session-test-secret";
 process.env.ADMIN_GOOGLE_ONLY = "true";
@@ -21,13 +21,14 @@ fs.writeFileSync(path.join(runtimeDir, "admin-users.json"), JSON.stringify({
   users: [
     { id: "owner", email: "owner@example.invalid", role: "owner", blocked: false },
     { id: "orders-manager", email: "orders-manager@example.invalid", role: "orders_manager", blocked: false },
-    { id: "unconfigured", email: "active-but-unconfigured@example.invalid", role: "orders_manager", blocked: false }
+    { id: "unconfigured", email: "active-but-unconfigured@example.invalid", role: "orders_manager", blocked: false },
+    { id: "blocked", email: "blocked@example.invalid", role: "orders_manager", blocked: true }
   ]
 }));
 
 const { server, createAdminSession, createSignedSession, verifyGoogleIdToken, resetGoogleJwksCacheForTest } = require("./server");
 
-function request(port, pathname, { method = "GET", headers = {}, body = "" } = {}) {
+function request(port, pathname, { method = "GET", headers = {}, body = "", host = "staging.example.invalid" } = {}) {
   return new Promise((resolve, reject) => {
     const payload = Buffer.from(body);
     const req = http.request({
@@ -36,7 +37,7 @@ function request(port, pathname, { method = "GET", headers = {}, body = "" } = {
       path: pathname,
       method,
       headers: {
-        host: "staging.example.invalid",
+        host,
         "x-forwarded-proto": "https",
         ...(payload.length ? { "content-length": String(payload.length) } : {}),
         ...headers
@@ -58,6 +59,14 @@ function cookieValue(setCookie, name) {
   return String(item || "").split(";")[0];
 }
 
+function resetAuthState(rateLimits = {}) {
+  fs.writeFileSync(process.env.ADMIN_AUTH_STATE_PATH, JSON.stringify({ oauthStates: {}, consumedStates: {}, sessions: {}, rateLimits }));
+}
+
+function rateEvents(count, now = Date.now()) {
+  return Array.from({ length: count }, () => now);
+}
+
 function signedIdToken(privateKey, claims, kid = "test-kid") {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const header = encode({ alg: "RS256", kid, typ: "JWT" });
@@ -72,7 +81,7 @@ test("HTTP OAuth boundary enforces host-only cookies, CSRF, capability, logout a
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
   t.after(() => fs.rmSync(runtimeDir, { recursive: true, force: true }));
-  const port = server.address().port;
+  let port = server.address().port;
 
   const start = await request(port, "/api/admin/oauth/google/start");
   assert.equal(start.status, 302);
@@ -82,6 +91,10 @@ test("HTTP OAuth boundary enforces host-only cookies, CSRF, capability, logout a
   assert.match(stateCookie, /Path=\//);
   assert.match(stateCookie, /Secure/);
   assert.doesNotMatch(stateCookie, /Domain=/i);
+
+  await new Promise((resolve) => server.close(resolve));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  port = server.address().port;
 
   const invalidCallback = await request(port, "/api/admin/oauth/google/callback?state=wrong&code=wrong", {
     headers: { cookie: cookieValue(start.headers["set-cookie"], "__Host-bakeaholic_admin_oauth_state") }
@@ -108,13 +121,21 @@ test("HTTP OAuth boundary enforces host-only cookies, CSRF, capability, logout a
     if (String(url).includes("oauth2.googleapis.com/token")) {
       const code = String(options.body || "");
       const isUnconfigured = code.includes("unconfigured-code");
+      const isMissing = code.includes("missing-code");
+      const isBlocked = code.includes("blocked-code");
       return {
         ok: true,
         json: async () => ({
           id_token: signedIdToken(privateKey, {
             ...baseClaims,
             nonce: currentRouteNonce,
-            email: isUnconfigured ? "active-but-unconfigured@example.invalid" : "owner@example.invalid"
+            email: isUnconfigured
+              ? "active-but-unconfigured@example.invalid"
+              : isMissing
+                ? "missing@example.invalid"
+                : isBlocked
+                  ? "blocked@example.invalid"
+                  : "owner@example.invalid"
           }, "route-test-kid")
         })
       };
@@ -142,17 +163,79 @@ test("HTTP OAuth boundary enforces host-only cookies, CSRF, capability, logout a
     });
     assert.equal(unconfiguredCallback.status, 302);
     assert.equal(unconfiguredCallback.headers.location, "/admin.html?auth=oauth_error&reason=oauth_rejected");
+
+    const missingStart = await request(port, "/api/admin/oauth/google/start");
+    const missingUrl = new URL(missingStart.headers.location);
+    currentRouteNonce = missingUrl.searchParams.get("nonce");
+    const missingCallback = await request(port, `/api/admin/oauth/google/callback?state=${encodeURIComponent(missingUrl.searchParams.get("state"))}&code=missing-code`, {
+      headers: { cookie: cookieValue(missingStart.headers["set-cookie"], "__Host-bakeaholic_admin_oauth_state") }
+    });
+    assert.equal(missingCallback.status, 302);
+    assert.equal(missingCallback.headers.location, "/admin.html?auth=oauth_error&reason=oauth_rejected");
+
+    const blockedStart = await request(port, "/api/admin/oauth/google/start");
+    const blockedUrl = new URL(blockedStart.headers.location);
+    currentRouteNonce = blockedUrl.searchParams.get("nonce");
+    const blockedCallback = await request(port, `/api/admin/oauth/google/callback?state=${encodeURIComponent(blockedUrl.searchParams.get("state"))}&code=blocked-code`, {
+      headers: { cookie: cookieValue(blockedStart.headers["set-cookie"], "__Host-bakeaholic_admin_oauth_state") }
+    });
+    assert.equal(blockedCallback.status, 302);
+    assert.equal(blockedCallback.headers.location, "/admin.html?auth=oauth_error&reason=oauth_rejected");
   } finally {
     global.fetch = originalFetch;
   }
 
-  const parallelStarts = await Promise.all(Array.from({ length: 7 }, () => request(port, "/api/admin/oauth/google/start")));
-  assert.equal(parallelStarts.filter((response) => response.status === 302).length, 7);
-  const limitedStart = await request(port, "/api/admin/oauth/google/start");
-  assert.equal(limitedStart.status, 503);
+  resetAuthState();
+  const canonicalApex = await request(port, "/api/admin/oauth/google/start", { host: "bakeaholicbali.com", headers: { "x-real-ip": "203.0.113.1" } });
+  const canonicalWww = await request(port, "/api/admin/oauth/google/start", { host: "www.bakeaholicbali.com", headers: { "x-real-ip": "203.0.113.2" } });
+  assert.equal(new URL(canonicalApex.headers.location).searchParams.get("redirect_uri"), process.env.GOOGLE_ADMIN_REDIRECT_URI);
+  assert.equal(new URL(canonicalWww.headers.location).searchParams.get("redirect_uri"), process.env.GOOGLE_ADMIN_REDIRECT_URI);
+
+  resetAuthState();
+  const directOriginSpoofs = await Promise.all(Array.from({ length: 10 }, (_, index) => request(port, "/api/admin/oauth/google/start", {
+    headers: { "cf-connecting-ip": `198.51.100.${index + 1}`, "cf-ray": `${index}-spoofed` }
+  })));
+  assert.equal(directOriginSpoofs.filter((response) => response.status === 302).length, 10);
+  assert.equal((await request(port, "/api/admin/oauth/google/start", { headers: { "cf-connecting-ip": "203.0.113.99", "cf-ray": "spoofed" } })).status, 503);
   const persisted = JSON.parse(fs.readFileSync(process.env.ADMIN_AUTH_STATE_PATH, "utf8"));
   assert.ok(Object.keys(persisted.oauthStates).length <= 10);
-  assert.ok(Object.keys(persisted.rateLimits).length <= 4);
+  assert.equal(Object.keys(persisted.rateLimits).length, 2);
+
+  resetAuthState();
+  const railwayClientStarts = await Promise.all(Array.from({ length: 10 }, () => request(port, "/api/admin/oauth/google/start", {
+    headers: { "x-real-ip": "203.0.113.8", "cf-connecting-ip": "198.51.100.8", "cf-ray": "ignored" }
+  })));
+  assert.equal(railwayClientStarts.filter((response) => response.status === 302).length, 10);
+  assert.equal((await request(port, "/api/admin/oauth/google/start", { headers: { "x-real-ip": "203.0.113.8" } })).status, 503);
+  assert.equal((await request(port, "/api/admin/oauth/google/start", { headers: { "x-real-ip": "203.0.113.9" } })).status, 302);
+
+  resetAuthState();
+  const malformedProviderHeaders = await Promise.all(Array.from({ length: 10 }, () => request(port, "/api/admin/oauth/google/start", {
+    headers: { "x-real-ip": "203.0.113.8, 203.0.113.9" }
+  })));
+  assert.equal(malformedProviderHeaders.filter((response) => response.status === 302).length, 10);
+  assert.equal((await request(port, "/api/admin/oauth/google/start", { headers: { "x-real-ip": "not-an-address" } })).status, 503);
+
+  resetAuthState();
+  const repeatedProviderHeaders = await Promise.all(Array.from({ length: 10 }, () => request(port, "/api/admin/oauth/google/start", {
+    headers: { "x-real-ip": ["203.0.113.8", "203.0.113.9"] }
+  })));
+  assert.equal(repeatedProviderHeaders.filter((response) => response.status === 302).length, 10);
+  assert.equal((await request(port, "/api/admin/oauth/google/start")).status, 503);
+
+  resetAuthState({ "global:start": rateEvents(300) });
+  assert.equal((await request(port, "/api/admin/oauth/google/start")).status, 503);
+  resetAuthState();
+  const perClientCallbacks = await Promise.all(Array.from({ length: 20 }, () => request(port, "/api/admin/oauth/google/callback?state=wrong&code=wrong")));
+  assert.equal(perClientCallbacks.filter((response) => response.headers.location === "/admin.html?auth=oauth_error").length, 20);
+  const callbackRateState = JSON.parse(fs.readFileSync(process.env.ADMIN_AUTH_STATE_PATH, "utf8")).rateLimits;
+  assert.equal(callbackRateState["global:callback"].length, 20);
+  assert.equal(Object.keys(callbackRateState).length, 2);
+  assert.equal((await request(port, "/api/admin/oauth/google/callback?state=wrong&code=wrong")).headers.location, "/admin.html?auth=oauth_error");
+  resetAuthState({ "global:callback": rateEvents(600) });
+  const globalCallbackLimited = await request(port, "/api/admin/oauth/google/callback?state=wrong&code=wrong");
+  assert.equal(globalCallbackLimited.status, 302);
+  assert.equal(globalCallbackLimited.headers.location, "/admin.html?auth=oauth_error");
 
   const ownerSession = createAdminSession({ role: "admin", staffRole: "owner", staffId: "owner", email: "owner@example.invalid" });
   const ownerToken = createSignedSession(ownerSession, process.env.ADMIN_SESSION_SECRET);
@@ -185,6 +268,17 @@ test("HTTP OAuth boundary enforces host-only cookies, CSRF, capability, logout a
   assert.doesNotMatch(String(logout.headers["set-cookie"]), /Domain=/i);
   const revoked = await request(port, "/api/admin/session", { headers: { cookie: ownerCookie } });
   assert.equal(revoked.status, 401);
+
+  resetAuthState({
+    sessions: Object.fromEntries(Array.from({ length: 512 }, (_, index) => [`revoked-${index}`, {
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      lastSeenAt: Date.now(),
+      revoked: true
+    }]))
+  });
+  const sessionAfterChurn = createAdminSession({ role: "admin", staffRole: "owner", staffId: "owner", email: "owner@example.invalid" });
+  const sessionsAfterChurn = JSON.parse(fs.readFileSync(process.env.ADMIN_AUTH_STATE_PATH, "utf8")).sessions;
+  assert.deepEqual(Object.keys(sessionsAfterChurn), [sessionAfterChurn.sid]);
 });
 
 test("generated-key signed Google tokens enforce provider claims and active-unconfigured rejection", async () => {

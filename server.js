@@ -2,6 +2,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const net = require("net");
 const { URL } = require("url");
 const {
   buildFulfillmentGroups,
@@ -4141,13 +4142,13 @@ function pruneAdminAuthMaps(now = Date.now()) {
     changed = true;
   }
   for (const [key, entry] of adminSessionRegistry.entries()) {
-    if (!entry || Number(entry.expiresAt) <= now) {
+    if (!entry || entry.revoked || Number(entry.expiresAt) <= now) {
       adminSessionRegistry.delete(key);
       changed = true;
       continue;
     }
-    if (!entry.revoked && (!Number.isFinite(Number(entry.lastSeenAt)) || now - Number(entry.lastSeenAt) >= ADMIN_OAUTH_IDLE_SECONDS * 1000)) {
-      entry.revoked = true;
+    if (!Number.isFinite(Number(entry.lastSeenAt)) || now - Number(entry.lastSeenAt) >= ADMIN_OAUTH_IDLE_SECONDS * 1000) {
+      adminSessionRegistry.delete(key);
       changed = true;
     }
   }
@@ -4188,12 +4189,23 @@ function adminGoogleAllowlist() {
   return configuredAdminGoogleEmails();
 }
 
+function railwayClientIp(request) {
+  const rawHeaders = Array.isArray(request.rawHeaders) ? request.rawHeaders : [];
+  const values = [];
+  for (let index = 0; index < rawHeaders.length; index += 2) {
+    if (String(rawHeaders[index] || "").toLowerCase() === "x-real-ip") values.push(String(rawHeaders[index + 1] || ""));
+  }
+  if (values.length !== 1) return "";
+  const address = values[0].trim();
+  return net.isIP(address) ? address : "";
+}
+
 function oauthClientRateKey(request) {
-  const cfIp = String(request.headers["cf-connecting-ip"] || "").trim();
-  const cfRay = String(request.headers["cf-ray"] || "").trim();
-  // Only accept the client address from the signed Cloudflare proxy signal.
-  // On direct Railway traffic, use the peer address rather than attacker-set XFF.
-  const address = cfIp && cfRay ? cfIp : String(request.socket?.remoteAddress || "unknown");
+  // Railway documents X-Real-IP as its client-address header. Do not trust
+  // Cloudflare/X-Forwarded headers: Railway domains remain directly reachable.
+  // A malformed or repeated provider header falls back to the trusted peer.
+  const peerAddress = String(request.socket?.remoteAddress || "").trim();
+  const address = railwayClientIp(request) || (net.isIP(peerAddress) ? peerAddress : "unknown");
   return crypto.createHmac("sha256", ADMIN_SESSION_SECRET).update(address).digest("hex").slice(0, 32);
 }
 
