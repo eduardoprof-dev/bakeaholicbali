@@ -371,7 +371,7 @@ const secretIntegrationKeys = new Set([
 ]);
 
 async function request(path, options = {}) {
-  const csrf = document.cookie.split(";").map((entry) => entry.trim()).find((entry) => entry.startsWith("bakeaholic_admin_csrf="))?.split("=").slice(1).join("=") || "";
+  const csrf = document.cookie.split(";").map((entry) => entry.trim()).find((entry) => entry.startsWith("__Host-bakeaholic_admin_csrf="))?.split("=").slice(1).join("=") || "";
   const response = await fetch(path, {
     headers: {
       "Content-Type": "application/json",

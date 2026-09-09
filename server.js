@@ -3719,9 +3719,12 @@ const contentTypes = {
 };
 
 const CUSTOMER_SESSION_COOKIE = "bakeaholic_customer_session";
-const ADMIN_SESSION_COOKIE = "bakeaholic_admin_session";
-const ADMIN_CSRF_COOKIE = "bakeaholic_admin_csrf";
-const ADMIN_OAUTH_STATE_COOKIE = "bakeaholic_admin_oauth_state";
+// Admin bearer cookies deliberately use the __Host- prefix. They are secure,
+// Path=/ and host-only, so a sibling Bakeaholic subdomain cannot receive or
+// plant an admin authentication cookie. Customer cookie scope remains legacy.
+const ADMIN_SESSION_COOKIE = "__Host-bakeaholic_admin_session";
+const ADMIN_CSRF_COOKIE = "__Host-bakeaholic_admin_csrf";
+const ADMIN_OAUTH_STATE_COOKIE = "__Host-bakeaholic_admin_oauth_state";
 const CART_SESSION_COOKIE = "bakeaholic_cart_session";
 const CART_SESSION_HEADER = "x-cart-session";
 const CART_SESSION_CREATED_AT_HEADER = "x-cart-session-created-at";
@@ -3732,6 +3735,16 @@ const ADMIN_SESSION_TTL_SECONDS = 60 * 15;
 const ADMIN_OAUTH_SESSION_TTL_SECONDS = 60 * 60 * 8;
 const ADMIN_OAUTH_IDLE_SECONDS = 60 * 30;
 const ADMIN_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const ADMIN_OAUTH_MAX_PENDING_STATES = 128;
+const ADMIN_OAUTH_MAX_CONSUMED_STATES = 256;
+const ADMIN_OAUTH_MAX_SESSIONS = 512;
+const ADMIN_OAUTH_MAX_RATE_KEYS = 256;
+const ADMIN_OAUTH_STATE_MAX_BYTES = 512 * 1024;
+const ADMIN_OAUTH_RATE_WINDOW_MS = 10 * 60 * 1000;
+const ADMIN_OAUTH_START_PER_CLIENT_LIMIT = 10;
+const ADMIN_OAUTH_START_GLOBAL_LIMIT = 300;
+const ADMIN_OAUTH_CALLBACK_PER_CLIENT_LIMIT = 20;
+const ADMIN_OAUTH_CALLBACK_GLOBAL_LIMIT = 600;
 const GOOGLE_OAUTH_CLIENT_ID = String(process.env.GOOGLE_ADMIN_CLIENT_ID || "").trim();
 const GOOGLE_OAUTH_CLIENT_SECRET = String(process.env.GOOGLE_ADMIN_CLIENT_SECRET || "").trim();
 const GOOGLE_OAUTH_REDIRECT_URI = String(process.env.GOOGLE_ADMIN_REDIRECT_URI || "").trim();
@@ -3740,10 +3753,15 @@ const ADMIN_GOOGLE_ONLY = String(process.env.ADMIN_GOOGLE_ONLY || "true").toLowe
 const googleOAuthStates = new Map();
 const consumedGoogleOAuthStates = new Map();
 const adminSessionRegistry = new Map();
+const adminOAuthRateRegistry = new Map();
 let googleJwksCache = { expiresAt: 0, keys: [] };
 const configuredSessionSecret = String(process.env.SESSION_SECRET || "").trim();
 const SESSION_SECRET = configuredSessionSecret
   || (!isProductionRuntime() ? (process.env.WHATSAPP_APP_SECRET || process.env.XENDIT_SECRET_KEY || crypto.randomBytes(32).toString("hex")) : "");
+// Optional and backwards-compatible: production can introduce a dedicated
+// admin signing secret without rotating the customer SESSION_SECRET. Until it
+// is explicitly configured, existing staging retains its reviewed secret.
+const ADMIN_SESSION_SECRET = String(process.env.ADMIN_SESSION_SECRET || "").trim() || SESSION_SECRET;
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
 const ADMIN_ROLES = Object.freeze({
   owner: ["storefront", "orders", "reports", "operations", "integrations", "staff"],
@@ -3968,9 +3986,9 @@ function decodeBase64Url(value) {
   return Buffer.from(`${normalized}${padding}`, "base64").toString("utf8");
 }
 
-function signValue(value) {
+function signValue(value, secret = SESSION_SECRET) {
   return crypto
-    .createHmac("sha256", SESSION_SECRET)
+    .createHmac("sha256", secret)
     .update(value)
     .digest("base64")
     .replace(/\+/g, "-")
@@ -3978,23 +3996,23 @@ function signValue(value) {
     .replace(/=+$/g, "");
 }
 
-function createSignedSession(payload) {
+function createSignedSession(payload, secret = SESSION_SECRET) {
   const encodedPayload = encodeBase64Url(JSON.stringify(payload));
-  const signature = signValue(encodedPayload);
+  const signature = signValue(encodedPayload, secret);
   return `${encodedPayload}.${signature}`;
 }
 
-function parseSignedSession(token) {
+function parseSignedSession(token, secret = SESSION_SECRET) {
   const [encodedPayload, signature] = String(token || "").split(".");
   if (!encodedPayload || !signature) {
     return null;
   }
-  if (!timingSafeEqualString(signValue(encodedPayload), signature)) {
+  if (!timingSafeEqualString(signValue(encodedPayload, secret), signature)) {
     return null;
   }
   try {
     const payload = JSON.parse(decodeBase64Url(encodedPayload));
-    if (!payload?.exp || payload.exp < Date.now()) {
+    if (!payload?.exp || payload.exp <= Date.now()) {
       return null;
     }
     return payload;
@@ -4015,9 +4033,12 @@ function adminGoogleRedirectUri(request) {
 }
 
 function readAdminAuthState() {
-  let state = { oauthStates: {}, consumedStates: {}, sessions: {} };
+  let state = { oauthStates: {}, consumedStates: {}, sessions: {}, rateLimits: {} };
   if (fs.existsSync(adminAuthStatePath)) {
     try {
+      if (fs.statSync(adminAuthStatePath).size > ADMIN_OAUTH_STATE_MAX_BYTES) {
+        throw new Error("Admin auth state exceeds the safe size limit");
+      }
       state = JSON.parse(fs.readFileSync(adminAuthStatePath, "utf8"));
     } catch (error) {
       throw new Error(`Admin auth state is unreadable: ${error.message}`);
@@ -4026,7 +4047,8 @@ function readAdminAuthState() {
   return {
     oauthStates: state && typeof state.oauthStates === "object" ? state.oauthStates : {},
     consumedStates: state && typeof state.consumedStates === "object" ? state.consumedStates : {},
-    sessions: state && typeof state.sessions === "object" ? state.sessions : {}
+    sessions: state && typeof state.sessions === "object" ? state.sessions : {},
+    rateLimits: state && typeof state.rateLimits === "object" ? state.rateLimits : {}
   };
 }
 
@@ -4040,10 +4062,14 @@ function verifyAdminAuthStorageWritable() {
 
 function writeAdminAuthState(state) {
   ensureParentDir(adminAuthStatePath);
+  const serialized = `${JSON.stringify(state, null, 2)}\n`;
+  if (Buffer.byteLength(serialized, "utf8") > ADMIN_OAUTH_STATE_MAX_BYTES) {
+    throw new Error("Admin auth state exceeds the safe size limit");
+  }
   const tempPath = `${adminAuthStatePath}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
   const handle = fs.openSync(tempPath, "w", 0o600);
   try {
-    fs.writeFileSync(handle, `${JSON.stringify(state, null, 2)}\n`);
+    fs.writeFileSync(handle, serialized);
     fs.fsyncSync(handle);
   } finally {
     fs.closeSync(handle);
@@ -4088,22 +4114,67 @@ function persistAdminAuthMaps() {
   writeAdminAuthState({
     oauthStates: Object.fromEntries(googleOAuthStates.entries()),
     consumedStates: Object.fromEntries(consumedGoogleOAuthStates.entries()),
-    sessions: Object.fromEntries(adminSessionRegistry.entries())
+    sessions: Object.fromEntries(adminSessionRegistry.entries()),
+    rateLimits: Object.fromEntries(adminOAuthRateRegistry.entries())
   });
 }
 
-function hydrateAdminAuthMaps() {
+function pruneAdminAuthMaps(now = Date.now()) {
+  let changed = false;
+  for (const [key, value] of googleOAuthStates.entries()) {
+    if (!value || Number(value.expiresAt) <= now) {
+      googleOAuthStates.delete(key);
+      changed = true;
+    }
+  }
+  for (const [key, consumedAt] of consumedGoogleOAuthStates.entries()) {
+    if (!Number.isFinite(Number(consumedAt)) || Number(consumedAt) + ADMIN_OAUTH_STATE_TTL_MS <= now) {
+      consumedGoogleOAuthStates.delete(key);
+      changed = true;
+    }
+  }
+  if (consumedGoogleOAuthStates.size > ADMIN_OAUTH_MAX_CONSUMED_STATES) {
+    [...consumedGoogleOAuthStates.entries()]
+      .sort((a, b) => Number(a[1]) - Number(b[1]))
+      .slice(0, consumedGoogleOAuthStates.size - ADMIN_OAUTH_MAX_CONSUMED_STATES)
+      .forEach(([key]) => consumedGoogleOAuthStates.delete(key));
+    changed = true;
+  }
+  for (const [key, entry] of adminSessionRegistry.entries()) {
+    if (!entry || Number(entry.expiresAt) <= now) {
+      adminSessionRegistry.delete(key);
+      changed = true;
+      continue;
+    }
+    if (!entry.revoked && (!Number.isFinite(Number(entry.lastSeenAt)) || now - Number(entry.lastSeenAt) >= ADMIN_OAUTH_IDLE_SECONDS * 1000)) {
+      entry.revoked = true;
+      changed = true;
+    }
+  }
+  for (const [key, events] of adminOAuthRateRegistry.entries()) {
+    const fresh = Array.isArray(events) ? events.filter((entry) => Number.isFinite(Number(entry)) && now - Number(entry) < ADMIN_OAUTH_RATE_WINDOW_MS) : [];
+    if (!fresh.length) {
+      adminOAuthRateRegistry.delete(key);
+      changed = true;
+    } else if (fresh.length !== events.length) {
+      adminOAuthRateRegistry.set(key, fresh);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function hydrateAdminAuthMaps(now = Date.now()) {
   const state = readAdminAuthState();
   googleOAuthStates.clear();
   consumedGoogleOAuthStates.clear();
   adminSessionRegistry.clear();
+  adminOAuthRateRegistry.clear();
   Object.entries(state.oauthStates).forEach(([key, value]) => googleOAuthStates.set(key, value));
   Object.entries(state.consumedStates).forEach(([key, value]) => consumedGoogleOAuthStates.set(key, value));
   Object.entries(state.sessions).forEach(([key, value]) => adminSessionRegistry.set(key, value));
-  const cutoff = Date.now() - ADMIN_OAUTH_STATE_TTL_MS;
-  for (const [key, consumedAt] of consumedGoogleOAuthStates.entries()) {
-    if (Number(consumedAt) < cutoff) consumedGoogleOAuthStates.delete(key);
-  }
+  Object.entries(state.rateLimits).forEach(([key, value]) => adminOAuthRateRegistry.set(key, value));
+  if (pruneAdminAuthMaps(now)) persistAdminAuthMaps();
 }
 
 function configuredAdminGoogleEmails() {
@@ -4114,13 +4185,30 @@ function configuredAdminGoogleEmails() {
 }
 
 function adminGoogleAllowlist() {
-  const configured = configuredAdminGoogleEmails();
-  const users = loadAdminUsers();
-  users.forEach((user) => {
-    const email = normalizeAdminEmail(user.email);
-    if (email) configured.add(email);
-  });
-  return configured;
+  return configuredAdminGoogleEmails();
+}
+
+function oauthClientRateKey(request) {
+  const cfIp = String(request.headers["cf-connecting-ip"] || "").trim();
+  const cfRay = String(request.headers["cf-ray"] || "").trim();
+  // Only accept the client address from the signed Cloudflare proxy signal.
+  // On direct Railway traffic, use the peer address rather than attacker-set XFF.
+  const address = cfIp && cfRay ? cfIp : String(request.socket?.remoteAddress || "unknown");
+  return crypto.createHmac("sha256", ADMIN_SESSION_SECRET).update(address).digest("hex").slice(0, 32);
+}
+
+function consumeAdminOAuthRateSlot(kind, request, now = Date.now()) {
+  const perClientLimit = kind === "callback" ? ADMIN_OAUTH_CALLBACK_PER_CLIENT_LIMIT : ADMIN_OAUTH_START_PER_CLIENT_LIMIT;
+  const globalLimit = kind === "callback" ? ADMIN_OAUTH_CALLBACK_GLOBAL_LIMIT : ADMIN_OAUTH_START_GLOBAL_LIMIT;
+  const globalKey = `global:${kind}`;
+  const clientKey = `client:${kind}:${oauthClientRateKey(request)}`;
+  const globalEvents = adminOAuthRateRegistry.get(globalKey) || [];
+  const clientEvents = adminOAuthRateRegistry.get(clientKey) || [];
+  if (globalEvents.length >= globalLimit || clientEvents.length >= perClientLimit) return false;
+  if (!adminOAuthRateRegistry.has(clientKey) && adminOAuthRateRegistry.size >= ADMIN_OAUTH_MAX_RATE_KEYS) return false;
+  adminOAuthRateRegistry.set(globalKey, globalEvents.concat(now));
+  adminOAuthRateRegistry.set(clientKey, clientEvents.concat(now));
+  return true;
 }
 
 function adminSessionMatchesUser(session, user) {
@@ -4137,6 +4225,14 @@ function pkceChallenge(verifier) {
 
 function createGoogleOAuthState(request) {
   hydrateAdminAuthMaps();
+  if (!consumeAdminOAuthRateSlot("start", request)) {
+    persistAdminAuthMaps();
+    throw new Error("Google sign-in is temporarily unavailable");
+  }
+  if (googleOAuthStates.size >= ADMIN_OAUTH_MAX_PENDING_STATES) {
+    persistAdminAuthMaps();
+    throw new Error("Google sign-in is temporarily unavailable");
+  }
   const state = encodeBase64Url(crypto.randomBytes(32));
   const verifier = createPkceVerifier();
   const nonce = encodeBase64Url(crypto.randomBytes(24));
@@ -4150,8 +4246,11 @@ function consumeGoogleOAuthState(state) {
   const key = String(state || "");
   if (consumedGoogleOAuthStates.has(key)) return null;
   const value = googleOAuthStates.get(key);
+  if (consumedGoogleOAuthStates.size >= ADMIN_OAUTH_MAX_CONSUMED_STATES) {
+    persistAdminAuthMaps();
+    return null;
+  }
   consumedGoogleOAuthStates.set(key, Date.now());
-  persistAdminAuthMaps();
   googleOAuthStates.delete(key);
   persistAdminAuthMaps();
   if (!value || value.expiresAt < Date.now()) return null;
@@ -4180,14 +4279,17 @@ function validateGoogleIdTokenClaims(claims, now = Math.floor(Date.now() / 1000)
   if (claims.exp <= now || (claims.iat && claims.iat > now + 60)) throw new Error("Expired Google identity token");
   if (claims.email_verified !== true) throw new Error("Google email is not verified");
   const email = normalizeAdminEmail(claims.email);
-  if (!claims.sub || !email || !adminGoogleAllowlist().has(email)) throw new Error("Google account is not on the admin allowlist");
+  const allowlist = adminGoogleAllowlist();
+  if (!claims.sub || !email || !allowlist.size || !allowlist.has(email)) throw new Error("Google account is not on the admin allowlist");
   return { email, subject: String(claims.sub), name: String(claims.name || email) };
 }
 
-function createAdminSession(payload, ttlSeconds = ADMIN_OAUTH_SESSION_TTL_SECONDS) {
-  hydrateAdminAuthMaps();
+function createAdminSession(payload, ttlSeconds = ADMIN_OAUTH_SESSION_TTL_SECONDS, now = Date.now()) {
+  hydrateAdminAuthMaps(now);
+  if (adminSessionRegistry.size >= ADMIN_OAUTH_MAX_SESSIONS) {
+    throw new Error("Admin session registry is at capacity");
+  }
   const sessionId = crypto.randomBytes(24).toString("hex");
-  const now = Date.now();
   const session = { ...payload, sid: sessionId, authAt: now, createdAt: new Date(now).toISOString(), lastSeenAt: now, exp: now + ttlSeconds * 1000 };
   adminSessionRegistry.set(sessionId, { expiresAt: session.exp, lastSeenAt: now, revoked: false });
   persistAdminAuthMaps();
@@ -4208,8 +4310,8 @@ function isAdminFreshAuthRequired(pathname) {
     || normalizedPathname.endsWith("/cancel-order");
 }
 
-function revokeAdminSession(sessionId) {
-  hydrateAdminAuthMaps();
+function revokeAdminSession(sessionId, now = Date.now()) {
+  hydrateAdminAuthMaps(now);
   const entry = adminSessionRegistry.get(String(sessionId || ""));
   if (entry) {
     entry.revoked = true;
@@ -4217,12 +4319,16 @@ function revokeAdminSession(sessionId) {
   }
 }
 
-function isAdminSessionUsable(session) {
-  hydrateAdminAuthMaps();
+function isAdminSessionUsable(session, now = Date.now()) {
+  hydrateAdminAuthMaps(now);
   const entry = adminSessionRegistry.get(String(session?.sid || ""));
-  if (!entry || entry.revoked || entry.expiresAt < Date.now()) return false;
-  if (Date.now() - entry.lastSeenAt > ADMIN_OAUTH_IDLE_SECONDS * 1000) return false;
-  entry.lastSeenAt = Date.now();
+  if (!entry || entry.revoked || Number(entry.expiresAt) <= now) return false;
+  if (now - Number(entry.lastSeenAt) >= ADMIN_OAUTH_IDLE_SECONDS * 1000) {
+    entry.revoked = true;
+    persistAdminAuthMaps();
+    return false;
+  }
+  entry.lastSeenAt = now;
   persistAdminAuthMaps();
   return true;
 }
@@ -4265,6 +4371,10 @@ async function googleJwks() {
   const payload = await fetchGoogleJson("https://www.googleapis.com/oauth2/v3/certs");
   googleJwksCache = { keys: Array.isArray(payload.keys) ? payload.keys : [], expiresAt: Date.now() + 60 * 60 * 1000 };
   return googleJwksCache.keys;
+}
+
+function resetGoogleJwksCacheForTest() {
+  googleJwksCache = { expiresAt: 0, keys: [] };
 }
 
 async function verifyGoogleIdToken(idToken, expectedNonce) {
@@ -4358,6 +4468,25 @@ function setSignedSessionCookie(response, request, cookieName, payload, maxAgeSe
   }));
 }
 
+function setAdminSessionCookie(response, request, payload, maxAgeSeconds = ADMIN_OAUTH_SESSION_TTL_SECONDS) {
+  const token = createSignedSession({
+    ...payload,
+    exp: Date.now() + maxAgeSeconds * 1000
+  }, ADMIN_SESSION_SECRET);
+  appendSetCookie(response, serializeCookie(ADMIN_SESSION_COOKIE, token, {
+    maxAge: maxAgeSeconds,
+    // __Host- cookies must be secure and must never include Domain.
+    secure: true
+  }));
+}
+
+function clearAdminCookie(response, cookieName) {
+  appendSetCookie(response, serializeCookie(cookieName, "", {
+    maxAge: 0,
+    secure: true
+  }));
+}
+
 function clearSessionCookie(response, request, cookieName) {
   appendSetCookie(response, serializeCookie(cookieName, "", {
     maxAge: 0,
@@ -4367,13 +4496,12 @@ function clearSessionCookie(response, request, cookieName) {
 }
 
 function setAdminSessionCookies(response, request, session) {
-  setSignedSessionCookie(response, request, ADMIN_SESSION_COOKIE, session, ADMIN_OAUTH_SESSION_TTL_SECONDS);
+  setAdminSessionCookie(response, request, session);
   const csrf = crypto.randomBytes(24).toString("hex");
   appendSetCookie(response, serializeCookie(ADMIN_CSRF_COOKIE, csrf, {
     maxAge: ADMIN_OAUTH_SESSION_TTL_SECONDS,
-    secure: isSecureRequest(request),
-    httpOnly: false,
-    domain: productionCookieDomain(request)
+    secure: true,
+    httpOnly: false
   }));
   return csrf;
 }
@@ -4457,15 +4585,16 @@ function currentCustomerSession(request) {
 
 function currentAdminSession(request) {
   const cookies = parseCookies(request);
-  const payload = parseSignedSession(cookies[ADMIN_SESSION_COOKIE]);
+  const payload = parseSignedSession(cookies[ADMIN_SESSION_COOKIE], ADMIN_SESSION_SECRET);
   if (!payload || payload.role !== "admin") {
     return null;
   }
   if (ADMIN_GOOGLE_ONLY && !isAdminSessionUsable(payload)) return null;
   if (ADMIN_GOOGLE_ONLY) {
     const user = loadAdminUsers().find((entry) => entry.id === payload.staffId);
-    if (!adminSessionMatchesUser(payload, user)) {
-      recordAdminSecurityEvent("admin_session_revoked", { outcome: "role_or_blocked_changed", email: payload.email, role: payload.staffRole });
+    const allowlist = adminGoogleAllowlist();
+    if (!adminSessionMatchesUser(payload, user) || !allowlist.size || !allowlist.has(normalizeAdminEmail(payload.email))) {
+      recordAdminSecurityEvent("admin_session_revoked", { outcome: "role_blocked_or_allowlist_changed", email: payload.email, role: payload.staffRole });
       revokeAdminSession(payload.sid);
       return null;
     }
@@ -9489,7 +9618,7 @@ function handleApi(requestUrl, request, response) {
       response.writeHead(302, {
         Location: url,
         "Cache-Control": "no-store",
-        "Set-Cookie": serializeCookie(ADMIN_OAUTH_STATE_COOKIE, state, { maxAge: ADMIN_OAUTH_STATE_TTL_MS / 1000, secure: isSecureRequest(request), domain: productionCookieDomain(request) })
+        "Set-Cookie": serializeCookie(ADMIN_OAUTH_STATE_COOKIE, state, { maxAge: ADMIN_OAUTH_STATE_TTL_MS / 1000, secure: true })
       });
       response.end();
     } catch (error) {
@@ -9501,9 +9630,17 @@ function handleApi(requestUrl, request, response) {
   if (request.method === "GET" && pathname === "/api/admin/oauth/google/callback") {
     const returnedState = requestUrl.searchParams.get("state");
     const stateCookie = parseCookies(request)[ADMIN_OAUTH_STATE_COOKIE];
-    const stateRecord = timingSafeEqualString(returnedState, stateCookie) ? consumeGoogleOAuthState(returnedState) : null;
+    let callbackAllowed = false;
+    try {
+      hydrateAdminAuthMaps();
+      callbackAllowed = consumeAdminOAuthRateSlot("callback", request);
+      persistAdminAuthMaps();
+    } catch (_error) {
+      callbackAllowed = false;
+    }
+    const stateRecord = callbackAllowed && timingSafeEqualString(returnedState, stateCookie) ? consumeGoogleOAuthState(returnedState) : null;
     const code = requestUrl.searchParams.get("code");
-    const clearOauthStateCookie = serializeCookie(ADMIN_OAUTH_STATE_COOKIE, "", { maxAge: 0, secure: isSecureRequest(request), domain: productionCookieDomain(request) });
+    const clearOauthStateCookie = serializeCookie(ADMIN_OAUTH_STATE_COOKIE, "", { maxAge: 0, secure: true });
     if (!stateRecord || !code || requestUrl.searchParams.get("error")) {
       recordAdminSecurityEvent("admin_oauth_callback", { outcome: "invalid_state_or_denied" });
       appendSetCookie(response, clearOauthStateCookie);
@@ -9580,7 +9717,7 @@ function handleApi(requestUrl, request, response) {
           }
           sessionPayload = { role: "admin", staffRole: "owner", email: "owner", name: "Owner", createdAt: new Date().toISOString() };
         }
-        setSignedSessionCookie(response, request, ADMIN_SESSION_COOKIE, {
+        setAdminSessionCookie(response, request, {
           ...sessionPayload
         }, ADMIN_SESSION_TTL_SECONDS);
         sendJson(response, 200, { ok: true, session: publicAdminSession(sessionPayload) });
@@ -9592,8 +9729,8 @@ function handleApi(requestUrl, request, response) {
   if (request.method === "POST" && pathname === "/api/admin/logout") {
     recordAdminSecurityEvent("admin_logout", { outcome: "requested", email: currentAdminSession(request)?.email });
     revokeAdminSession(currentAdminSession(request)?.sid);
-    clearSessionCookie(response, request, ADMIN_SESSION_COOKIE);
-    clearSessionCookie(response, request, ADMIN_CSRF_COOKIE);
+    clearAdminCookie(response, ADMIN_SESSION_COOKIE);
+    clearAdminCookie(response, ADMIN_CSRF_COOKIE);
     sendJson(response, 200, { ok: true });
     return true;
   }
@@ -10846,18 +10983,23 @@ module.exports = {
   createGoogleOAuthState,
   consumeGoogleOAuthState,
   validateGoogleIdTokenClaims,
+  verifyGoogleIdToken,
+  resetGoogleJwksCacheForTest,
   createAdminSession,
+  createSignedSession,
   isAdminSessionUsable,
   revokeAdminSession,
   adminCsrfValid,
   adminSessionMatchesUser,
   isAdminFreshAuthRequired,
   readAdminAuthState,
+  pruneAdminAuthMaps,
   recordAdminSecurityEvent,
   verifiedCustomerWhatsappNumber,
   verifiedBiteshipDeliveryProofUrl,
   productionCookieDomain,
   serializeCookie,
+  server,
   bundlePromotionIsActive,
   computeAutomaticBundleDiscount,
   combineDiscounts,

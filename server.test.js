@@ -600,6 +600,27 @@ test("Google OAuth ID-token claims reject issuer, audience, expiry, unverified a
   assert.throws(() => validateGoogleIdTokenClaims(base), /allowlist/);
 });
 
+test("Google OAuth claims require a non-empty configured allowlist and do not inherit persisted admin emails", () => {
+  const priorAllowlist = process.env.ADMIN_GOOGLE_ALLOWED_EMAILS;
+  const claims = {
+    iss: "https://accounts.google.com",
+    aud: process.env.GOOGLE_ADMIN_CLIENT_ID,
+    exp: Math.floor(Date.now() / 1000) + 60,
+    email_verified: true,
+    sub: "configured-subject"
+  };
+  try {
+    process.env.ADMIN_GOOGLE_ALLOWED_EMAILS = "configured@example.invalid";
+    assert.equal(validateGoogleIdTokenClaims({ ...claims, email: "configured@example.invalid" }).email, "configured@example.invalid");
+    assert.throws(() => validateGoogleIdTokenClaims({ ...claims, email: "active-but-unconfigured@example.invalid" }), /allowlist/);
+    process.env.ADMIN_GOOGLE_ALLOWED_EMAILS = "";
+    assert.throws(() => validateGoogleIdTokenClaims({ ...claims, email: "configured@example.invalid" }), /allowlist/);
+  } finally {
+    if (priorAllowlist === undefined) delete process.env.ADMIN_GOOGLE_ALLOWED_EMAILS;
+    else process.env.ADMIN_GOOGLE_ALLOWED_EMAILS = priorAllowlist;
+  }
+});
+
 test("OAuth admin sessions expire on idle timeout and revoke on logout", () => {
   const session = createAdminSession({ role: "admin", staffRole: "owner", email: "owner@example.com" });
   assert.equal(isAdminSessionUsable(session), true);
@@ -611,8 +632,18 @@ test("OAuth admin sessions expire on idle timeout and revoke on logout", () => {
   assert.equal(isAdminSessionUsable(session), false);
 });
 
-test("Admin mutations require same-origin CSRF cookie and header", () => {
-  const request = { headers: { host: "bakeaholicbali.com", "x-forwarded-proto": "https", origin: "https://bakeaholicbali.com", cookie: "bakeaholic_admin_csrf=token" } };
+test("OAuth sessions fail at exact idle and absolute expiry boundaries after durable reload", () => {
+  const start = Date.parse("2026-09-09T00:00:00.000Z");
+  const idleSession = createAdminSession({ role: "admin", staffRole: "owner", staffId: "owner", email: "owner@example.invalid" }, 8 * 60 * 60, start);
+  assert.equal(isAdminSessionUsable(idleSession, start + 30 * 60 * 1000), false);
+  const absoluteSession = createAdminSession({ role: "admin", staffRole: "owner", staffId: "owner", email: "owner@example.invalid" }, 60, start);
+  assert.equal(isAdminSessionUsable(absoluteSession, start + 60 * 1000), false);
+  const persisted = JSON.parse(fs.readFileSync(process.env.ADMIN_AUTH_STATE_PATH, "utf8"));
+  assert.equal(persisted.sessions[absoluteSession.sid], undefined);
+});
+
+test("Admin mutations require same-origin host-only CSRF cookie and header", () => {
+  const request = { headers: { host: "bakeaholicbali.com", "x-forwarded-proto": "https", origin: "https://bakeaholicbali.com", cookie: "__Host-bakeaholic_admin_csrf=token" } };
   assert.equal(adminCsrfValid({ ...request, headers: { ...request.headers, "x-admin-csrf": "token" } }), true);
   assert.equal(adminCsrfValid({ ...request, headers: { ...request.headers, "x-admin-csrf": "wrong" } }), false);
   assert.equal(adminCsrfValid({ ...request, headers: { ...request.headers, origin: "https://evil.example", "x-admin-csrf": "token" } }), false);
@@ -624,6 +655,7 @@ test("Active admin sessions fail closed when role or blocked state changes", () 
   assert.equal(adminSessionMatchesUser(session, user), true);
   assert.equal(adminSessionMatchesUser(session, { ...user, blocked: true }), false);
   assert.equal(adminSessionMatchesUser(session, { ...user, role: "brand_manager" }), false);
+  assert.equal(adminSessionMatchesUser(session, null), false);
 });
 
 test("Fresh auth is limited to security, material finance and synthetic-message actions", () => {
